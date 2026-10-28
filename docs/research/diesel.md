@@ -376,10 +376,130 @@ Abwürgen: `rpm < 0.5·idleRpm` ohne Starter und ohne Leerlauf-Kraftstoffreserve
 Kurbelwinkel (für Sound): `crankAngleDeg = (crankAngleDeg + rpm * 6 * dt) % 720`.
 
 ## 5. Referenzmotoren
-_in Arbeit_
+
+Für `src/data/reference-engines.ts` und die Abgleichtests. Zielwerte: Modell sollte Spitzenmoment und -leistung auf ±7 % treffen [Vorschlag Recherche]. Wenn ein Wert [S] ist, gilt er nur als Plausibilitätsband.
+
+| Feld | VW 1.9 TDI PD (ASZ/AVF) | BMW N57D30O1 | Mercedes OM654 (220d) | PSA/Ford 1.6 HDi 16V (DV6TED4) | Cummins 6BT 5.9 (12V, Dodge HX35) |
+|---|---|---|---|---|---|
+| Anordnung | R4, 2 V/Zyl., SOHC | R6, 4 V, DOHC | R4, 4 V, DOHC | R4, 4 V, DOHC | R6, 2 V, OHV |
+| Bohrung × Hub [mm] | 79,5 × 95,5 [B] | 84,0 × 90,0 [B] | 82,0 × 92,3 [B] | 75,0 × 88,3 [B] | 102 × 120 [B] |
+| Hubraum [l] | 1,896 [B] | 2,993 [B] | 1,950 [B] | 1,560 [B] | 5,883 [B] |
+| Verdichtung | 18,0 [B] | 16,5 [B] | 15,5 [B] | 18,0 [S, gängige Angabe] | 17,5 [B] |
+| Einspritzung (`injection`) | `unit-injector` [B] | `common-rail`, Piezo [B] | `common-rail`, Piezo [B] | `common-rail`, Bosch 2. Gen. [B] | Reiheneinspritzpumpe Bosch P7100 [B] → im Modell `unit-injector`-ähnlich, aber mit Druck ≈ 1000 bar [S]* |
+| `injectionPressureBar` | 2050 [B] | 1800 [B] | 2050 [S, Serienstart 2016] (654 M: 2700 [B]) | 1600 [B] | ≈ 1000 [S] |
+| Aufladung | VTG-Turbo, LLK [B] | VTG-Turbo (Mono), LLK [B] | VTG-Turbo, LLK (Topversion Twin) [B] | VTG Garrett GT15V, LLK [B] | Holset HX35 Wastegate, LLK [B] |
+| Ladedruck (Überdruck) [bar] | ≈ 1,3 … 1,5 [S] | ≈ 1,5 … 1,8 [S] | ≈ 1,5 … 1,8 [S] | ≈ 1,1 … 1,3 [S] | ≈ 1,2 … 1,5 [S] |
+| Leistung | 96 kW @ 4000 [B] | 190 kW @ 4000 [B] | 143 kW @ 3800 [B, Quelle markiert "citation needed"] | 80 kW @ 4000 [B Leistung, Drehzahl S] | 160 kW @ 2600 [B, Spitzenversion] |
+| Drehmoment | 310 Nm @ 1900 [B] | 560 Nm @ 1500–3000 [B] | 400 Nm @ 1600–2400 [B] | 240 Nm @ 1750 (Overboost 260) [B] | 569 Nm @ 1600 [B] |
+| bmep (berechnet) [bar] | 20,5 | 23,5 | 25,8 | 19,3 [B: Quelle nennt 19,32 bar] | 12,2 |
+| Drehzahlgrenze [rpm] | ≈ 4800 … 5000 [S] | 5400 (Schaltgetriebe) [B] | ≈ 4800 [S] | ≈ 5000 [S] | ≈ 2800 (Regler-Endabregelung) [S] |
+| Leerlauf [rpm] | 850 [S] | 750 [S] | 750 [S] | 800 [S] | 750 [S] |
+| Block | Grauguss [B, allg. bekannt] | Aluminium [S] | Aluminium [B] | Aluminium [B] | Grauguss [B] |
+| Masse ca. [kg] | ≈ 170 [S] | ≈ 195 [S] | ≈ 170 [S] | ≈ 125 [S] | ≈ 500 [B, engine-specs] |
+| `smokeLimitLambda` (Vorschlag) | 1,20 | 1,25 | 1,25 | 1,25 | 1,40 (alte Abgasnorm, aber ohne Elektronik eher 1,3 …) |
+| Abgasnachbehandlung | Oxi-Kat, AGR, kein DPF (bis ~2006) | AGR, Oxi-Kat, DPF | AGR (HD+ND), Oxi-Kat, DPF, SCR | AGR, Oxi-Kat, DPF (je nach Baujahr) | keine (1994–98) |
+
+\* Der Typ kennt keine Verteiler-/Reihenpumpe. Für den 6BT `unit-injector` mit 1000 bar und `injectionTimingOffsetDeg = 0` verwenden, Gütegrad dadurch automatisch etwas schlechter (log-Term). Vorschlag an Architektur: Enum-Wert `"inline-pump"` (siehe Offene Punkte).
+
+Vorgeschlagene Presets (`EngineConfig`-Felder, Diesel) – Konstruktions-Felder ohne Datenblattangabe sind [S]:
+
+```ts
+// VW 1.9 TDI PD 96 kW
+{ block: { layout: "inline", cylinders: 4, bankAngleDeg: 0, v8Crank: "crossplane", boreMm: 79.5, strokeMm: 95.5,
+           conrodLengthMm: 144, compressionRatio: 18, blockMaterial: "cast-iron", crankshaft: "forged",
+           pistons: "cast-aluminium", conrods: "forged-steel" },
+  head: { valvetrain: "sohc", valvesPerCylinder: 2, camProfile: 0.2, variableTiming: "none" },
+  induction: { aspiration: "turbo", compressorInducerMm: 38, turbineAR: 0.5, variableGeometry: true,
+               boostTargetBar: 1.4, intercooler: "air-to-air", intakeRunnerLengthMm: 380, individualThrottleBodies: false },
+  fuelSystem: { kind: "diesel", injection: "unit-injector", injectionPressureBar: 2050, fuel: "diesel",
+                smokeLimitLambda: 1.2, injectionTimingOffsetDeg: 0 },
+  exhaust: { manifold: "cast-log", egr: true, catalyst: true, particulateFilter: false, scr: false },
+  cooling: { radiatorCapacityKw: 70, thermostatOpenC: 87, oilCooler: true }, revLimitRpm: 4900, idleRpm: 850 }
+// BMW N57D30O1: 6 Zyl., 84×90, Pleuel 145 [S], ε 16.5, aluminium, forged, cast-aluminium, forged-steel; dohc 4V camProfile 0.3;
+//   turbo VTG inducer 46 mm, A/R 0.6, boost 1.7, air-to-air, runner 350; common-rail 1800 bar, λ 1.25; egr+cat+dpf;
+//   radiator 120 kW, thermostat 88, oilCooler; revLimit 5400, idle 750
+// Mercedes OM654 220d: 4 Zyl., 82×92.3, Pleuel 138 [S], ε 15.5, aluminium, forged, steel (Stahlkolben! [B, bekanntes Merkmal]), forged-steel;
+//   dohc 4V camProfile 0.3, variableTiming "none"; turbo VTG 42 mm, A/R 0.55, boost 1.7, air-to-air; common-rail 2050, λ 1.25;
+//   egr+cat+dpf+scr; radiator 95 kW, thermostat 90; revLimit 4800, idle 750
+// PSA 1.6 HDi 80 kW: 4 Zyl., 75×88.3, Pleuel 136.8 [S], ε 18, aluminium, cast, cast-aluminium, forged-steel; dohc 4V 0.25;
+//   turbo VTG 36 mm, A/R 0.45, boost 1.2, air-to-air; common-rail 1600, λ 1.25; egr+cat(+dpf); radiator 60, thermostat 88; revLimit 5000, idle 800
+// Cummins 6BT 5.9 (Ram 1994–98, 160 kW Version): 6 Zyl., 102×120, Pleuel 192 [S], ε 17.5, cast-iron, forged, cast-aluminium, forged-steel;
+//   ohv 2V camProfile 0.1; turbo Wastegate 55 mm, A/R 0.8 (HX35: 12 cm² Turbinengehäuse [S]), boost 1.4, air-to-air, runner 300;
+//   unit-injector (Ersatz) 1000 bar, λ 1.35; egr/cat/dpf/scr false; radiator 150 kW, thermostat 83; revLimit 2800, idle 750
+```
 
 ## 1. Parameter
-_in Arbeit_
+
+Bereiche für den Konfigurator, wenn `fuel = "diesel"`. "Min/Max" = was die UI zulässt (darf auch unvernünftige, aber physikalisch mögliche Werte erlauben); "realistisch" = Serienband. Werte [S], sofern nicht in Kap. 5 belegt.
+
+### BlockConfig
+
+| Feld | Min | Max | Default | realistisch | Einheit / Hinweis |
+|---|---|---|---|---|---|
+| `layout` | – | – | `"inline"` | inline (R3–R6), v (V6/V8 90° bzw. 60°/72°) | `boxer` existiert (Subaru EE20), `vr`/`w` bei Diesel nicht in Serie (VW V10 TDI ist "v") |
+| `cylinders` | 2 | 12 | 4 | 3 … 8 | – |
+| `bankAngleDeg` | 45 | 180 | 90 | V6 60°/90°, V8 90° | ° |
+| `v8Crank` | – | – | `"crossplane"` | Diesel-V8 immer crossplane | flatplane erlauben, aber Vibrationswarnung |
+| `boreMm` | 65 | 140 | 81 | Pkw 75 … 90, Nfz 100 … 135 | mm |
+| `strokeMm` | 70 | 165 | 93 | Pkw 80 … 100, Nfz 120 … 160 | mm; Diesel fast immer Langhuber (Hub/Bohrung 1,05 … 1,25) |
+| `conrodLengthMm` | 1,4·Hub | 2,2·Hub | 1,55·Hub | λ_Pleuel = r/l = 0,28 … 0,33 | mm; Diesel 135 … 160 (Pkw) |
+| `compressionRatio` | 12 | 24 | 16,5 | DI-CR 15 … 18, PD 18 … 19,5, Kammer 20 … 23 | – ; unter ~14 kein Kaltstart (siehe 3.11) |
+| `blockMaterial` | – | – | `"cast-iron"` | alle drei | CGI: Nfz/V-Diesel (Audi 4.2 TDI, Ford 6.7) |
+| `crankshaft` | – | – | `"forged"` | forged (Pkw-Diesel fast ausnahmslos) | cast nur bei alten Saugdieseln |
+| `pistons` | – | – | `"cast-aluminium"` | cast-aluminium mit Kühlkanal; steel (OM654, Nfz) | – |
+| `conrods` | – | – | `"forged-steel"` | forged-steel bzw. gecrackt | titanium unüblich |
+
+### HeadConfig
+
+| Feld | Min | Max | Default | realistisch | Hinweis |
+|---|---|---|---|---|---|
+| `valvetrain` | – | – | `"dohc"` | dohc (modern), sohc (TDI bis 2008), ohv (Nfz, Cummins) | – |
+| `valvesPerCylinder` | 2 | 4 | 4 | 2 oder 4 | 3/5 bei Diesel nicht sinnvoll (Injektor mittig) → UI ausgrauen oder Malus |
+| `camProfile` | 0 | 1 | 0,25 | 0,1 … 0,4 | Diesel: Drehzahlband schmal, scharfe Nocke bringt wenig (Ventiltaschen, Verdichtung!) |
+| `variableTiming` | – | – | `"none"` | none; intake-cam selten (BMW B47-Einlass-Drall, Mazda Skyactiv-D Auslass-VVL) | – |
+
+### InductionConfig
+
+| Feld | Min | Max | Default | realistisch | Einheit / Hinweis |
+|---|---|---|---|---|---|
+| `aspiration` | – | – | `"turbo"` | turbo, twin-turbo-sequential; NA (alte Sauger), e-turbo (selten) | Kompressor bei Diesel exotisch |
+| `compressorInducerMm` | 25 | 90 | 40 | Pkw 32 … 50, Nfz 55 … 75 | mm |
+| `turbineAR` | 0,3 | 1,4 | 0,55 | Pkw 0,4 … 0,7, Nfz 0,7 … 1,2 | – |
+| `variableGeometry` | – | – | `true` | Pkw seit ~1997 Standard | – |
+| `boostTargetBar` | 0 | 3,5 | 1,5 | Pkw 1,2 … 2,0, Nfz 2 … 3 (zweistufig) | bar Überdruck |
+| `intercooler` | – | – | `"air-to-air"` | air-to-air; air-to-water (OM654-Kompaktbau, BMW B57) | – |
+| `intakeRunnerLengthMm` | 150 | 700 | 350 | 250 … 450 | mm |
+| `individualThrottleBodies` | – | – | `false` | **immer false** | Diesel hat keine Drossel; UI ausblenden |
+
+### DieselFuelSystem
+
+| Feld | Min | Max | Default | realistisch | Einheit / Hinweis |
+|---|---|---|---|---|---|
+| `injection` | – | – | `"common-rail"` | alle vier | Kammer → max. 4500 … 5000 rpm erlaubt, langsame Verbrennung, laut |
+| `injectionPressureBar` | 100 | 3000 | 1800 | Vorkammer 120 … 300, Wirbelkammer 250 … 400, PD 1600 … 2200, CR 1. Gen 1350 / 2. 1600 / 3. 1800 / 4. 2000 … 2700 | bar; für Kammermotoren UI-Max 500 |
+| `fuel` | – | – | `"diesel"` | diesel, hvo, biodiesel | – |
+| `smokeLimitLambda` | 1,0 | 2,0 | 1,25 | Serie Euro 4–6: 1,20 … 1,35; alt 1,4 … 1,6; Tuning bis 1,05 | – |
+| `injectionTimingOffsetDeg` | −12 | +8 | 0 | ±3 | °KW, negativ = spät |
+
+### ExhaustConfig
+
+| Feld | Default | Hinweis |
+|---|---|---|
+| `manifold` | `"cast-log"` | Diesel fast immer Guss (EGT, Kompaktheit); tubular bringt wenig (+1 … 2 % ve, schnellere Turbo-Antwort τ ×0,9) |
+| `egr` | `true` | Teillast-NOx; bei Volllast aus |
+| `catalyst` | `true` | Oxi-Kat (DOC) |
+| `particulateFilter` | `true` | Gegendruck +0,05 … 0,25 bar je Beladung |
+| `scr` | `false` | AdBlue; NOx −90 % |
+
+### CoolingConfig und Drehzahlen
+
+| Feld | Min | Max | Default | realistisch | Einheit |
+|---|---|---|---|---|---|
+| `radiatorCapacityKw` | 20 | 400 | ≈ 0,55 · P_nenn | Pkw 50 … 120, Nfz 150 … 300 | kW |
+| `thermostatOpenC` | 70 | 105 | 88 | 83 … 92 (Nfz 82 … 85) | °C |
+| `oilCooler` | – | – | `true` | Turbodiesel praktisch immer | – |
+| `revLimitRpm` | 2000 | 6000 | 4800 | Pkw-DI 4500 … 5200, Kammer 4800 … 5000, Nfz 2200 … 3000 | rpm; Reglerbeginn (3.2) |
+| `idleRpm` | 500 | 1100 | 800 | Pkw 750 … 850, Nfz 600 … 750 | rpm |
 
 ## 4. Grenzen und Schäden
 _in Arbeit_
