@@ -2,7 +2,9 @@
 // (DOM) for temperatures, oil pressure, consumption, λ and knock/soot. Yellow marks limits only.
 import type { EngineConfig, EngineState, EngineSummary, WarningCode } from "../core/index.ts";
 import { fitCanvas, reducedMotion, tokens } from "./canvas.ts";
+import { setText } from "./dom.ts";
 import { clamp, fmt, mixHex, niceCeil, tickStep } from "./format.ts";
+import { FALLBACK_LIMITS as L, egtLimitC, lambdaLimit } from "./limits-fallback.ts";
 
 const SWEEP_START = (135 * Math.PI) / 180; // 7:30 o'clock
 const SWEEP = (270 * Math.PI) / 180;
@@ -68,7 +70,7 @@ class RoundGauge {
     const k = 1 - Math.exp(-dt / tau);
     const prev = this.needle;
     this.needle += (target - this.needle) * k;
-    this.readout.textContent = fmt(target, this.def.decimals);
+    setText(this.readout, fmt(target, this.def.decimals));
     const alarm = this.def.warns.some((w) => active.has(w)) || target >= this.limitFrom;
     if (alarm !== this.alarm) {
       this.alarm = alarm;
@@ -207,7 +209,7 @@ class Meter {
     const ok = Number.isFinite(v);
     const tau = reducedMotion() ? 0.35 : 0.08;
     if (ok) this.shown += (v - this.shown) * (1 - Math.exp(-dt / tau));
-    this.out.textContent = ok ? fmt(v, this.def.decimals) : "–";
+    setText(this.out, ok ? fmt(v, this.def.decimals) : "–");
     const p = clamp((this.shown - this.def.min) / (this.max - this.def.min), 0, 1);
     this.fill.style.transform = `scaleX(${ok ? p : 0})`;
     const atLimit = ok && (this.def.lowLimit ? v <= this.limit && s.running : v >= this.limit);
@@ -253,15 +255,15 @@ export class InstrumentPanel {
       id, label, unit: "°C", decimals: 0, min: 0, max: () => max, limit, value, warns, thermal: true,
     });
     this.meters = [
-      new Meter(T("coolant", "Kühlmittel", 130, () => 110, (s) => s.coolantC, ["overheat-coolant"])),
-      new Meter(T("oil", "Öl", 160, () => 135, (s) => s.oilC, ["overheat-oil"])),
-      new Meter(T("egt", "Abgas", 1100, (c) => (isDiesel(c) ? 750 : 950), (s) => s.egtC, ["egt-high"])),
-      new Meter({ id: "oilp", label: "Öldruck", unit: "bar", decimals: 1, min: 0, max: () => 8, limit: () => 1, lowLimit: true, value: (s) => s.oilPressureBar, warns: ["low-oil-pressure"] }),
+      new Meter(T("coolant", "Kühlmittel", 130, () => L.coolantMaxC, (s) => s.coolantC, ["overheat-coolant"])),
+      new Meter(T("oil", "Öl", 160, () => L.oilMaxC, (s) => s.oilC, ["overheat-oil"])),
+      new Meter(T("egt", "Abgas", 1100, egtLimitC, (s) => s.egtC, ["egt-high"])),
+      new Meter({ id: "oilp", label: "Öldruck", unit: "bar", decimals: 1, min: 0, max: () => 8, limit: () => L.oilPressureMinBar, lowLimit: true, value: (s) => s.oilPressureBar, warns: ["low-oil-pressure"] }),
       new Meter({ id: "flow", label: "Verbrauch", unit: "l/h", decimals: 1, min: 0, max: (c) => niceCeil(Math.max(10, c.block.cylinders * c.block.boreMm * 0.25)), limit: () => Infinity, value: (s) => s.fuelFlowLh, warns: [] }),
       new Meter({ id: "bsfc", label: "Spezifisch", unit: "g/kWh", decimals: 0, min: 150, max: () => 500, limit: () => Infinity, value: (s) => s.bsfcGkWh, warns: [] }),
-      new Meter({ id: "lambda", label: "Lambda", unit: "", decimals: 2, min: 0.6, max: (c) => (isDiesel(c) ? 4 : 1.4), limit: (c) => (c.fuelSystem.kind === "diesel" ? c.fuelSystem.smokeLimitLambda : 0.75), lowLimit: true, value: (s) => (s.lambda > 9 ? Number.NaN : s.lambda), warns: ["smoke"] }),
-      new Meter({ id: "knock", label: "Klopfen", unit: "%", decimals: 0, min: 0, max: () => 100, limit: () => 50, value: (s) => s.knock * 100, warns: ["knock"], visible: (c) => !isDiesel(c) }),
-      new Meter({ id: "smoke", label: "Ruß", unit: "%", decimals: 0, min: 0, max: () => 100, limit: () => 50, value: (s) => s.smoke * 100, warns: ["smoke"], visible: isDiesel }),
+      new Meter({ id: "lambda", label: "Lambda", unit: "", decimals: 2, min: 0.6, max: (c) => (isDiesel(c) ? 4 : 1.4), limit: lambdaLimit, lowLimit: true, value: (s) => (s.lambda > 9 ? Number.NaN : s.lambda), warns: ["smoke"] }),
+      new Meter({ id: "knock", label: "Klopfen", unit: "%", decimals: 0, min: 0, max: () => 100, limit: () => L.knockMax * 100, value: (s) => s.knock * 100, warns: ["knock"], visible: (c) => !isDiesel(c) }),
+      new Meter({ id: "smoke", label: "Ruß", unit: "%", decimals: 0, min: 0, max: () => 100, limit: () => L.smokeMax * 100, value: (s) => s.smoke * 100, warns: ["smoke"], visible: isDiesel }),
     ];
     const dial = document.createElement("div");
     dial.className = "instruments__dials";
@@ -280,7 +282,7 @@ export class InstrumentPanel {
     pw!.setScale(0, niceCeil(Math.max(20, sum.peakPowerKw * 1.15)), Infinity);
     const charged = cfg.induction.aspiration !== "naturally-aspirated";
     const bmax = charged ? niceCeil(Math.max(0.5, cfg.induction.boostTargetBar * 1.4)) : 0.5;
-    bo!.setScale(-1, bmax, charged ? cfg.induction.boostTargetBar * 1.15 : Infinity);
+    bo!.setScale(-1, bmax, charged ? cfg.induction.boostTargetBar * L.boostOvershoot : Infinity);
     for (const m of this.meters) m.configure(cfg);
     for (const g of this.round) g.draw();
   }
