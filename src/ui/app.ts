@@ -65,11 +65,17 @@ export class App {
       <h1 class="cell__title">Prüfzelle</h1>
       <button type="button" class="btn bench-toggle" aria-expanded="false" aria-controls="werkbank">Werkbank öffnen</button>`;
     const toggle = top.querySelector<HTMLButtonElement>(".bench-toggle")!;
-    toggle.addEventListener("click", () => {
-      const open = !cell.classList.contains("bench-open");
+    const setOpen = (open: boolean) => {
       cell.classList.toggle("bench-open", open);
       toggle.setAttribute("aria-expanded", String(open));
       toggle.textContent = open ? "Werkbank schließen" : "Werkbank öffnen";
+    };
+    toggle.addEventListener("click", () => setOpen(!cell.classList.contains("bench-open")));
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && cell.classList.contains("bench-open")) {
+        setOpen(false);
+        toggle.focus();
+      }
     });
 
     const stage = document.createElement("main");
