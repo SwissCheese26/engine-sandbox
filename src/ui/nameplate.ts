@@ -2,7 +2,9 @@
 // The only place in the UI where capitals are used, because that is real nameplate vocabulary.
 import type { EngineConfig, EngineSummary } from "../core/index.ts";
 import { fmt } from "./format.ts";
-import { layoutCode } from "./schematic.ts";
+import { FALLBACK_LIMITS } from "./limits-fallback.ts";
+import { layoutCode } from "./names.ts";
+import { setText } from "./dom.ts";
 
 export class Nameplate {
   readonly el: HTMLElement;
@@ -49,13 +51,13 @@ export class Nameplate {
   update(cfg: EngineConfig, s: EngineSummary) {
     const set = (id: string, v: string, limit = false) => {
       const c = this.cells.get(id)!;
-      c.textContent = v;
+      setText(c, v);
       c.classList.toggle("is-limit", limit);
     };
-    this.title.textContent = cfg.name.toUpperCase();
+    setText(this.title, cfg.name.toUpperCase());
     const fuel = cfg.fuel === "diesel" ? "DIESEL" : "OTTO";
     const asp = cfg.induction.aspiration === "naturally-aspirated" ? "SAUGER" : cfg.induction.aspiration.startsWith("super") ? "KOMPRESSOR" : "TURBO";
-    this.type.textContent = `TYP ${layoutCode(cfg)} ${fmt(s.displacementL, 1)} ${fuel} ${asp}`;
+    setText(this.type, `TYP ${layoutCode(cfg).toUpperCase()} ${fmt(s.displacementL, 1)} ${fuel} ${asp}`);
     set("disp", `${fmt(s.displacementL * 1000)} cm³`);
     set("bxs", `${fmt(cfg.block.boreMm, 1)} × ${fmt(cfg.block.strokeMm, 1)} mm`);
     set("cr", `${fmt(cfg.block.compressionRatio, 1)} : 1`);
@@ -63,8 +65,8 @@ export class Nameplate {
     set("pw", `${fmt(s.peakPowerKw)} kW / ${fmt(s.peakPowerRpm)}`);
     const overRev = cfg.revLimitRpm > s.safeMaxRpm;
     set("rpm", `${fmt(Math.min(cfg.revLimitRpm, s.safeMaxRpm))} 1/min`, overRev);
-    set("cm", `${fmt(s.maxMeanPistonSpeedMs, 1)} m/s`, s.maxMeanPistonSpeedMs > 22);
+    set("cm", `${fmt(s.maxMeanPistonSpeedMs, 1)} m/s`, s.maxMeanPistonSpeedMs > FALLBACK_LIMITS.meanPistonSpeedMaxMs);
     set("mass", `${fmt(s.massKg)} kg`);
-    set("rel", `${fmt(s.reliability * 100)} %`, s.reliability < 0.4);
+    set("rel", `${fmt(s.reliability * 100)} %`, s.reliability < FALLBACK_LIMITS.reliabilityMin);
   }
 }

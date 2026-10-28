@@ -5,6 +5,7 @@ import type { EngineConfig, EngineState, EngineSummary } from "../core/index.ts"
 import { reducedMotion } from "./canvas.ts";
 import { banks, cylinderPhase, firingOffsets, strokeOf } from "./geometry.ts";
 import type { BankLayout } from "./geometry.ts";
+import { layoutCode } from "./names.ts";
 
 const NS = "http://www.w3.org/2000/svg";
 const W = 860;
@@ -42,19 +43,6 @@ interface RowCyl {
   crankY: number;
 }
 
-const LAYOUT_NAME: Record<EngineConfig["block"]["layout"], string> = {
-  inline: "Reihe",
-  v: "V",
-  boxer: "Boxer",
-  vr: "VR",
-  w: "W",
-};
-
-export function layoutCode(cfg: EngineConfig): string {
-  const { layout, cylinders } = cfg.block;
-  return layout === "inline" ? `R${cylinders}` : `${LAYOUT_NAME[layout]}${cylinders}`;
-}
-
 export class Schematic {
   readonly el: HTMLElement;
   private svg: SVGSVGElement;
@@ -73,6 +61,7 @@ export class Schematic {
   private rowK = 1;
   private impAngle = 0;
   private caption: HTMLElement;
+  private structureKey = "";
 
   constructor() {
     this.el = document.createElement("figure");
@@ -84,23 +73,42 @@ export class Schematic {
     this.el.append(this.svg, this.caption);
   }
 
+  /**
+   * The SVG is rebuilt only when the drawing's structure changes: layout, cylinder count, bank
+   * angle, crank, charging and intercooler, or the bore/stroke/conrod proportions by a visible step
+   * (5 mm). Everything else (firing offsets, labels) is updated in place.
+   */
+  static structureKey(cfg: EngineConfig): string {
+    const b = cfg.block;
+    const q = (mm: number) => Math.round(mm / 5);
+    return [
+      b.layout, b.cylinders, b.bankAngleDeg, b.v8Crank,
+      cfg.induction.aspiration, cfg.induction.intercooler,
+      q(b.boreMm), q(b.strokeMm), q(b.conrodLengthMm),
+    ].join("|");
+  }
+
   configure(cfg: EngineConfig, sum: EngineSummary) {
     this.cfg = cfg;
     this.offsets = firingOffsets(cfg, sum);
-    this.dyn.replaceChildren();
-    this.front = [];
-    this.rows = [];
-    this.impellers = [];
-    const bs = banks(cfg);
+    const key = Schematic.structureKey(cfg);
+    const caption = `Querschnitt und Längsschnitt · Zündfolge ${firingOrderText(this.offsets)}`;
+    if (this.caption.textContent !== caption) this.caption.textContent = caption;
     const { boreMm, strokeMm, conrodLengthMm, cylinders } = cfg.block;
     this.svg.setAttribute(
       "aria-label",
       `Schnittbild: ${layoutCode(cfg)}-Motor, ${cylinders} Zylinder, Bohrung ${boreMm} mm, Hub ${strokeMm} mm` +
         (cfg.induction.aspiration !== "naturally-aspirated" ? ", aufgeladen" : ""),
     );
+    if (key === this.structureKey) return;
+    this.structureKey = key;
+    this.dyn.replaceChildren();
+    this.front = [];
+    this.rows = [];
+    this.impellers = [];
+    const bs = banks(cfg);
     this.drawFront(cfg, bs, boreMm, strokeMm, conrodLengthMm);
     this.drawRows(cfg, bs, boreMm, strokeMm);
-    this.caption.textContent = `Querschnitt und Längsschnitt · Zündfolge ${firingOrderText(this.offsets)}`;
   }
 
   private drawFront(cfg: EngineConfig, bs: BankLayout[], bore: number, stroke: number, rod: number) {

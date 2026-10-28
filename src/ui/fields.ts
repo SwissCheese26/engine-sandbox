@@ -141,7 +141,7 @@ export function injectionPressureRange(cfg: EngineConfig): { min: number; max: n
 
 export const FIELDS: Field[] = [
   // ── Block ───────────────────────────────────────────────────────────────
-  { kind: "text", path: "name", group: "block", label: "Bezeichnung", effect: "Steht auf dem Typenschild und im Messbogen." },
+  { kind: "text", path: "name", group: "block", label: "Bezeichnung", effect: "Steht auf dem Typenschild. Ohne eigenen Namen folgt er der Konfiguration." },
   {
     kind: "select", path: "block.layout", group: "block", label: "Anordnung",
     effect: "Bestimmt Baulänge, Laufruhe und Zündabstände.",

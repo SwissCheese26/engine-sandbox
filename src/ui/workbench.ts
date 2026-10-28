@@ -5,7 +5,8 @@ import type { EngineConfig, FuelKind, Warning } from "../core/index.ts";
 import { defaultConfig } from "../data/presets.ts";
 import { FIELDS, GROUPS, getPath, isVisible, setPath } from "./fields.ts";
 import type { Field } from "./fields.ts";
-import { clamp, fmt, snap } from "./format.ts";
+import { clamp, fmt, parseNumber, snap } from "./format.ts";
+import { autoName } from "./names.ts";
 
 type Listener = (cfg: EngineConfig) => void;
 
@@ -20,6 +21,9 @@ export class Workbench {
   private signature = "";
   private listeners: Listener[] = [];
   private locked = false;
+  /** True once the user typed an own name; until then the name follows the configuration. */
+  private customName = false;
+  private lockNote: HTMLElement;
 
   constructor(initial: EngineConfig) {
     this.cfg = structuredClone(initial);
@@ -40,8 +44,10 @@ export class Workbench {
       <div class="bench__tools">
         <button type="button" class="btn btn--small" data-action="preset">Grundausstattung laden</button>
       </div>
+      <p class="bench__lock" role="status" aria-live="polite" hidden>Zum Umbauen Motor abstellen: Zündung aus mit <kbd>I</kbd>.</p>
       <div class="bench__notes" role="status" aria-live="polite"></div>`;
     this.notes = head.querySelector(".bench__notes")!;
+    this.lockNote = head.querySelector(".bench__lock")!;
     this.fuelInputs = [...head.querySelectorAll<HTMLInputElement>('input[name="fuel"]')];
     for (const r of this.fuelInputs) {
       r.addEventListener("change", () => {
@@ -52,6 +58,7 @@ export class Workbench {
     this.body = document.createElement("div");
     this.body.className = "bench__plates";
     this.el.append(head, this.body);
+    this.cfg.name = autoName(this.cfg);
     this.render();
   }
 
@@ -63,23 +70,48 @@ export class Workbench {
     return this.cfg;
   }
 
-  /** While the engine runs, structural parts stay editable – the simulator is reset on change. */
+  /**
+   * Like on a real test bench the engine is only rebuilt while it stands still. While it runs every
+   * control on the bench is disabled (the plates stay readable) and a hint says how to unlock.
+   */
   setLocked(locked: boolean) {
+    if (locked === this.locked) return;
     this.locked = locked;
     this.el.classList.toggle("is-locked", locked);
+    this.lockNote.hidden = !locked;
+    for (const c of this.el.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>("input, select, button")) {
+      c.disabled = locked;
+    }
+  }
+
+  get isLocked(): boolean {
+    return this.locked;
   }
 
   loadPreset(fuel: FuelKind) {
+    if (this.locked) return;
+    this.customName = false;
     this.apply(defaultConfig(fuel));
   }
 
   private apply(next: EngineConfig) {
+    if (this.locked) {
+      this.sync();
+      return;
+    }
+    if (!this.customName) next.name = autoName(next);
     this.cfg = next;
     this.render();
     for (const l of this.listeners) l(this.cfg);
   }
 
   private set(path: string, value: unknown) {
+    if (path === "name") {
+      const name = String(value).trim();
+      this.customName = name !== "" && name !== autoName(this.cfg);
+      this.apply(setPath(this.cfg, path, this.customName ? name : autoName(this.cfg)));
+      return;
+    }
     this.apply(setPath(this.cfg, path, value));
   }
 
@@ -180,13 +212,17 @@ export class Workbench {
         unit.textContent = f.unit;
         slider.addEventListener("input", () => this.set(f.path, Number(slider.value)));
         const commit = () => {
-          const raw = Number(val.value.replace(/\./g, "").replace(",", "."));
+          const rr = f.range(this.cfg);
+          const raw = parseNumber(val.value, { min: rr.min * sc, max: rr.max * sc });
           if (!Number.isFinite(raw)) {
             this.sync();
             return;
           }
-          const rr = f.range(this.cfg);
-          this.set(f.path, snap(clamp(raw / sc, rr.min, rr.max), rr.min, rr.step));
+          const next = snap(clamp(raw / sc, rr.min, rr.max), rr.min, rr.step);
+          this.set(f.path, next);
+          // show the accepted value in the field's own format, also while it keeps focus
+          const cur = (getPath(this.cfg, f.path) as number) * sc;
+          val.value = fmt(cur, f.decimals);
         };
         val.addEventListener("change", commit);
         val.addEventListener("keydown", (e) => {
@@ -270,7 +306,8 @@ export class Workbench {
         inp.maxLength = 48;
         inp.dataset.role = "control";
         inp.setAttribute("aria-describedby", describe);
-        inp.addEventListener("change", () => this.set(f.path, inp.value.trim() || this.cfg.name));
+        inp.placeholder = "Leer lassen für automatischen Namen";
+        inp.addEventListener("change", () => this.set(f.path, inp.value));
         row.append(label, inp, effect, warn);
         break;
       }
@@ -321,7 +358,6 @@ export class Workbench {
       this.notes.append(p);
     }
     this.notes.hidden = warnings.length === 0;
-    void this.locked;
   }
 }
 
