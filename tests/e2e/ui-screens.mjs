@@ -105,6 +105,65 @@ await run("desktop-v8-petrol", { width: 1440, height: 900 }, async (page) => {
   await startAndRev(page, 2000);
 });
 
+// Behaviour checks from the review of PR #8.
+{
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  page.on("pageerror", (e) => errors.push(`checks: ${e.message}`));
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
+  await page.goto(base);
+  await page.waitForSelector(".cell");
+  const expect = (ok, msg) => {
+    if (!ok) errors.push(`check failed: ${msg}`);
+  };
+  const bore = '[data-path="block.boreMm"] .field__num';
+  // decimal input: dot and comma
+  for (const typed of ["81.5", "83,5"]) {
+    await page.fill(bore, typed);
+    await page.press(bore, "Enter");
+    await page.waitForTimeout(50);
+    const want = typed.replace(".", ",");
+    expect((await page.inputValue(bore)) === want, `bore "${typed}" → ${await page.inputValue(bore)}`);
+  }
+  // automatic name follows the config, an own name is kept
+  await page.selectOption('[data-path="block.layout"] select', "v");
+  await page.waitForTimeout(80);
+  const auto = await page.inputValue('[data-path="name"] input');
+  expect(auto.startsWith("V4 Diesel"), `auto name "${auto}"`);
+  expect((await page.textContent(".nameplate__title")) === auto.toUpperCase(), "nameplate title follows auto name");
+  await page.fill('[data-path="name"] input', "Mein Prüfling");
+  await page.press('[data-path="name"] input', "Tab");
+  await page.selectOption('[data-path="block.layout"] select', "inline");
+  await page.waitForTimeout(80);
+  expect((await page.inputValue('[data-path="name"] input')) === "Mein Prüfling", "own name kept");
+  // lock while running, unlock after ignition off and standstill
+  await page.mouse.click(700, 20);
+  await page.keyboard.press("i");
+  await page.keyboard.down("s");
+  await page.waitForTimeout(700);
+  await page.keyboard.up("s");
+  await page.waitForTimeout(300);
+  expect(await page.isVisible(".bench__lock"), "lock hint visible while running");
+  expect(await page.isDisabled(bore), "bench inputs disabled while running");
+  const rpmRunning = Number((await page.textContent('[data-gauge="rpm"] .gauge__value')).replace(/\./g, ""));
+  expect(rpmRunning > 300, `engine keeps running (rpm ${rpmRunning})`);
+  await page.keyboard.press("i");
+  await page.waitForFunction(() => !document.querySelector(".bench")?.classList.contains("is-locked"), null, { timeout: 15000 }).catch(() => {});
+  expect(!(await page.isDisabled(bore)), "bench unlocked after engine stopped");
+  expect(!(await page.isVisible(".bench__lock")), "lock hint hidden when stopped");
+  // focus ring is not yellow
+  await page.focus(bore);
+  const ring = await page.evaluate((sel) => getComputedStyle(document.querySelector(sel)).boxShadow, bore);
+  expect(!/246, 168, 0/.test(ring), `focus ring not yellow (${ring})`);
+  // dispose stops the loop and removes the UI
+  const disposed = await page.evaluate(() => {
+    const app = window.__pruefzelle;
+    app.dispose();
+    return document.getElementById("app").childElementCount === 0 && !window.__pruefzelle;
+  });
+  expect(disposed, "dispose() clears the app");
+  await page.close();
+}
+
 // Keyboard reachability: every interactive control must be focusable by Tab.
 {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
