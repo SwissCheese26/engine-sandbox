@@ -11,6 +11,9 @@ Legende: **[B]** = belegt (Quelle am Ende), **[S]** = Schätzung / Ingenieurs-Fa
 4. Grenzen und Schäden
 5. Referenzmotoren
 6. Quellen
+7. Offene Punkte an Architektur
+
+(Abschnitte stehen nach Priorität sortiert in der Datei: 3, 5, 1, 4, 2, 7, 6.)
 
 ## 3. Echtzeit-Mittelwertmodell
 
@@ -502,10 +505,169 @@ Bereiche für den Konfigurator, wenn `fuel = "diesel"`. "Min/Max" = was die UI z
 | `idleRpm` | 500 | 1100 | 800 | Pkw 750 … 850, Nfz 600 … 750 | rpm |
 
 ## 4. Grenzen und Schäden
-_in Arbeit_
+
+Prinzip: `warning` ab erster Schwelle, `critical` ab zweiter, Verschleiß akkumuliert oberhalb der Warnschwelle (`wear += rate·dt`), `fatal` bei dritter Schwelle bzw. wenn eine critical-Bedingung länger als die Haltezeit anliegt. Zahlen [S] aus Konstruktions-Faustwerten, sofern nicht anders markiert.
+
+### 4.1 Mittlere Kolbengeschwindigkeit (`piston-speed`)
+
+| Stufe | Pkw-Diesel | Nfz (> 100 mm Bohrung) |
+|---|---|---|
+| Serie Nennleistung | 11 … 14 m/s [B, Lehrbuchbereich] | 9 … 11 m/s |
+| warning | 15 m/s | 12 m/s |
+| critical | 17 m/s | 14 m/s |
+| fatal (Pleuel/Kolben) | 19 m/s (> 2 s) | 16 m/s |
+
+Modifikatoren der Schwellen: `forged-steel`-Pleuel ×1,0, `cast-steel` ×0,92, `titanium` ×1,10; `steel`-Kolben ×0,95 (Masse), `forged-aluminium` ×1,05; Kurbelwelle `cast` ×0,92, `billet` ×1,05. `safeMaxRpm = 30 · vCritical / (strokeMm/1000)` (min mit Ventilflattern 3.11 bzw. Benziner-Doku).
+
+Ventilflattern (`valve-float`): Diesel-Ventiltriebe sind auf niedrige Drehzahl ausgelegt: Grenze `nFloat ≈ 5600 rpm · (1 − 0,15·(valvetrain==="ohv")) · (1 + 0,1·camProfile)` [S].
+
+### 4.2 Spitzendruck (`peak-pressure`)
+
+Zulässiger Zylinderspitzendruck `pMaxDesign` = Minimum aus Block, Kolben, Pleuel [S, Größenordnungen aus Literatur: Pkw-Diesel heute 180 … 200 bar Serie (SAE 2013-01-1622), Nfz 220 … 250 bar]:
+
+| Bauteil | Wert [bar] |
+|---|---|
+| Block `aluminium` | 190 (mit Grauguss-Laufbuchsen) |
+| Block `cast-iron` | 210 |
+| Block `compacted-graphite-iron` | 250 |
+| Kolben `cast-aluminium` | 190 |
+| Kolben `forged-aluminium` | 215 |
+| Kolben `steel` | 260 |
+| Pleuel `cast-steel` | 180 |
+| Pleuel `forged-steel` | 220 |
+| Pleuel `titanium` | 240 |
+
+Zylinderkopf/Kopfdichtung: zusätzlich Bohrungseinfluss, Kraft ∝ p·Bohrung² → `pMaxDesign *= (82 / boreMm)^0.5` für Bohrungen > 82 mm (große Bohrung = größere Kraft, aber in Nfz-Bauweise kompensiert, daher nur halber Exponent) [S].
+
+| Stufe | Bedingung | Folge |
+|---|---|---|
+| warning | `peakPressureBar > 0,95·pMaxDesign` | Verschleiß ×2 |
+| critical | `> 1,05·pMaxDesign` | Verschleiß ×10, Kopfdichtung (Kühlmittelverlust) bei > 3 s |
+| fatal | `> 1,25·pMaxDesign` (sofort) oder critical > 10 s | Kolbenbruch / Pleuel knickt (`conrod-stress`) |
+
+Pleuelbelastung (`conrod-stress`) zusätzlich aus Massenkraft (Zug im Ladungswechsel-OT): `F_inertia ≈ m_osc·r·ω²·(1+λ_Pl)`, `m_osc ≈ 0.9 · (boreMm/82)^2.2 kg` (Kolben+Bolzen+oszillierender Pleuel-Anteil; `steel`-Kolben ×1,25) [S]; Zuggrenze forged-steel ≈ 35 kN·(boreMm/82)² [S].
+
+### 4.3 Abgastemperatur (`egt-high`) – vor Turbine
+
+| Stufe | Wert | Hinweis |
+|---|---|---|
+| Serie Volllast | 700 … 800 °C | Pkw-VTG-Lader ausgelegt bis ~830 °C [S]; Nfz-Wastegate ~760 °C |
+| warning | 800 °C | Steuergeräte reduzieren ab hier die Menge (Bauteilschutz) |
+| critical | 850 °C | VTG-Schaufeln verklemmen, Kolbenmulde schmilzt an (Alu-Kolben) |
+| fatal | 950 °C für > 5 s | Kolben-Muldenrand angeschmolzen / Turbinenrad |
+
+`steel`-Kolben: Kolbenschaden erst ab 1000 °C, Turbinengrenze bleibt.
+
+### 4.4 Turbolader (`turbo-overspeed`, `overboost`)
+
+| Größe | warning | critical / fatal |
+|---|---|---|
+| Läuferdrehzahl | `turboRpm > 0,92·nMax` | `> 1,0·nMax` critical, `> 1,08·nMax` fatal (Verdichterrad berstet) |
+| `nMax` | Umfangsgeschwindigkeit u2 ≈ 520 m/s (Alu-Verdichterrad) [S] → `nMax = 520·60 / (π·D2)` | 45 mm Inducer → ≈ 154 000 rpm; 38 mm → ≈ 183 000 rpm |
+| Überladedruck | `boostBar > boostTargetBar + 0,3` für > 1 s | Regelfehler / Spieler-Tuning; führt meist zu Spitzendruck-Problem |
+| Verdichteraustritt T2 | > 190 °C warning | > 220 °C critical (Ölkohle, Ladeluftschläuche) |
+
+### 4.5 Kühlmittel und Öl
+
+| Größe | warning | critical | fatal |
+|---|---|---|---|
+| Kühlmittel (`overheat-coolant`) | 108 °C | 118 °C (Siedepunkt bei 1,4 bar Deckel ≈ 125 °C) | 130 °C > 20 s: Kopf verzieht sich / Kopfdichtung |
+| Öl (`overheat-oil`) | 135 °C | 150 °C | 165 °C > 20 s: Lagerschaden |
+| Öldruck (`low-oil-pressure`) | < 1,0 bar bei > 2000 rpm | < 0,5 bar | < 0,3 bar > 3 s bei > 1500 rpm: Lagerfresser |
+| Kalt-Volllast | Öl < 50 °C und load > 0,8 | – | nur Verschleiß ×3 |
+
+### 4.6 Rauch und Sonstiges
+
+- `smoke`: warning > 0,3, critical > 0,6 (keine Schäden, aber DPF-Beladung steigt; ohne DPF reine Optik/Sound). Mit DPF: Beladung `dpfLoad += smokeRaw·dt/600`; ab 1 → Gegendruck +0,3 bar (Leistungsverlust).
+- `stall`: rpm < 0,5·idleRpm ohne Starter.
+- `over-rev`: Diesel-Regler verhindert Überdrehen aus eigener Kraft; nur durch Prüfstand-Schleppen oder Ölansaugen ("Durchgehen", optional Easter Egg) möglich. warning > revLimit + 200, critical > safeMaxRpm.
+- `knock`: Diesel immer 0 (das "Nageln" ist Verbrennungsgeräusch, siehe Sound-Hinweis in Kap. 2).
+
+### 4.7 Zuverlässigkeit (EngineSummary.reliability)
+
+Start 1,0, multiplikative Abzüge [S]: Auslegungs-Spitzendruck-Reserve `(pMaxDesign − pMaxAtRated)/pMaxDesign` < 5 % → ×0,8; cm bei Nenndrehzahl > 14 m/s → ×0,85; EGT bei Nennleistung > 780 °C → ×0,85; smokeLimitLambda < 1,15 → ×0,9; Aluminiumblock + Ladedruck > 2 bar → ×0,9; ohne Ölkühler und > 60 kW/l → ×0,85; `cast`-Kurbelwelle mit > 18 bar bmep → ×0,8.
 
 ## 2. Wirkungen
-_in Arbeit_
+
+Pfeile: ↑ steigt, ↓ sinkt, ~ kaum Einfluss, (n) über das Modell aus Kap. 3 automatisch abgebildet. Wirkung jeweils bei **Erhöhung** des Parameters bzw. Wahl der Option, Rest gleich. Größenordnungen [S].
+
+| Parameter | Drehmoment | Leistung | BSFC | EGT | Spitzendruck | Ruß / NOx | max. rpm | Gewicht | Zuverlässigkeit |
+|---|---|---|---|---|---|---|---|---|---|
+| `boreMm` (Hubraum) | ↑ ∝ Vh | ↑ | ↓ leicht (weniger Wandwärme) | ~ | ~ | ~ | ↓ wenig (Kolbenmasse) | ↑ | ↓ Kopfdichtung |
+| `strokeMm` | ↑ ∝ Vh | ↑ bis cm-Grenze | ↓ leicht | ~ | ~ | ~ | **↓ stark** (cm) | ↑ (Blockhöhe) | ↓ bei hoher rpm |
+| `conrodLengthMm` | ~ | ~ | ↓ minimal (Seitenkraft) | ~ | ~ | ~ | ↑ leicht | ↑ (Blockhöhe) | ↑ |
+| `cylinders` (bei gleichem Vh) | ~ | ↑ (höhere rpm möglich) | ↑ leicht (Reibung) | ~ | ~ | ~ | ↑ | ↑ | ~; Laufruhe ↑ |
+| `compressionRatio` | ↑ wenig (η +~1 %/Einheit) | ↑ wenig | ↓ | ↓ | **↑ stark** (p_comp ∝ ε^1,33) | Ruß ↓, NOx ↑, Kaltstart besser | ~ | ~ | ↓ (Spitzendruck-Reserve) |
+| `blockMaterial` alu | ~ | ~ | ~ | ~ | Grenze ↓ | ~ | ~ | **↓ ~25–35 kg (R4)** | ↓ bei hohem pMax |
+| CGI | ~ | ~ | ~ | ~ | Grenze ↑ | ~ | ~ | −10 % ggü. Grauguss (dünnere Wände) | ↑ |
+| `crankshaft` forged/billet | ~ | ~ | ~ | ~ | ~ | ~ | ↑ | ~ | ↑ |
+| `pistons` steel | ~ | ~ | ↓ leicht (Spaltmaß, Wärme) | ↑ leicht | Grenze ↑↑ | ~ | ↓ (Masse) | ↑ | ↑ (EGT-fest) |
+| `conrods` forged/titanium | ~ | ~ | ~ | ~ | Grenze ↑ | ~ | ↑ | titan ↓ | ↑ |
+| `valvesPerCylinder` 4 | ↑ (ve +~7 %) | ↑ | ↓ (zentrale Düse, bessere Gemischbildung) | ↓ | ~ | Ruß ↓ | ↑ | ↑ leicht | ~ |
+| `valvetrain` dohc | ~ | ↑ (höhere Grenzdrehzahl) | ~ | ~ | ~ | ~ | ↑ | ↑ | ~ |
+| `camProfile` ↑ | ↓ unten, ↑ oben | ↑ wenig | ↑ unten | ~ | ~ | ~ | ↑ | ~ | ~; Leerlauf unruhig |
+| `variableTiming` | breiteres Plateau | ↑ wenig | ↓ wenig | ~ | ~ | NOx ↓ (interne AGR) | ~ | ↑ | ↓ leicht |
+| `aspiration` turbo vs NA | **↑ ×1,8 … 2,5** | ↑↑ | ↓ (Teillast ~, Volllast besser) | ↑ vor Turbine | ↑↑ | Ruß ↓ (mehr Luft) | ~ | ↑ +10 … 15 kg | ↓ |
+| `compressorInducerMm` ↑ | ↓ unten (Lag), ↑ oben | ↑ (Stopfgrenze) | ~ | ↓ oben | ↑ oben | Rauch beim Gasstoß ↑ | ~ | ↑ | ~ |
+| `turbineAR` ↑ | ↓ unten | ↑ oben | ↓ oben (weniger Gegendruck) | ↓ | ~ | Rauch beim Gasstoß ↑ | ~ | ~ | ↑ (EGT) |
+| `variableGeometry` | ↑ unten (Ladedruck ab ~1200 rpm) | ~ | ↓ | ~ | ~ | Ruß ↓ | ~ | +1 kg | ↓ leicht (Verkokung) |
+| `boostTargetBar` ↑ | **↑ fast linear** (mehr Luft → mehr Menge bei gleichem λ) | ↑ | ↓ leicht | ↑ (T2, Gegendruck) | **↑ linear** (p_int) | Ruß ↓ bei festem Kraftstoff | ~ | ~ | ↓↓ |
+| `intercooler` | ↑ +8 … 15 % (Dichte) | ↑ | ↓ | **↓ ~ 50 … 80 K** | ↓ leicht | NOx ↓ | ~ | ↑ | ↑ |
+| `intakeRunnerLengthMm` ↑ | ↑ unten, ↓ oben | ↓ oben | ~ | ~ | ~ | ~ | ~ | ↑ | ~ |
+| `injection` CR vs Kammer | ↑ +20 … 30 % | ↑ | **↓ 15 … 20 %** | ↓ | ↑ | Ruß ↓↓, NOx ↑; Lautstärke ↓ (Voreinspritzung) | Kammer ~ gleich | Kammer leichter (einfacher Kopf) | Kammer ↑ (robust, niedriger pMax) |
+| `injectionPressureBar` ↑ | ↑ (λ-Grenze ↓ möglich) | ↑ | ↓ ~1 … 2 % pro +500 bar | ↓ leicht | ↑ leicht | **Ruß ↓↓**, NOx ↑ | Einspritzfenster → Leistung ↑ oben | ~ | ↓ leicht (Pumpe) |
+| `fuel` hvo | ~ (+ Hu/kg, − Dichte) | ~ | ↓ g/kWh, ↑ l/h ~ | ~ | ~ | Ruß −25 %, NOx −5 % | ~ | ~ | ~ |
+| `fuel` biodiesel | ↓ −8 … 10 % bei gleichem λ | ↓ | ↑ ~ +12 % g/kWh | ~ | ~ | Ruß −45 %, NOx +10 % | ~ | ~ | ↓ (Ölverdünnung) |
+| `smokeLimitLambda` ↓ | **↑** (λ 1,4 → 1,2: +16 % Menge) | ↑ | ↑ (langsamere Verbrennung) | **↑ ~ +40 K je −0,1** | ↑ | **Ruß ↑↑** | ~ | ~ | ↓ (EGT, Kolben) |
+| `injectionTimingOffsetDeg` früh (+) | ↑ bis Optimum, dann ↓ | ↑/↓ | quadr. Verlust | ↓ | **↑ +3 %/°** | Ruß ↓, NOx ↑↑, Nageln lauter | ~ | ~ | ↓ (pMax) |
+| `injectionTimingOffsetDeg` spät (−) | ↓ | ↓ | ↑ | **↑** | ↓ | Ruß ↑, NOx ↓ | ~ | ~ | ↓ (EGT) |
+| `manifold` tubular | ~ +1 % | ~ | ~ | ~ | ~ | ~ | ~ | ↓ leicht | ↓ (Risse bei hoher EGT) |
+| `egr` | ~ (nur Teillast aktiv) | ~ | ↑ +1 … 2 % Teillast | ↑ Teillast | ↓ | NOx ↓↓, Ruß ↑ | ~ | ↑ +3 kg | ↓ (Verkokung) |
+| `catalyst` | ~ | ~ | ~ | ~ | ~ | HC/CO ↓ | ~ | ↑ | ~ |
+| `particulateFilter` | ↓ −1 … 3 % (Gegendruck) | ↓ | ↑ +1 … 3 % | ↑ | ~ | Ruß ↓↓ (Rauch ≈ 0) | ~ | ↑ +8 kg | ~ |
+| `scr` | ~ | ~ | ↓ (erlaubt frühere SB → Kalibrierung) | ~ | ~ | NOx −90 % | ~ | ↑ +15 kg (inkl. Tank) | ~ |
+| `radiatorCapacityKw` ↑ | ~ | ~ | ~ | ~ | ~ | ~ | ~ | ↑ | ↑ (Dauerlast) |
+| `thermostatOpenC` ↑ | ~ | ~ | ↓ leicht (Reibung) | ~ | ~ | ~ | ~ | ~ | ↓ wenig |
+| `oilCooler` | ~ | ~ | ~ | ~ | ~ | ~ | ~ | ↑ +2 kg | ↑ |
+| `revLimitRpm` ↑ | ~ | ↑ bis Rauch-/Einspritzgrenze | ↑ oben | ↑ | ~ | ~ | – | ~ | ↓ |
+
+### Masse (für `EngineSummary.massKg`) [S, kalibriert auf Kap. 5]
+
+```ts
+const mBase = 40 + 50 * Vl;                                  // kg, Grauguss-Block (1,9 l → 135)
+const matF = { "cast-iron": 1.0, "compacted-graphite-iron": 0.92, "aluminium": 0.80 }[blockMaterial];
+let massKg = mBase * matF + 4 * cylinders;                   // Zylinderzahl-Zuschlag (Köpfe, Ventile, Injektoren)
+if (layout === "v") massKg *= 1.05;                          // zwei Köpfe
+if (aspiration !== "naturally-aspirated") massKg += 8 + 0.12 * compressorInducerMm; // Lader + Rohre
+if (intercooler !== "none") massKg += 6;
+if (boreMm > 100) massKg *= 1.25;                            // Nfz-Bauweise
+// Check: VW 1.9 PD ≈ 173 · N57 ≈ 207 · OM654 ≈ 171 · 6BT ≈ 475 kg (Ziel 170 / 195 / 170 / ~500)
+massKg += (particulateFilter ? 8 : 0) + (scr ? 15 : 0) + (egr ? 3 : 0);
+```
+
+### Sound-Hinweise (für das Sound-Team)
+- Dieselnageln = steiler Druckanstieg `dp/dφ`; ∝ Zündverzug. Lauter bei: kalt, Kammerlos ohne Voreinspritzung (PD!), Frühverstellung, hoher Verdichtung kalt. CR mit Voreinspritzung deutlich leiser; Kammerdiesel weich, aber "dumpf-klopfend". Vorschlag: `nailIntensity = clamp(0.3 + 0.04·offset + 0.3·(coolantC<50) + {CR:0, PD:0.35, IDI:0.15}, 0, 1) · (1 − 0.5·load)` (unter Last verdeckt).
+- Kein Drosselzischen; Turbo-Pfeifen ∝ turboRpm (Schaufelzahl ~ 6+6 → Grundton = turboRpm/60·12 Hz), VTG-Lader leiser, Wastegate-Lader mit Abblasen.
+
+## 7. Offene Punkte an Architektur
+- `DieselInjection` kennt keine mechanische Reihen-/Verteilerpumpe (Cummins 6BT, VW 1.9 TD/SDI-Vorgänger). Vorschlag: `"inline-pump" | "rotary-pump"` ergänzen (Druck 600 … 1100 bar, kein Mehrfacheinspritzen → Nageln lauter, Gütegrad ≈ 0,74).
+- Glühkerzen fehlen im Typ; hier als immer verbaut angenommen (3.11).
+- `EngineState` hat keinen NOx-Wert; falls Abgasnorm-Spielerei gewünscht, `noxIndex` ergänzen.
+- `fullLoadTorqueAt(rpm)` für `load` braucht einen Cache im Simulator (Kap. 3.5).
 
 ## 6. Quellen
-_in Arbeit_
+
+Belegt [B] heißt: Wert aus einer der folgenden Quellen bzw. aus Standard-Lehrbuchwissen (Heywood, *Internal Combustion Engine Fundamentals*; Pischinger/Merker, *Grundlagen Verbrennungsmotoren*; Bosch *Kraftfahrtechnisches Taschenbuch*), in eigenen Worten wiedergegeben. Alle Modell-Koeffizienten ohne [B] sind Schätzungen zur Kalibrierung.
+
+- Chen, S. K.; Flynn, P. F.: *Development of a Single Cylinder Compression Ignition Research Engine*, SAE 650733 (Reibmodell-Form).
+- x-engineer.org – Mechanical efficiency and FMEP (Chen-Flynn-Form, Beispielkoeffizienten): https://x-engineer.org/mechanical-efficiency-friction-mean-effective-pressure-fmep/
+- SAE 2013-01-1622 – *Investigation of Extreme Mean Effective and Maximum Cylinder Pressures in a Passenger Car Diesel Engine* (heutige Pkw-Diesel: pme 20 … 30 bar, pMax ≈ 180 … 200 bar): https://saemobilus.sae.org/content/2013-01-1622
+- Wikipedia – BMW N57 (Bohrung/Hub, Raildruck 1800/2000 bar, Leistung/Drehmoment, Drehzahlgrenzen): https://en.wikipedia.org/wiki/BMW_N57
+- BimmerArchive – N57D30O1 (Verdichtung 16,5, 190 kW, 560 Nm): https://www.bimmerarchive.org/m-code/n57d30o1.html
+- Wikipedia – Mercedes-Benz OM654 (Bohrung/Hub, ε 15,5, Alublock, Leistungsstufen, 2700 bar beim 654 M): https://en.wikipedia.org/wiki/Mercedes-Benz_OM654_engine
+- motor-car.net – VW 1.9 TDI EA188 (ASZ/AVF 96 kW/310 Nm, 79,5 × 95,5, ε 18, PD bis 2050 bar, VTG): https://www.motor-car.net/vw-engines/item/20090-vw-1-9-tdi-ea188-engine
+- km77.com – Peugeot 1.6 HDi (75 × 88,3, 1560 cm³, CR 1600 bar, GT15-VTG, 240/260 Nm, pme 19,3 bar, Alublock): https://www.km77.com/coches/peugeot/tecnica/2003/motor-16-hdi
+- Wikipedia – Cummins B Series (102 × 120, ε 17,5, Bosch P7100, Grauguss): https://en.wikipedia.org/wiki/Cummins_B_Series_engine
+- engine-specs.net – Cummins 6BT (Holset HX35, 120 … 160 kW, 542 … 569 Nm @ 1600, ≈ 498 kg): https://engine-specs.net/cummins/6bt.html
+- Nicht abrufbar (Berechtigung abgelaufen): Tupy, *Compacted Graphite Iron for Diesel* – Spitzendruckgrenzen je Blockmaterial in Kap. 4.2 daher [S].
+
