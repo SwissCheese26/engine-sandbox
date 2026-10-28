@@ -150,6 +150,29 @@ kbd {
   display: grid;
   gap: var(--space-1);
 }
+.bench__lock {
+  font-size: var(--fs-14);
+  font-weight: 600;
+  color: var(--alu);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-plate);
+  border: 1px solid var(--alu-shade);
+  background: rgba(211, 214, 207, 0.06);
+}
+/* Locked while the engine turns: plates stay readable, controls are visibly inactive. */
+.bench.is-locked .plate {
+  opacity: 0.72;
+}
+.bench.is-locked .fuel-switch,
+.bench.is-locked .bench__tools,
+.bench.is-locked .bench__hint {
+  opacity: 0.5;
+}
+.bench.is-locked input,
+.bench.is-locked select,
+.bench.is-locked label {
+  cursor: not-allowed;
+}
 .fuel-switch {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -954,7 +977,7 @@ kbd {
   box-shadow: none;
 }
 .starter:focus-visible .starter__cap {
-  box-shadow: 0 0 0 4px #1f2925, var(--focus), 0 0 0 9px var(--signal);
+  box-shadow: 0 0 0 4px var(--engrave), 0 0 0 7px var(--alu), 0 4px 0 4px #1f2925;
 }
 
 /* pedal lever (vertical, large) */
