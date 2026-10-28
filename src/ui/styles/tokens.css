@@ -36,5 +36,7 @@
   --space-7: 48px;
 
   --radius-plate: 3px;
-  --focus: 0 0 0 3px var(--signal);
+  /* Focus ring: double ring engraving/alu, visible on dark lacquer and on light alu plates.
+     Never yellow – yellow means limit. */
+  --focus: 0 0 0 2px var(--engrave), 0 0 0 4px var(--alu);
 }
