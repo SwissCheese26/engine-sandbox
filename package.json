@@ -1,0 +1,18 @@
+{
+  "name": "engine-sandbox",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Physikalisch realistischer Motor-Konfigurator mit Prüfstand als Webgame",
+  "type": "module",
+  "scripts": {
+    "dev": "bun scripts/dev.ts",
+    "build": "bun scripts/build.ts",
+    "test": "bun test tests/core tests/audio tests/ui",
+    "test:e2e": "bun scripts/build.ts && node tests/e2e/smoke.mjs",
+    "typecheck": "tsc --noEmit -p .",
+    "check": "bun run typecheck && bun run test && bun run build"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0"
+  }
+}

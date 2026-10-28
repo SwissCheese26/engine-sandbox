@@ -1,0 +1,19 @@
+/* Global base styles. Team UI owns this file. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  background: var(--hammer);
+  color: var(--alu);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.45;
+}
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
