@@ -171,9 +171,11 @@ export class App {
     if (this.soundStarted || this.console.muted) return;
     this.soundStarted = true;
     try {
-      await this.sound.start();
+      // setConfig before start() is allowed; it lets the worklet receive its voice right after loading
       this.sound.setConfig(this.cfg, this.summary);
-      this.sound.setVolume(this.console.volumeLevel);
+      this.sound.setVolume(this.console.muted ? 0 : this.console.volumeLevel);
+      await this.sound.start();
+      if (this.disposed) this.sound.stop();
     } catch (e) {
       this.soundStarted = false;
       console.warn("Sound konnte nicht starten", e);

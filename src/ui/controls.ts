@@ -21,7 +21,6 @@ export class ControlPanel {
   private status: HTMLElement;
   private pedalFill: HTMLElement;
   private pedalOut: HTMLElement;
-  private soundHint: HTMLElement;
 
   /** Lever position set by mouse/touch/arrow keys. */
   private lever = 0;
@@ -72,7 +71,7 @@ export class ControlPanel {
       <div class="console__group console__group--aux">
         <button type="button" class="btn" data-control="mute" aria-pressed="false">Ton einschalten</button>
         <label class="console__field console__vol">
-          <span>Lautstärke <span class="console__soundhint">(Motorklang folgt)</span></span>
+          <span>Lautstärke</span>
           <input type="range" min="0" max="1" step="0.05" data-control="volume" />
         </label>
         <button type="button" class="btn" data-control="reset">Motor zurücksetzen</button>
@@ -91,8 +90,11 @@ export class ControlPanel {
     this.volume = this.q("volume");
     this.messages = this.el.querySelector(".console__messages")!;
     this.status = this.el.querySelector(".console__status")!;
-    this.soundHint = this.el.querySelector(".console__soundhint")!;
-    this.soundHint.hidden = soundAvailable;
+    // Without Web Audio there is nothing to switch on: hide the sound controls instead of offering a dead button.
+    if (!soundAvailable) {
+      this.muteBtn.hidden = true;
+      this.volume.closest<HTMLElement>(".console__vol")!.hidden = true;
+    }
     this.volume.value = String(this.volumeLevel);
 
     // pedal lever lives outside the console grid so it can sit in the thumb zone on phones
