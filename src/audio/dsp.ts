@@ -33,6 +33,9 @@ export class Svf {
     this.a2 = g * this.a1;
     this.a3 = g * this.a2;
   }
+  reset() {
+    this.ic1 = this.ic2 = this.lp = this.bp = this.hp = 0;
+  }
   run(v0: number): number {
     const v3 = v0 - this.ic2;
     const v1 = this.a1 * this.ic1 + this.a2 * v3;
@@ -116,6 +119,11 @@ export class EngineDsp {
   private lp2R = 0;
   private res = [new Svf(), new Svf(), new Svf(), new Svf()];
   private resGain = [0, 0];
+  // Per-voice bank constants, precomputed in setVoice() (no allocation in process()).
+  private pipeD = new Int32Array(2);
+  private panL = new Float32Array(2);
+  private panR = new Float32Array(2);
+  private bankG = new Float32Array(2);
   private rasp = new Svf();
   private intake1 = new Svf();
   private intake2 = new Svf();
@@ -141,6 +149,8 @@ export class EngineDsp {
   private crashEnv = 0;
   private crashModes = [0, 0, 0];
   private crashPh = [0, 0, 0];
+
+  private readonly filters: Svf[] = [this.lpL, this.lpR, ...this.res, this.rasp, this.intake1, this.intake2, this.mech, this.nailBp, this.bov, this.crashLp, this.starterBp];
 
   /** Peak of the last processed block (after limiter), for meters/tests. */
   lastPeak = 0;
@@ -173,10 +183,43 @@ export class EngineDsp {
     this.crashLp.set(900, 0.7, fs);
     this.starterBp.set(900, 1.2, fs);
     this.rasp.set(v.fuel === "diesel" ? 1800 : 2600, 0.7, fs);
+    for (let b = 0; b < 2; b++) {
+      this.pipeD[b] = clamp(Math.round((v.bankPipeDelayS[b] ?? v.bankPipeDelayS[0] ?? 0.001) * fs), 2, MAX_PIPE_SAMPLES - 1);
+      // Equal-power pan: L = cos((p+1)·π/4), R = sin((p+1)·π/4).
+      const pan = v.bankPan[b] ?? 0;
+      this.panL[b] = Math.cos(((pan + 1) * Math.PI) / 4);
+      this.panR[b] = Math.sin(((pan + 1) * Math.PI) / 4);
+      this.bankG[b] = v.bankGain[b] ?? 1;
+    }
   }
 
-  setControl(f: ControlFrame) {
+  /**
+   * Accepts a control frame. Every numeric field is clamped to its valid range; non-finite values
+   * (NaN, ±Infinity) are replaced by the last valid value, so a bad frame can never poison the
+   * smoothers or filter states.
+   */
+  setControl(raw: ControlFrame) {
     const v = this.voice;
+    const p = this.frame;
+    const num = (x: unknown, last: number, lo: number, hi: number) =>
+      typeof x === "number" && Number.isFinite(x) ? clamp(x, lo, hi) : last;
+    const f: ControlFrame = {
+      rpm: num(raw.rpm, p.rpm, 0, 30000),
+      load: num(raw.load, p.load, 0, 1),
+      pedal: num(raw.pedal, p.pedal, 0, 1),
+      combustion: !!raw.combustion,
+      starter: !!raw.starter,
+      limiter: !!raw.limiter,
+      turboRpm: num(raw.turboRpm, p.turboRpm, 0, 400000),
+      boostBar: num(raw.boostBar, p.boostBar, 0, 10),
+      airFlow: num(raw.airFlow, p.airFlow, 0, 2),
+      knock: num(raw.knock, p.knock, 0, 1),
+      nail: num(raw.nail, p.nail, 0, 1),
+      rodKnock: num(raw.rodKnock, p.rodKnock, 0, 1),
+      destroyed: !!raw.destroyed,
+      blowOff: num(raw.blowOff, 0, 0, 1),
+      crash: !!raw.crash,
+    };
     if (f.blowOff > 0) this.bovEnv = Math.max(this.bovEnv, f.blowOff);
     if (f.crash && v) {
       this.crashEnv = 1;
@@ -188,7 +231,7 @@ export class EngineDsp {
   }
 
   setVolume(v: number) {
-    this.volume = clamp(v, 0, 1);
+    if (Number.isFinite(v)) this.volume = clamp(v, 0, 1);
   }
 
   /** Renders n samples into the two channels (overwrites). */
@@ -211,10 +254,9 @@ export class EngineDsp {
     this.lpL.set(lpHz, 0.75, fs);
     this.lpR.set(lpHz, 0.75, fs);
     const lp2c = onePoleCoef(1 / (2 * Math.PI * lpHz * 1.6), fs);
-    const pipeD = v.bankPipeDelayS.map((d) => clamp(Math.round(d * fs), 2, MAX_PIPE_SAMPLES - 1));
-    // Equal-power pan: L = cos((p+1)·π/4), R = sin((p+1)·π/4).
-    const panL = v.bankPan.map((p) => Math.cos(((p + 1) * Math.PI) / 4));
-    const panR = v.bankPan.map((p) => Math.sin(((p + 1) * Math.PI) / 4));
+    const pipeD = this.pipeD;
+    const panL = this.panL;
+    const panR = this.panR;
     const fb = v.combFeedback;
     const drive = 1 + v.drive * this.load;
     const driveNorm = 1 / Math.tanh(drive * 0.5) * 0.5;
@@ -279,9 +321,9 @@ export class EngineDsp {
         // Open end reflects with inverted sign (petrol.md §6.6, pipe as wave guide).
         const y = this.bankIn[b]! - fb * line[r]!;
         line[w] = y;
-        const g = v.bankGain[b] ?? 1;
-        exL += y * g * (panL[b] ?? 0.7);
-        exR += y * g * (panR[b] ?? 0.7);
+        const g = this.bankG[b]!;
+        exL += y * g * panL[b]!;
+        exR += y * g * panR[b]!;
       }
       this.pipeW = (w + 1) % MAX_PIPE_SAMPLES;
 
@@ -390,12 +432,35 @@ export class EngineDsp {
       const gr = this.limEnv > thr ? thr / this.limEnv : 1;
       l = softClip(l * gr);
       r = softClip(r * gr);
+      if (!Number.isFinite(l) || !Number.isFinite(r)) {
+        // Should never happen (inputs are sanitised); if it does, recover instead of staying NaN forever.
+        this.resetState();
+        l = 0;
+        r = 0;
+      }
       outL[i] = l;
       outR[i] = r;
       const pa = Math.max(Math.abs(l), Math.abs(r));
       if (pa > peak) peak = pa;
     }
     this.lastPeak = peak;
+  }
+
+  /** Clears all filter, delay, smoother and event state (used to recover from non-finite values). */
+  resetState() {
+    for (const f of this.filters) f.reset();
+    this.pipes[0]!.fill(0);
+    this.pipes[1]!.fill(0);
+    this.lp2L = this.lp2R = 0;
+    this.dcL.x = this.dcL.y = this.dcR.x = this.dcR.y = 0;
+    this.limEnv = 0;
+    this.rpm = this.load = this.pedal = this.air = this.turbo = this.nail = this.knock = this.rod = this.starterG = 0;
+    this.engineG = 1;
+    this.master = 0; // fades back in smoothly
+    this.angle = 0;
+    this.bovEnv = this.crashEnv = 0;
+    this.phTurbo = this.phShaft = this.phSc = this.phStarter = 0;
+    for (const e of this.evs) e.active = false;
   }
 
   /** Current turbo whistle frequency (for tests/meters). */

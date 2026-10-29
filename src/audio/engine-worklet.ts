@@ -21,6 +21,8 @@ type Msg = { type: "voice"; voice: Voice } | { type: "control"; frame: ControlFr
 class EngineProcessor extends AudioWorkletProcessor {
   private dsp = new EngineDsp(sampleRate);
   private alive = true;
+  /** Scratch right channel for a mono output (allocated once, grown only if the block size changes). */
+  private scratch = new Float32Array(128);
   constructor() {
     super();
     this.port.onmessage = (ev: MessageEvent<Msg | { type: "stop" }>) => {
@@ -35,7 +37,11 @@ class EngineProcessor extends AudioWorkletProcessor {
     const out = outputs[0];
     const l = out?.[0];
     if (!l) return this.alive;
-    const r = out[1] ?? new Float32Array(l.length);
+    let r = out[1];
+    if (!r) {
+      if (this.scratch.length < l.length) this.scratch = new Float32Array(l.length);
+      r = this.scratch;
+    }
     this.dsp.process(l, r, l.length);
     return this.alive;
   }
