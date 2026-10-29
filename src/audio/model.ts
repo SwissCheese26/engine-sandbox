@@ -179,6 +179,17 @@ export function headerExtraLengthsM(layout: CylinderLayout, manifold: ExhaustMan
   return Array.from({ length: n }, (_, i) => spread * hash01(i * 7 + 3));
 }
 
+/** True if at least one bank sees unequal gaps between its own firings (tolerance 1°). */
+export function banksFireUnevenly(anglesDeg: readonly number[], banks: readonly number[]): boolean {
+  for (const b of new Set(banks)) {
+    const a = anglesDeg.filter((_, i) => (banks[i] ?? 0) === b);
+    if (a.length < 2) continue;
+    const gaps = a.map((x, i) => (((a[(i + 1) % a.length]! - x) % 720) + 720) % 720 || 720);
+    if (Math.max(...gaps) - Math.min(...gaps) > 1) return true;
+  }
+  return false;
+}
+
 /** Builds the per-cycle pulse plan from firing intervals, bank sequence and header lengths. */
 export function buildPulsePlan(
   intervalsDeg: readonly number[],
@@ -284,10 +295,14 @@ export function deriveVoice(cfg: EngineConfig, summary: EngineSummary): Voice {
   const dispL = summary.displacementL > 0 ? summary.displacementL : (Math.PI / 4) * (b.boreMm / 10) ** 2 * (b.strokeMm / 10) * n / 1000;
   const banksSeq = bankSequence(b.layout, n, b.v8Crank);
   const bankCount: 1 | 2 = banksSeq.some((x) => x === 1) ? 2 : 1;
-  // Two tail pipes: the test-cell microphone is ≈ 0.3 m closer to one of them → 0.9 ms at 343 m/s.
-  // Without it the two banks of a crossplane V8 would sum to a perfectly even 90° train in mono. [S]
+  // Banks that fire unevenly on their own (crossplane V8: 180-270-180-90 per bank, petrol.md §6.3) get
+  // slightly different pipe paths: the test-cell microphone is ≈ 0.3 m closer to one tail pipe (0.9 ms)
+  // and the pipes differ in length/level. Without that the two uneven bank trains would sum to a perfectly
+  // even 90° train in mono. Evenly firing banks (flatplane V8, V6, V10, V12) stay symmetric, so they give
+  // a clean firing order with hardly any half orders ("two R4"). [S]
+  const asym = bankCount === 2 && banksFireUnevenly(firingAnglesDeg(summary.firingIntervalsDeg, n), banksSeq);
   const extra = headerExtraLengthsM(b.layout, cfg.exhaust.manifold, n).map(
-    (L, i) => L + (banksSeq[i] === 1 ? (BANK_LISTENER_OFFSET_S * SOUND_SPEED_HOT_MS) : 0),
+    (L, i) => L + (asym && banksSeq[i] === 1 ? (BANK_LISTENER_OFFSET_S * SOUND_SPEED_HOT_MS) : 0),
   );
   const slots = buildPulsePlan(summary.firingIntervalsDeg, banksSeq, extra);
   const forced = forcedInduction(cfg.induction.aspiration);
@@ -345,8 +360,8 @@ export function deriveVoice(cfg: EngineConfig, summary: EngineSummary): Voice {
     slots,
     bankCount,
     bankPan: bankCount === 2 ? [-0.45, 0.45] : [0],
-    bankGain: bankCount === 2 ? [1, 0.8] : [1],
-    bankPipeDelayS: bankCount === 2 ? [pipeDelay, pipeDelay * 1.13] : [pipeDelay],
+    bankGain: bankCount === 2 ? (asym ? [1, 0.8] : [1, 1]) : [1],
+    bankPipeDelayS: bankCount === 2 ? [pipeDelay, asym ? pipeDelay * 1.13 : pipeDelay] : [pipeDelay],
     combFeedback: cfg.exhaust.manifold === "tubular-long" ? 0.42 : 0.3,
     pulseWidthDeg: (diesel ? 125 : 105) * (1 + 0.25 * cam),
     pulseSkew: diesel ? 0.75 : 0.6,
