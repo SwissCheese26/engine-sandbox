@@ -276,6 +276,27 @@ const WEAR_BASE = 1e-6;
 
 type Level = 0 | 1 | 2;
 
+/** German number formatting without Intl (hot path): 1234 → "1.234", 12.34 → "12,3". */
+function f0(x: number): string {
+  const r = Math.round(x);
+  const sgn = r < 0 ? "-" : "";
+  return sgn + String(Math.abs(r)).replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+}
+function f1(x: number): string {
+  return (Math.round(x * 10) / 10).toFixed(1).replace(".", ",");
+}
+
+/** Thresholds depend only on the config: cache per config object (configs are treated as immutable). */
+const thresholdCache = new WeakMap<EngineConfig, LimitThresholds & { safeMaxRpm: number }>();
+function cachedThresholds(cfg: EngineConfig): LimitThresholds & { safeMaxRpm: number } {
+  let th = thresholdCache.get(cfg);
+  if (!th) {
+    th = { ...limitThresholds(cfg), safeMaxRpm: safeMaxRpm(cfg) };
+    thresholdCache.set(cfg, th);
+  }
+  return th;
+}
+
 /**
  * Evaluates all limits for the current state. Returns active warnings (German texts), the wear rate per
  * second (the simulator integrates `wear += wearRatePerS·dt`) and, if one occurred, the fatal damage event.
@@ -302,7 +323,7 @@ export function evaluateLimits(
   tr.lastT = s.t;
   const T = tr;
 
-  const th = limitThresholds(cfg);
+  const th = cachedThresholds(cfg);
   const warnings: Warning[] = [];
   let wear = s.running ? WEAR_BASE * (0.3 + Math.max(0, Math.min(1, s.load))) : 0;
   let fatal: DamageEvent | undefined;
@@ -341,14 +362,12 @@ export function evaluateLimits(
   const kill = (code: WarningCode, message: string) => {
     if (!fatal) fatal = { code, t: s.t, message, fatal: true };
   };
-  const f0 = (x: number) => Math.round(x).toLocaleString("de-DE");
-  const f1 = (x: number) => x.toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
   const rpm = Math.max(0, s.rpm);
   const turning = rpm > 50;
 
   // --- Drehzahl (petrol.md §4 "Drehzahl", diesel.md §4.6 "over-rev")
-  const safe = safeMaxRpm(cfg);
+  const safe = th.safeMaxRpm;
   const overRevMargin = cfg.fuel === "diesel" ? 200 : 100;
   const lRev = level("over-rev", rpm, cfg.revLimitRpm + overRevMargin, safe, 50);
   warn("over-rev", lRev, lRev === 2 ? `Überdrehzahl: ${f0(rpm)} 1/min über der mechanischen Grenze (${f0(safe)} 1/min)` : `Drehzahl ${f0(rpm)} 1/min über dem Begrenzer`);
