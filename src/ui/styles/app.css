@@ -869,9 +869,6 @@ kbd {
 .console__vol input[type="range"] {
   width: 110px;
 }
-.console__soundhint {
-  color: var(--alu-shade);
-}
 .console__messages {
   display: flex;
   flex-wrap: wrap;

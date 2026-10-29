@@ -164,6 +164,70 @@ await run("desktop-v8-petrol", { width: 1440, height: 900 }, async (page) => {
   await page.close();
 }
 
+// Engine sound: unmute with a real click (user gesture), run the engine, measure the output.
+// The init script only taps the signal for the test: every connection to ctx.destination is mirrored
+// into an AnalyserNode stored on window.__soundProbe. Production code is unchanged.
+{
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const tag = "sound";
+  page.on("console", (m) => {
+    const src = m.location()?.url ?? "";
+    if (m.type() === "error" && !/fonts\.(googleapis|gstatic)/.test(m.text() + src)) errors.push(`${tag}: ${m.text()}`);
+    if (m.type() === "warning" && /Worklet|Sound/.test(m.text())) errors.push(`${tag}: ${m.text()}`);
+  });
+  page.on("pageerror", (e) => errors.push(`${tag}: ${e.message}`));
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
+  await page.addInitScript(() => {
+    const add = AudioWorklet.prototype.addModule;
+    AudioWorklet.prototype.addModule = function (url, ...rest) {
+      const p = add.call(this, url, ...rest);
+      window.__workletUrl = String(url);
+      p.then(() => (window.__workletOk = true), (e) => (window.__workletErr = String(e)));
+      return p;
+    };
+    const orig = AudioNode.prototype.connect;
+    AudioNode.prototype.connect = function (dest, ...rest) {
+      if (dest instanceof AudioDestinationNode) {
+        const ctx = this.context;
+        const an = ctx.createAnalyser();
+        an.fftSize = 2048;
+        orig.call(this, an);
+        window.__soundProbe = { ctx, an };
+      }
+      return orig.call(this, dest, ...rest);
+    };
+  });
+  const expect = (ok, msg) => {
+    if (!ok) errors.push(`check failed: ${msg}`);
+  };
+  await page.goto(base);
+  await page.waitForSelector(".cell");
+  expect(!(await page.isVisible("text=Motorklang folgt")), "placeholder hint removed");
+  await page.click('[data-control="mute"]');
+  await page.waitForFunction(() => window.__soundProbe?.ctx.state === "running", null, { timeout: 5000 }).catch(() => {});
+  const state = await page.evaluate(() => window.__soundProbe?.ctx.state ?? "none");
+  expect(state === "running", `AudioContext state after click: ${state}`);
+  await page.waitForFunction(() => window.__workletOk || window.__workletErr, null, { timeout: 5000 }).catch(() => {});
+  const w = await page.evaluate(() => ({ url: window.__workletUrl, ok: !!window.__workletOk, err: window.__workletErr }));
+  const workletLoaded = w.ok && w.url === new URL("engine-worklet.js", base).href;
+  expect(workletLoaded, `engine-worklet.js loaded relative to the page (${JSON.stringify(w)})`);
+  await startAndRev(page, 1500);
+  const peak = await page.evaluate(async () => {
+    const { an } = window.__soundProbe;
+    const buf = new Float32Array(an.fftSize);
+    let p = 0;
+    for (let i = 0; i < 20; i++) {
+      an.getFloatTimeDomainData(buf);
+      for (const v of buf) p = Math.max(p, Math.abs(v));
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    return p;
+  });
+  expect(peak > 0.01, `engine sound peak ${peak.toFixed(3)} at full throttle`);
+  console.log(`sound: context ${state}, worklet ${workletLoaded}, peak ${peak.toFixed(3)}`);
+  await page.close();
+}
+
 // Keyboard reachability: every interactive control must be focusable by Tab.
 {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
