@@ -20,6 +20,8 @@ export class EngineSound {
   private tracker: ControlTracker | null = null;
   private volume = 0.8;
   private starting: Promise<void> | null = null;
+  /** Incremented by stop(); a start() that awaits across a stop() sees a new generation and aborts. */
+  private gen = 0;
 
   constructor(ctx?: AudioContext) {
     this.ctx = ctx ?? null;
@@ -36,6 +38,7 @@ export class EngineSound {
   }
 
   private async doStart() {
+    const gen = this.gen;
     if (!this.ctx) {
       const g = globalThis as unknown as { AudioContext?: Ctor; webkitAudioContext?: Ctor };
       const C = g.AudioContext ?? g.webkitAudioContext;
@@ -45,19 +48,27 @@ export class EngineSound {
     }
     const ctx = this.ctx;
     if (ctx.state === "suspended") await ctx.resume().catch(() => {});
+    if (gen !== this.gen) return; // stopped meanwhile
     if (this.node || this.fallback) return;
 
-    this.out = ctx.createGain();
-    this.out.gain.value = 1;
-    this.out.connect(ctx.destination);
+    const out = ctx.createGain();
+    out.gain.value = 1;
+    out.connect(ctx.destination);
+    this.out = out;
 
     if (ctx.audioWorklet && typeof AudioWorkletNode !== "undefined") {
       try {
         const base = typeof document !== "undefined" ? document.baseURI : globalThis.location?.href;
         await ctx.audioWorklet.addModule(new URL("./engine-worklet.js", base));
+        if (gen !== this.gen) {
+          // stop() ran during addModule: do not create a node, release what we built.
+          safeDisconnect(out);
+          return;
+        }
         this.node = new AudioWorkletNode(ctx, "engine-sound", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
-        this.node.connect(this.out);
+        this.node.connect(out);
       } catch (e) {
+        if (gen !== this.gen) return;
         console.warn("AudioWorklet nicht verfügbar, nutze Fallback", e);
         this.node = null;
       }
@@ -69,7 +80,7 @@ export class EngineSound {
         const b = ev.outputBuffer;
         dsp.process(b.getChannelData(0), b.getChannelData(1), b.length);
       };
-      proc.connect(this.out);
+      proc.connect(out);
       this.fallback = { proc, dsp };
     }
     this.post({ type: "volume", value: this.volume });
@@ -96,28 +107,47 @@ export class EngineSound {
     this.post({ type: "volume", value: this.volume });
   }
 
+  /**
+   * Fades out over ≈ 60 ms (output gain, time constant 20 ms), then disconnects and closes an owned
+   * context. Safe to call during a pending start(): that start() aborts and leaves no nodes behind.
+   */
   stop(): void {
+    this.gen++;
     const ctx = this.ctx;
-    this.post({ type: "volume", value: 0 });
-    try {
-      this.node?.port.postMessage({ type: "stop" });
-      this.node?.disconnect();
-      if (this.fallback) {
-        this.fallback.proc.onaudioprocess = null;
-        this.fallback.proc.disconnect();
-      }
-      this.out?.disconnect();
-    } catch {
-      /* already disconnected */
-    }
+    const node = this.node;
+    const fb = this.fallback;
+    const out = this.out;
+    const owns = this.ownsCtx;
     this.node = null;
     this.fallback = null;
     this.out = null;
     this.starting = null;
-    if (ctx && this.ownsCtx) {
-      void ctx.close().catch(() => {});
-      this.ctx = null;
-    }
+    if (owns) this.ctx = null;
+
+    const teardown = () => {
+      try {
+        node?.port.postMessage({ type: "stop" });
+      } catch {
+        /* port closed */
+      }
+      safeDisconnect(node);
+      if (fb) {
+        fb.proc.onaudioprocess = null;
+        safeDisconnect(fb.proc);
+      }
+      safeDisconnect(out);
+      if (ctx && owns) void ctx.close().catch(() => {});
+    };
+    if (ctx && out && ctx.state === "running") {
+      try {
+        out.gain.cancelScheduledValues(ctx.currentTime);
+        out.gain.setValueAtTime(out.gain.value, ctx.currentTime);
+        out.gain.setTargetAtTime(0, ctx.currentTime, 0.02);
+      } catch {
+        /* ignore */
+      }
+      setTimeout(teardown, STOP_FADE_MS + 40);
+    } else teardown();
   }
 
   private post(m: { type: "voice"; voice: Voice } | { type: "control"; frame: ControlFrame } | { type: "volume"; value: number }) {
@@ -128,5 +158,16 @@ export class EngineSound {
       else if (m.type === "control") d.setControl(m.frame);
       else d.setVolume(m.value);
     }
+  }
+}
+
+/** Fade-out length of stop() (≈ 3 time constants of 20 ms). */
+const STOP_FADE_MS = 60;
+
+function safeDisconnect(n: AudioNode | null | undefined) {
+  try {
+    n?.disconnect();
+  } catch {
+    /* already disconnected */
   }
 }
