@@ -393,7 +393,7 @@ Für `src/data/reference-engines.ts` und die Abgleichtests. Zielwerte: Modell so
 | Aufladung | VTG-Turbo, LLK [B] | VTG-Turbo (Mono), LLK [B] | VTG-Turbo, LLK (Topversion Twin) [B] | VTG Garrett GT15V, LLK [B] | Holset HX35 Wastegate, LLK [B] |
 | Ladedruck (Überdruck) [bar] | ≈ 1,3 … 1,5 [S] | ≈ 1,5 … 1,8 [S] | ≈ 1,5 … 1,8 [S] | ≈ 1,1 … 1,3 [S] | ≈ 1,2 … 1,5 [S] |
 | Leistung | 96 kW @ 4000 [B] | 190 kW @ 4000 [B] | 143 kW @ 3800 [B, Quelle markiert "citation needed"] | 80 kW @ 4000 [B Leistung, Drehzahl S] | 160 kW @ 2600 [B, Spitzenversion] |
-| Drehmoment | 310 Nm @ 1900 [B] | 560 Nm @ 1500–3000 [B] | 400 Nm @ 1600–2400 [B] | 240 Nm @ 1750 (Overboost 260) [B] | 569 Nm @ 1600 [B] |
+| Drehmoment | 310 Nm @ 1900 [B] | 560 Nm @ 1500–3000 [B] | 400 Nm @ 1600–2400 [B] | 240 Nm @ 1750 (Overboost 260) [B] | 597 Nm @ 1600 [B]¹ |
 | bmep (berechnet) [bar] | 20,5 | 23,5 | 25,8 | 19,3 [B: Quelle nennt 19,32 bar] | 12,2 |
 | Drehzahlgrenze [rpm] | ≈ 4800 … 5000 [S] | 5400 (Schaltgetriebe) [B] | ≈ 4800 [S] | ≈ 5000 [S] | ≈ 2800 (Regler-Endabregelung) [S] |
 | Leerlauf [rpm] | 850 [S] | 750 [S] | 750 [S] | 800 [S] | 750 [S] |
@@ -403,6 +403,8 @@ Für `src/data/reference-engines.ts` und die Abgleichtests. Zielwerte: Modell so
 | Abgasnachbehandlung | Oxi-Kat, AGR, kein DPF (bis ~2006) | AGR, Oxi-Kat, DPF | AGR (HD+ND), Oxi-Kat, DPF, SCR | AGR, Oxi-Kat, DPF (je nach Baujahr) | keine (1994–98) |
 
 \* Der Typ kennt keine Verteiler-/Reihenpumpe. Für den 6BT `unit-injector` mit 1000 bar und `injectionTimingOffsetDeg = 0` verwenden, Gütegrad dadurch automatisch etwas schlechter (log-Term). Vorschlag an Architektur: Enum-Wert `"inline-pump"` (siehe Offene Punkte).
+
+¹ Korrektur (Lead, Review #10): 569 Nm @ 1600 passt nicht zu 160 kW @ 2600 (das wären schon ≥ 588 Nm). Verwendet wird die 160-kW-Version (215 hp) mit 440 lb·ft = 597 Nm. Die 569 Nm gehören zu einer schwächeren Ausführung.
 
 Vorgeschlagene Presets (`EngineConfig`-Felder, Diesel) – Konstruktions-Felder ohne Datenblattangabe sind [S]:
 
