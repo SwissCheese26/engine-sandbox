@@ -1,0 +1,42 @@
+/* Design tokens – see docs/process/design.md. Use these variables, never raw hex in components. */
+:root {
+  --hammer: #46564f;
+  --hammer-deep: #2e3a35;
+  --hammer-light: #5b6b63;
+  --alu: #d3d6cf;
+  --alu-shade: #b8bcb3;
+  --engrave: #23292a;
+  --signal: #f6a800;
+  --signal-ink: #3a2a00;
+  --paper: #ecebdd;
+  --paper-grid: #b9c9b5;
+  --ink-torque: #b3261e;
+  --ink-power: #23408e;
+  --ink-rpm: #23292a;
+  --cold: #3d6f8f;
+  --ok: #6f9a62;
+
+  --font: "Barlow", "Bahnschrift", "DIN Alternate", "Segoe UI", system-ui, sans-serif;
+  --font-num: "Barlow Semi Condensed", "Barlow", "Bahnschrift", system-ui, sans-serif;
+
+  --fs-12: 0.75rem;
+  --fs-14: 0.875rem;
+  --fs-16: 1rem;
+  --fs-20: 1.25rem;
+  --fs-25: 1.5625rem;
+  --fs-31: 1.953rem;
+  --fs-39: 2.441rem;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+  --space-7: 48px;
+
+  --radius-plate: 3px;
+  /* Focus ring: double ring engraving/alu, visible on dark lacquer and on light alu plates.
+     Never yellow – yellow means limit. */
+  --focus: 0 0 0 2px var(--engrave), 0 0 0 4px var(--alu);
+}

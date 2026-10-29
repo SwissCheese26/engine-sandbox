@@ -1,0 +1,1263 @@
+/* Prüfzelle – global layout and components. Tokens in tokens.css, concept in docs/process/design.md. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  background: var(--hammer);
+  color: var(--alu);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.45;
+}
+body {
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+h1, h2, h3, p {
+  margin: 0;
+}
+button, input, select {
+  font: inherit;
+  color: inherit;
+}
+kbd {
+  font-family: var(--font-num);
+  font-size: var(--fs-12);
+  font-weight: 600;
+  padding: 0 5px;
+  border-radius: 2px;
+  border: 1px solid currentColor;
+  opacity: 0.85;
+}
+.num {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+[hidden] {
+  display: none !important;
+}
+
+/* ── Cell grid ─────────────────────────────────────────────────────────── */
+.cell {
+  display: grid;
+  grid-template-columns: minmax(320px, 360px) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "top top"
+    "bench stage"
+    "deck deck";
+  height: 100vh;
+  height: 100dvh;
+}
+.cell__top {
+  grid-area: top;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-5);
+  background: var(--hammer-deep);
+  border-bottom: 1px solid #1f2925;
+}
+.cell__title {
+  font-size: var(--fs-20);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.cell__top .bench-toggle {
+  display: none;
+}
+
+/* ── Buttons ───────────────────────────────────────────────────────────── */
+.btn {
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-plate);
+  border: 1px solid var(--alu-shade);
+  background: transparent;
+  color: var(--alu);
+  font-weight: 500;
+  cursor: pointer;
+}
+.btn:hover {
+  background: rgba(211, 214, 207, 0.08);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.btn--primary {
+  background: var(--alu);
+  color: var(--engrave);
+  border-color: var(--alu);
+  font-weight: 600;
+}
+.btn--primary:hover {
+  background: #e3e5df;
+}
+.btn--small {
+  min-height: 32px;
+  font-size: var(--fs-14);
+  padding: 0 var(--space-3);
+}
+
+/* ── Werkbank ─────────────────────────────────────────────────────────── */
+.bench {
+  grid-area: bench;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--hammer-deep);
+  border-right: 1px solid #1f2925;
+  padding: var(--space-4) var(--space-4) var(--space-6);
+  scrollbar-color: var(--hammer-light) transparent;
+}
+.bench__head {
+  display: grid;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+.bench__title {
+  font-size: var(--fs-25);
+  font-weight: 600;
+}
+.bench__hint {
+  font-size: var(--fs-14);
+  color: var(--alu-shade);
+}
+.bench__tools {
+  display: flex;
+  gap: var(--space-2);
+}
+.bench__notes {
+  display: grid;
+  gap: var(--space-1);
+}
+.bench__lock {
+  font-size: var(--fs-14);
+  font-weight: 600;
+  color: var(--alu);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-plate);
+  border: 1px solid var(--alu-shade);
+  background: rgba(211, 214, 207, 0.06);
+}
+/* Locked while the engine turns: plates stay readable, controls are visibly inactive. */
+.bench.is-locked .plate {
+  opacity: 0.72;
+}
+.bench.is-locked .fuel-switch,
+.bench.is-locked .bench__tools,
+.bench.is-locked .bench__hint {
+  opacity: 0.5;
+}
+.bench.is-locked input,
+.bench.is-locked select,
+.bench.is-locked label {
+  cursor: not-allowed;
+}
+.fuel-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin: 0;
+  padding: 3px;
+  border: 0;
+  border-radius: var(--radius-plate);
+  background: #1f2925;
+}
+.fuel-switch label {
+  position: relative;
+  cursor: pointer;
+}
+.fuel-switch input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.fuel-switch span {
+  display: block;
+  text-align: center;
+  padding: var(--space-2) 0;
+  border-radius: 2px;
+  font-weight: 600;
+  color: var(--alu-shade);
+}
+.fuel-switch input:checked + span {
+  background: var(--alu);
+  color: var(--engrave);
+}
+.fuel-switch input:focus-visible + span {
+  box-shadow: var(--focus);
+}
+
+.bench__plates {
+  display: grid;
+  gap: var(--space-4);
+}
+.plate {
+  position: relative;
+  background: var(--alu);
+  color: var(--engrave);
+  border-radius: var(--radius-plate);
+  padding: var(--space-4) var(--space-4) var(--space-3);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), inset 0 -1px 0 rgba(0, 0, 0, 0.15), 0 1px 0 #1a2420;
+}
+.screw {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #eef0eb 0 25%, #9da299 60%, #7d8279 100%);
+  box-shadow: inset 0 0 0 1px rgba(35, 41, 42, 0.35);
+}
+.screw::after {
+  content: "";
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  top: 3.5px;
+  height: 1px;
+  background: rgba(35, 41, 42, 0.55);
+  transform: rotate(35deg);
+}
+.screw--tl { top: 6px; left: 6px; }
+.screw--tr { top: 6px; right: 6px; }
+.screw--bl { bottom: 6px; left: 6px; }
+.screw--br { bottom: 6px; right: 6px; }
+.plate__title {
+  font-size: var(--fs-20);
+  font-weight: 700;
+  padding-left: var(--space-2);
+}
+.plate__effect {
+  font-size: var(--fs-14);
+  color: #4a5250;
+  padding-left: var(--space-2);
+  margin-bottom: var(--space-2);
+  max-width: 60ch;
+}
+
+.field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--space-3);
+  row-gap: 2px;
+  padding: var(--space-2) var(--space-2);
+  border-top: 1px solid rgba(35, 41, 42, 0.14);
+}
+.field__label {
+  font-weight: 600;
+  font-size: var(--fs-16);
+}
+.field__effect {
+  grid-column: 1 / -1;
+  font-size: var(--fs-12);
+  color: #4a5250;
+  line-height: 1.35;
+}
+.field__warn {
+  grid-column: 1 / -1;
+  font-size: var(--fs-14);
+  font-weight: 600;
+  color: var(--engrave);
+  background: var(--signal);
+  padding: 2px var(--space-2);
+  border-radius: 2px;
+}
+.field.is-limit {
+  box-shadow: inset 4px 0 0 var(--signal);
+}
+.field__value {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  justify-self: end;
+}
+.field__num {
+  width: 5.2em;
+  text-align: right;
+  font-size: var(--fs-16);
+  font-weight: 600;
+  background: #e6e8e2;
+  border: 1px solid #9ea39a;
+  border-radius: 2px;
+  padding: 2px 6px;
+  color: var(--engrave);
+}
+.field__unit {
+  font-size: var(--fs-14);
+  color: #4a5250;
+  min-width: 2.6em;
+}
+.field__range {
+  grid-column: 1 / -1;
+  font-size: var(--fs-12);
+  color: #5f6764;
+  display: flex;
+  justify-content: space-between;
+  margin-top: -2px;
+}
+.field select,
+.field--text input {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-height: 36px;
+  padding: 4px 8px;
+  border-radius: 2px;
+  border: 1px solid #9ea39a;
+  background: #e6e8e2;
+  color: var(--engrave);
+}
+.field--select .field__label,
+.field--text .field__label,
+.field--choice-number .field__label {
+  grid-column: 1 / -1;
+}
+
+/* slider: engraved slot with a machined knob */
+.field input[type="range"] {
+  grid-column: 1 / -1;
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 28px;
+  background: transparent;
+  margin: 0;
+  cursor: pointer;
+}
+.field input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(to right, var(--engrave) calc(var(--p, 0) * 100%), #a7aca3 calc(var(--p, 0) * 100%));
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.3);
+}
+.field input[type="range"]::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: #a7aca3;
+}
+.field input[type="range"]::-moz-range-progress {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--engrave);
+}
+.field input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 22px;
+  margin-top: -8px;
+  border-radius: 3px;
+  background: linear-gradient(#f4f5f2, #b6bab1);
+  border: 1px solid var(--engrave);
+}
+.field input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 20px;
+  border-radius: 3px;
+  background: linear-gradient(#f4f5f2, #b6bab1);
+  border: 1px solid var(--engrave);
+}
+.field input[type="range"]:focus-visible {
+  box-shadow: none;
+}
+.field input[type="range"]:focus-visible::-webkit-slider-thumb {
+  box-shadow: var(--focus);
+}
+.field input[type="range"]:focus-visible::-moz-range-thumb {
+  box-shadow: var(--focus);
+}
+
+/* segmented number choice (cylinders, valves) */
+.seg {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.seg__opt {
+  position: relative;
+}
+.seg__opt input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.seg__opt span {
+  display: block;
+  min-width: 36px;
+  text-align: center;
+  padding: 5px 8px;
+  border: 1px solid #9ea39a;
+  border-radius: 2px;
+  background: #e6e8e2;
+  font-weight: 600;
+}
+.seg__opt input:checked + span {
+  background: var(--engrave);
+  color: var(--alu);
+  border-color: var(--engrave);
+}
+.seg__opt input:focus-visible + span {
+  box-shadow: var(--focus);
+}
+
+/* toggle switch on the plate */
+.field--toggle {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+.field--toggle .field__effect,
+.field--toggle .field__warn {
+  grid-column: 1 / -1;
+}
+.field__state {
+  font-size: var(--fs-14);
+  color: #4a5250;
+  min-width: 2em;
+}
+.switch {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 44px;
+  height: 24px;
+  margin: 0;
+  border-radius: 12px;
+  background: #a7aca3;
+  position: relative;
+  cursor: pointer;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: linear-gradient(#f4f5f2, #b6bab1);
+  border: 1px solid #6b716b;
+}
+.switch:checked {
+  background: var(--engrave);
+}
+.switch:checked::after {
+  left: 22px;
+}
+
+/* ── Stage ─────────────────────────────────────────────────────────────── */
+.stage {
+  grid-area: stage;
+  overflow-y: auto;
+  padding: var(--space-3) var(--space-5) var(--space-4);
+  display: grid;
+  gap: var(--space-3);
+  align-content: start;
+}
+.stage__engine {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: var(--space-4);
+  align-items: stretch;
+}
+
+/* schematic */
+.schematic {
+  margin: 0;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  align-items: center;
+  background: var(--hammer-deep);
+  border-radius: var(--radius-plate);
+  padding: var(--space-3);
+}
+.schematic__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 196px;
+}
+.schematic__cap {
+  font-size: var(--fs-12);
+  color: var(--alu-shade);
+  padding: var(--space-1) var(--space-1) 0;
+}
+.sx-case { fill: #26312d; stroke: var(--hammer-light); stroke-width: 1.5; }
+.sx-liner { fill: #5b6b63; }
+.sx-bore { fill: #1d2622; }
+.sx-head { fill: #6f7d76; stroke: #2a3531; }
+.sx-valve { stroke: #aab0a8; stroke-width: 2.5; stroke-linecap: round; }
+.sx-behind { opacity: 0.45; }
+.sx-piston { fill: var(--alu); stroke: #8c9289; }
+.sx-ring { stroke: #8c9289; stroke-width: 1; }
+.sx-rod { stroke: #a9aea6; stroke-width: 6; stroke-linecap: round; }
+.sx-rows .sx-rod { stroke-width: 4; }
+.sx-pin { fill: #8c9289; }
+.sx-web { stroke: #8f958c; stroke-width: 12; stroke-linecap: round; }
+.sx-main { fill: #c2c6be; stroke: #2a3531; stroke-width: 2; }
+.sx-shaft { stroke: #8f958c; stroke-width: 4; }
+.sx-label, .sx-num, .sx-tag { fill: var(--alu-shade); font-family: var(--font); font-size: 16px; }
+.sx-num { font-family: var(--font-num); font-size: 15px; }
+.sx-charger { fill: #56655e; stroke: #aab0a8; stroke-width: 1.5; }
+.sx-volute { fill: #6f7d76; }
+.sx-blade { stroke: var(--alu); stroke-width: 2.5; stroke-linecap: round; }
+.sx-lobe { fill: none; stroke: var(--alu); stroke-width: 3; stroke-linecap: round; }
+.sx-motor { fill: var(--cold); }
+.sx-cooler { fill: none; stroke: #aab0a8; stroke-width: 1.5; }
+.sx-fin { stroke: #7f8a84; }
+/* gas in the cylinder: data colouring, cold intake → hot combustion */
+.sx-charge { fill: transparent; }
+.sx-charge.is-intake { fill: #31556b; }
+.sx-charge.is-compression { fill: #3d6f8f; }
+.sx-charge.is-burn { fill: #c98a2e; }
+.sx-charge.is-power { fill: #7a5a35; }
+.sx-charge.is-exhaust { fill: #4d4a40; }
+
+/* nameplate: the only capitals in the UI */
+.nameplate {
+  position: relative;
+  background: linear-gradient(180deg, #dcdfd8, var(--alu) 40%, #c7cbc3);
+  color: var(--engrave);
+  border-radius: var(--radius-plate);
+  padding: var(--space-3) var(--space-5) var(--space-3);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), inset 0 -1px 0 rgba(0, 0, 0, 0.2), 0 2px 0 #1a2420;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.nameplate__maker {
+  font-size: var(--fs-12);
+  font-weight: 600;
+  border-bottom: 1px solid rgba(35, 41, 42, 0.45);
+  padding-bottom: var(--space-1);
+  margin-bottom: var(--space-2);
+}
+.nameplate__title {
+  font-size: var(--fs-16);
+  font-weight: 700;
+  line-height: 1.2;
+}
+.nameplate__type {
+  font-size: var(--fs-14);
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+}
+.nameplate__grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  line-height: 1.3;
+  gap: 0 var(--space-3);
+  margin: 0;
+  font-size: var(--fs-12);
+}
+.nameplate__grid dt {
+  font-weight: 600;
+  color: #3c4443;
+}
+.nameplate__grid dd {
+  margin: 0;
+  text-align: right;
+  font-size: var(--fs-14);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.nameplate__grid dd.is-limit {
+  background: var(--signal);
+  padding: 0 4px;
+  border-radius: 2px;
+}
+
+/* ── Instruments ───────────────────────────────────────────────────────── */
+.instruments {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: var(--space-4);
+  background: var(--hammer-deep);
+  border-radius: var(--radius-plate);
+  padding: var(--space-3) var(--space-4);
+}
+.instruments__dials {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  align-items: end;
+}
+.gauge {
+  margin: 0;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+}
+.gauge--big {
+  align-self: center;
+}
+.gauge__face {
+  width: 100%;
+  max-width: 100px;
+  aspect-ratio: 1;
+}
+.gauge--big .gauge__face {
+  max-width: 140px;
+}
+
+.gauge__cap {
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: center;
+  align-items: baseline;
+  column-gap: 4px;
+}
+
+.gauge__label {
+  grid-column: 1 / -1;
+  text-align: center;
+  font-size: var(--fs-14);
+  color: var(--alu-shade);
+}
+.gauge__value {
+  font-size: var(--fs-20);
+  font-weight: 600;
+  text-align: right;
+  min-width: 3.4ch;
+}
+.gauge--big .gauge__value {
+  font-size: var(--fs-25);
+  min-width: 4.4ch;
+}
+.gauge__unit {
+  font-size: var(--fs-14);
+  color: var(--alu-shade);
+}
+.gauge.is-limit .gauge__value {
+  color: var(--signal);
+}
+
+.instruments__meters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-5);
+  align-content: center;
+}
+.meter {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 3.2em;
+  grid-template-rows: auto 8px;
+  column-gap: var(--space-2);
+  align-items: baseline;
+}
+.meter__label {
+  font-size: var(--fs-14);
+  color: var(--alu-shade);
+}
+.meter__value {
+  font-size: var(--fs-16);
+  font-weight: 600;
+  text-align: right;
+}
+.meter__unit {
+  font-size: var(--fs-12);
+  color: var(--alu-shade);
+}
+.meter__track {
+  grid-column: 1 / -1;
+  position: relative;
+  height: 6px;
+  margin-top: 2px;
+  background: #1d2622;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.meter__fill {
+  position: absolute;
+  inset: 0;
+  background: var(--alu-shade);
+  transform-origin: left center;
+  transform: scaleX(0);
+}
+.meter__mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--signal);
+}
+.meter.is-limit .meter__value,
+.meter.is-limit .meter__label {
+  color: var(--signal);
+}
+.meter.is-limit .meter__fill {
+  background: var(--signal);
+}
+
+/* ── Recorder: the one bold element ────────────────────────────────────── */
+.recorder {
+  background: var(--hammer-deep);
+  border-radius: var(--radius-plate);
+  padding: var(--space-3) var(--space-4);
+  display: grid;
+  gap: var(--space-2);
+}
+.recorder__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-5);
+}
+.recorder__title {
+  font-size: var(--fs-20);
+  font-weight: 600;
+}
+.recorder__inks {
+  display: flex;
+  gap: var(--space-4);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: var(--fs-14);
+  color: var(--alu-shade);
+}
+.ink::before {
+  content: "";
+  display: inline-block;
+  width: 18px;
+  height: 3px;
+  margin-right: 6px;
+  vertical-align: middle;
+  border-radius: 2px;
+  background: var(--ink-rpm);
+  box-shadow: 0 0 0 1px var(--alu-shade);
+}
+.ink--torque::before { background: var(--ink-torque); }
+.ink--power::before { background: var(--ink-power); }
+.recorder__actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+.recorder__paper {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: var(--space-3);
+}
+.recorder__strip,
+.recorder__sheet {
+  display: block;
+  width: 100%;
+  height: 172px;
+  border-radius: 2px;
+  background: var(--paper);
+  box-shadow: 0 0 0 1px #1a2420, 0 3px 0 -1px #c9c8b9;
+}
+.recorder__sheetwrap {
+  margin: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.recorder__runs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  font-size: var(--fs-14);
+}
+.recorder__empty {
+  color: var(--alu-shade);
+  max-width: 60ch;
+}
+.run {
+  color: var(--alu-shade);
+}
+.run--current {
+  color: var(--alu);
+  font-weight: 600;
+}
+
+/* ── Deck: console + pedal ─────────────────────────────────────────────── */
+.deck {
+  grid-area: deck;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-4);
+  align-items: stretch;
+  padding: var(--space-2) var(--space-5);
+  background: #3a4842;
+  border-top: 2px solid #1f2925;
+}
+.console {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  grid-template-areas: "main dyno aux" "msg msg msg";
+  gap: var(--space-1) var(--space-6);
+  align-items: center;
+  align-content: center;
+}
+.console__group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+.console__group--main { grid-area: main; }
+.console__group--dyno { grid-area: dyno; }
+.console__group--aux { grid-area: aux; justify-content: flex-end; flex-wrap: nowrap; }
+.console__status {
+  font-size: var(--fs-14);
+  color: var(--alu-shade);
+}
+.console__foot {
+  grid-area: msg;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+  min-height: 26px;
+}
+.console__field {
+  display: grid;
+  gap: 2px;
+  font-size: var(--fs-12);
+  color: var(--alu-shade);
+}
+.console__field select {
+  min-height: 36px;
+  padding: 0 8px;
+  background: var(--hammer-deep);
+  border: 1px solid var(--hammer-light);
+  border-radius: var(--radius-plate);
+  color: var(--alu);
+  font-size: var(--fs-14);
+}
+.console__target {
+  grid-template-columns: auto 5.5em;
+  column-gap: var(--space-2);
+}
+.console__target span {
+  grid-column: 1 / -1;
+}
+.console__target output {
+  font-size: var(--fs-14);
+  color: var(--alu);
+  text-align: right;
+}
+.console__field input[type="range"] {
+  width: 160px;
+  accent-color: var(--alu);
+}
+.console__vol input[type="range"] {
+  width: 110px;
+}
+.console__messages {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.note {
+  font-size: var(--fs-14);
+  padding: 3px var(--space-2);
+  border-radius: 2px;
+  border-left: 4px solid var(--alu-shade);
+  background: rgba(211, 214, 207, 0.08);
+}
+.note--warning,
+.note--critical {
+  border-left-color: var(--signal);
+  background: var(--signal);
+  color: var(--engrave);
+  font-weight: 600;
+}
+.bench .note--info {
+  color: var(--alu);
+}
+
+/* ignition toggle switch (Kippschalter) */
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  cursor: pointer;
+  position: relative;
+}
+.toggle__input {
+  position: absolute;
+  opacity: 0;
+  width: 1px;
+  height: 1px;
+}
+.toggle__lever {
+  position: relative;
+  width: 34px;
+  height: 52px;
+  border-radius: 6px;
+  background: #1f2925;
+  box-shadow: inset 0 0 0 2px #56655e;
+}
+.toggle__lever::after {
+  content: "";
+  position: absolute;
+  left: 9px;
+  width: 16px;
+  height: 26px;
+  bottom: 6px;
+  border-radius: 8px 8px 4px 4px;
+  background: linear-gradient(90deg, #9da299, #eef0eb 45%, #9da299);
+  box-shadow: 0 2px 0 #111a17;
+}
+.toggle__input:checked + .toggle__lever::after {
+  bottom: auto;
+  top: 6px;
+  border-radius: 4px 4px 8px 8px;
+  box-shadow: 0 -2px 0 #111a17;
+}
+.toggle__input:checked + .toggle__lever {
+  box-shadow: inset 0 0 0 2px var(--alu);
+}
+.toggle__input:focus-visible + .toggle__lever {
+  box-shadow: var(--focus);
+}
+.toggle__text {
+  font-weight: 600;
+}
+
+/* starter push button */
+.starter {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.starter__cap {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #f4f5f2, #b6bab1 70%);
+  box-shadow: 0 0 0 4px #1f2925, 0 0 0 6px #56655e, 0 4px 0 4px #1f2925;
+  transform: translateY(0);
+}
+.starter.is-pressed .starter__cap {
+  transform: translateY(3px);
+  box-shadow: 0 0 0 4px #1f2925, 0 0 0 6px var(--alu), 0 1px 0 4px #1f2925;
+}
+.starter__text {
+  font-weight: 600;
+  text-align: left;
+}
+.starter:focus-visible {
+  box-shadow: none;
+}
+.starter:focus-visible .starter__cap {
+  box-shadow: 0 0 0 4px var(--engrave), 0 0 0 7px var(--alu), 0 4px 0 4px #1f2925;
+}
+
+/* pedal lever (vertical, large) */
+.pedal {
+  display: grid;
+  grid-template-columns: auto auto;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas: "label track" "value track" "hint track";
+  column-gap: var(--space-3);
+  align-items: end;
+  justify-items: end;
+}
+.pedal__label { grid-area: label; font-weight: 600; align-self: start; }
+.pedal__value { grid-area: value; font-size: var(--fs-20); font-weight: 600; min-width: 3.4em; text-align: right; }
+.pedal__hint { grid-area: hint; font-size: var(--fs-12); color: var(--alu-shade); text-align: right; max-width: 9em; }
+.pedal__track {
+  grid-area: track;
+  position: relative;
+  width: 64px;
+  height: 80px;
+  border-radius: 6px;
+  background: #1f2925;
+  box-shadow: inset 0 0 0 2px #56655e;
+  cursor: ns-resize;
+  touch-action: none;
+  overflow: hidden;
+}
+.pedal__fill {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 6px;
+  top: 6px;
+  border-radius: 3px;
+  background: repeating-linear-gradient(0deg, #6f7d76 0 3px, #56655e 3px 6px);
+  transform-origin: bottom;
+  transform: scaleY(0);
+}
+.pedal__knob {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  height: 18px;
+  bottom: calc(3px + var(--p, 0) * (100% - 24px));
+  border-radius: 3px;
+  background: linear-gradient(#f4f5f2, #b6bab1);
+  box-shadow: 0 2px 0 #111a17;
+}
+.pedal.is-held .pedal__track {
+  box-shadow: inset 0 0 0 2px var(--alu);
+}
+
+/* ── Medium: stack the stage blocks ─────────────────────────────────────── */
+@media (max-width: 1360px) {
+  .instruments {
+    grid-template-columns: 1fr;
+  }
+  .instruments__meters {
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  }
+}
+@media (max-width: 1240px) {
+  .stage__engine {
+    grid-template-columns: minmax(0, 1fr) 320px;
+  }
+  .nameplate {
+    padding: var(--space-3) var(--space-4);
+    letter-spacing: 0.03em;
+  }
+  .console {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: "main main" "dyno aux" "msg msg";
+  }
+}
+
+/* ── Narrow: the bench becomes a drawer, pedal sits in the thumb zone ──── */
+@media (max-width: 1099px) {
+  .cell {
+    display: block;
+    height: auto;
+  }
+  .cell__top {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    justify-content: space-between;
+    padding: var(--space-2) var(--space-4);
+  }
+  .cell__top .bench-toggle {
+    display: inline-flex;
+  }
+  .bench {
+    position: fixed;
+    z-index: 20;
+    top: 57px;
+    left: 0;
+    bottom: 0;
+    width: min(420px, 100vw);
+    transform: translateX(-100%);
+    visibility: hidden;
+    border-right: 2px solid #1f2925;
+    box-shadow: 8px 0 24px rgba(0, 0, 0, 0.35);
+  }
+  .bench-open .bench {
+    transform: none;
+    visibility: visible;
+  }
+  .stage {
+    overflow: visible;
+    padding: var(--space-3) var(--space-4) var(--space-4);
+  }
+  .stage__engine {
+    grid-template-columns: 1fr;
+  }
+  .nameplate {
+    max-width: 460px;
+  }
+  .console__group--aux {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+  .console {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: "main main" "dyno aux" "msg msg";
+    column-gap: var(--space-4);
+  }
+  .console__group--aux {
+    gap: var(--space-2) var(--space-3);
+  }
+  .deck {
+    position: sticky;
+    bottom: 0;
+    z-index: 4;
+    padding: var(--space-2) var(--space-4);
+  }
+}
+@media (max-width: 700px) {
+  .instruments {
+    padding: var(--space-3);
+  }
+  .instruments__dials {
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-rows: auto auto;
+  }
+  .gauge--big {
+    grid-row: auto;
+    grid-column: 1 / -1;
+  }
+  .gauge--big .gauge__face {
+    max-width: 210px;
+  }
+  .gauge__value {
+    font-size: var(--fs-16);
+  }
+  .instruments__meters {
+    grid-template-columns: 1fr;
+  }
+
+  .recorder {
+    padding: var(--space-3);
+  }
+  .recorder__paper {
+    grid-template-columns: 1fr;
+  }
+  .recorder__strip {
+    height: 190px;
+  }
+  .recorder__sheet {
+    height: 210px;
+  }
+  .recorder__actions {
+    margin-left: 0;
+  }
+  .nameplate {
+    padding: var(--space-4);
+  }
+  .deck {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-2);
+  }
+  .console {
+    grid-template-columns: 1fr;
+    grid-template-areas: "main" "msg";
+    gap: var(--space-2);
+  }
+  .console__group--dyno,
+  .console__group--aux {
+    display: none;
+  }
+  .deck.show-more .console {
+    grid-template-areas: "main" "dyno" "aux" "msg";
+  }
+  .deck.show-more .console__group--dyno,
+  .deck.show-more .console__group--aux {
+    display: flex;
+    justify-content: flex-start;
+  }
+  .console__group--main {
+    gap: var(--space-3);
+  }
+
+  .console__status {
+    font-size: var(--fs-12);
+  }
+  .console__group--main {
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-4);
+  }
+  .console kbd,
+  .starter__text .kbd-hint {
+    display: none;
+  }
+  .toggle { gap: var(--space-2); }
+  .starter { gap: var(--space-2); }
+  .pedal__label {
+    display: none;
+  }
+  .toggle__lever { width: 30px; height: 46px; }
+  .toggle__lever::after { left: 7px; height: 22px; }
+  .starter__cap { width: 46px; height: 46px; }
+  .pedal {
+    grid-template-columns: auto auto;
+  }
+  .pedal__track {
+    width: 60px;
+    height: 92px;
+  }
+  .pedal {
+    grid-template-areas: "value track" "value track" "value track";
+    align-items: center;
+  }
+  .pedal__value {
+    font-size: var(--fs-20);
+  }
+  .pedal__hint {
+    display: none;
+  }
+}
+.console__more {
+  display: none;
+}
+@media (max-width: 700px) {
+  .console__more {
+    display: inline-flex;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Short desktop windows (e.g. 1440 × 900): keep the recorder above the fold */
+@media (min-width: 1100px) and (max-height: 960px) {
+  .recorder__strip,
+  .recorder__sheet {
+    height: 150px;
+  }
+  .schematic__svg {
+    max-height: 236px;
+  }
+  .pedal__track {
+    height: 68px;
+  }
+  .pedal__hint {
+    display: none;
+  }
+  .nameplate__maker {
+    margin-bottom: var(--space-1);
+  }
+}
+
+/* Phones: ignition and starter side by side, sub-panel toggle underneath */
+@media (max-width: 700px) {
+  .console__group--main {
+    display: grid;
+    grid-template-columns: auto auto;
+    justify-content: start;
+    gap: var(--space-2) var(--space-4);
+  }
+  .console__more {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
