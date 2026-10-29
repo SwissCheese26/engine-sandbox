@@ -73,7 +73,13 @@ export interface InductionConfig {
   individualThrottleBodies: boolean;
 }
 
-export type DieselInjection = "indirect-prechamber" | "indirect-swirl-chamber" | "unit-injector" | "common-rail";
+export type DieselInjection =
+  | "indirect-prechamber"
+  | "indirect-swirl-chamber"
+  | "unit-injector"
+  | "common-rail"
+  /** Mechanical inline / distributor pump (Bosch P7100, VE pump), ~400 … 1000 bar, no pilot injection. */
+  | "mechanical-pump";
 export type DieselFuel = "diesel" | "hvo" | "biodiesel";
 
 export interface DieselFuelSystem {
@@ -168,6 +174,8 @@ export interface Warning {
   severity: Severity;
   /** Human readable German text for the UI. */
   message: string;
+  /** Config field path the warning refers to, e.g. "block.compressionRatio" (validateConfig). */
+  field?: string;
 }
 
 export type WarningCode =
@@ -184,7 +192,9 @@ export type WarningCode =
   | "peak-pressure"
   | "smoke"
   | "stall"
-  | "conrod-stress";
+  | "conrod-stress"
+  /** Implausible configuration (validateConfig only). */
+  | "config";
 
 export interface DamageEvent {
   code: WarningCode;
@@ -240,6 +250,8 @@ export interface EngineState {
   wear: number;
   warnings: Warning[];
   damage: DamageEvent[];
+  /** Starter motor is powered (key in start position and engine not destroyed). */
+  starterEngaged: boolean;
 }
 
 /** One point of a steady-state full-load dyno sweep. */
@@ -252,6 +264,21 @@ export interface DynoPoint {
   lambda: number;
   egtC: number;
   peakPressureBar: number;
+}
+
+/** Config-dependent limits for gauges (yellow ranges). Warnings start above these values. */
+export interface EngineLimits {
+  coolantMaxC: number;
+  oilMaxC: number;
+  /** Exhaust gas temperature before turbine / in the manifold. */
+  egtMaxC: number;
+  oilPressureMinBar: number;
+  /** Gauge boost above which "overboost" is raised. 0 for naturally aspirated engines. */
+  boostMaxBar: number;
+  /** Design peak cylinder pressure (weakest of block, pistons, conrods). */
+  peakPressureMaxBar: number;
+  /** Max turbo shaft speed (rpm). 0 without turbocharger. */
+  turboMaxRpm: number;
 }
 
 /** Static figures derived from the config (shown on the nameplate). */
@@ -269,6 +296,12 @@ export interface EngineSummary {
   safeMaxRpm: number;
   /** Firing interval pattern in crank degrees, length = cylinders, sum = 720. */
   firingIntervalsDeg: number[];
+  /**
+   * Firing order as 1-based cylinder numbers, same length as firingIntervalsDeg.
+   * firingIntervalsDeg[k] is the angle from the firing of firingOrder[k] to firingOrder[k+1].
+   */
+  firingOrder: number[];
   /** Rough indicator 0 … 1 of how reliable the configuration is. */
   reliability: number;
+  limits: EngineLimits;
 }
