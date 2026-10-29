@@ -590,7 +590,7 @@ export function crossed(prevDeg: number, dDeg: number, targetDeg: number): boole
   return rel < dDeg && dDeg > 0;
 }
 
-/** Soft clip: linear below 0.75, approaches 0.97 asymptotically. Continuous and monotonic. */
+/** Soft clip: linear below 0.75, bounded by 0.97 (≈ −0.26 dBFS). Continuous and monotonic. */
 export function softClip(x: number): number {
   const a = Math.abs(x);
   if (a <= 0.75) return x;
