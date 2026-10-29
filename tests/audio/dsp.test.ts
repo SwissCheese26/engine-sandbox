@@ -4,7 +4,7 @@ import { summarize } from "../../src/core/index.ts";
 import { defaultConfig } from "../../src/data/presets.ts";
 import { EngineDsp } from "../../src/audio/dsp.ts";
 import { deriveVoice, firingFrequencyHz, silentFrame } from "../../src/audio/model.ts";
-import { ENGINES, autocorrPitchHz, dcOffset, dominantOrder, mono, peakDbfs, powerAt, renderRun, renderSteady, rmsDbfs, rumbleShare, variant } from "./helpers.ts";
+import { ENGINES, autocorrPitchHz, dcOffset, dominantOrder, halfOrderShare, mono, peakDbfs, powerAt, renderRun, renderSteady, rmsDbfs, rumbleShare, variant } from "./helpers.ts";
 
 const FS = 48000;
 
@@ -182,5 +182,70 @@ describe("events", () => {
     const r = new Float32Array(128).fill(1);
     dsp.process(l, r);
     expect(l.every((x) => x === 0) && r.every((x) => x === 0)).toBe(true);
+  });
+});
+
+describe("robustness (review PR #11)", () => {
+  test("non-finite control values are replaced; output stays finite and recovers", () => {
+    const cfg = defaultConfig("petrol");
+    const dsp = new EngineDsp(FS);
+    dsp.setVoice(deriveVoice(cfg, summarize(cfg)));
+    dsp.setVolume(0.8);
+    const good = { ...silentFrame(), rpm: 3000, load: 0.5, pedal: 0.5, combustion: true, airFlow: 0.4, turboRpm: 90000 };
+    const l = new Float32Array(128);
+    const r = new Float32Array(128);
+    dsp.setControl(good);
+    for (let i = 0; i < 100; i++) dsp.process(l, r);
+    dsp.setControl({ ...good, rpm: NaN, load: NaN, pedal: Infinity, airFlow: -Infinity, turboRpm: NaN, knock: NaN, nail: NaN, rodKnock: NaN, blowOff: NaN });
+    dsp.setVolume(NaN);
+    let finite = true;
+    let energy = 0;
+    for (let i = 0; i < 100; i++) {
+      dsp.process(l, r);
+      for (let j = 0; j < l.length; j++) {
+        if (!Number.isFinite(l[j]!) || !Number.isFinite(r[j]!)) finite = false;
+        energy += l[j]! * l[j]!;
+      }
+    }
+    expect(finite).toBe(true);
+    expect(energy).toBeGreaterThan(0); // last valid values kept → still sounding
+  });
+  test("state poisoned internally (NaN in a filter) is reset instead of staying NaN", () => {
+    const cfg = defaultConfig("diesel");
+    const dsp = new EngineDsp(FS);
+    dsp.setVoice(deriveVoice(cfg, summarize(cfg)));
+    dsp.setControl({ ...silentFrame(), rpm: 1500, load: 0.4, pedal: 0.4, combustion: true, airFlow: 0.3 });
+    const l = new Float32Array(128);
+    const r = new Float32Array(128);
+    for (let i = 0; i < 50; i++) dsp.process(l, r);
+    (dsp as unknown as { lp2L: number }).lp2L = NaN; // simulate a corrupted state
+    let lastBlockEnergy = 0;
+    let allFinite = true;
+    for (let i = 0; i < 200; i++) {
+      dsp.process(l, r);
+      lastBlockEnergy = 0;
+      for (let j = 0; j < l.length; j++) {
+        if (!Number.isFinite(l[j]!)) allFinite = false;
+        lastBlockEnergy += l[j]! * l[j]!;
+      }
+    }
+    expect(allFinite).toBe(true);
+    expect(lastBlockEnergy).toBeGreaterThan(0);
+  });
+});
+
+describe("flatplane vs crossplane half orders (petrol.md §6.3)", () => {
+  test("flatplane V8 < 5 % half orders, crossplane clearly higher", () => {
+    const fp = mono(renderSteady(ENGINES["v8-flatplane-3.9"]!, 3000, 0.6, 1.5), 0.5);
+    const cp = mono(renderSteady(ENGINES["v8-crossplane-6.2"]!, 3000, 0.6, 1.5), 0.5);
+    const a = halfOrderShare(fp, FS, 3000, 8);
+    const b = halfOrderShare(cp, FS, 3000, 8);
+    expect(a).toBeLessThan(0.05);
+    expect(b).toBeGreaterThan(0.15);
+  });
+  test("flatplane idle pitch = firing frequency (no octave drop from bank asymmetry)", () => {
+    const cfg = ENGINES["v8-flatplane-3.9"]!;
+    const f = autocorrPitchHz(mono(renderSteady(cfg, 900, 0.1, 1.2), 0.4), FS);
+    expect(f).toBeCloseTo(firingFrequencyHz(900, 8), -0.5);
   });
 });
