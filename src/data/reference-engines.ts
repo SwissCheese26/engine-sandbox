@@ -168,8 +168,12 @@ const CUMMINS_6BT: ReferenceEngine = {
     revLimitRpm: 2800,
     idleRpm: 750,
   },
-  expected: { peakTorqueNm: 569, peakTorqueRpm: 1600, peakPowerKw: 160, peakPowerRpm: 2600 },
-  source: "docs/research/diesel.md §5 (Cummins 6BT 5.9 12V, Dodge Ram 1994–98; 160 kW @ 2600, 569 Nm @ 1600)",
+  // diesel.md §5 lists 160 kW @ 2600 with 569 Nm @ 1600, but 160 kW @ 2600 alone needs 588 Nm, so the
+  // pair is inconsistent. 569 Nm (420 lb·ft) belongs to the 180 hp version; the 160 kW / 215 hp
+  // version (Ram 1996–98, manual) has 440 lb·ft = 597 Nm @ 1600 (engine-specs.net lists up to 569 Nm
+  // for its variants, Cummins/Dodge data 440 lb·ft for the 215 hp rating). We use the consistent pair.
+  expected: { peakTorqueNm: 597, peakTorqueRpm: 1600, peakPowerKw: 160, peakPowerRpm: 2600 },
+  source: "docs/research/diesel.md §5 (Cummins 6BT 5.9 12V, Dodge Ram 1996–98, 160 kW @ 2600); torque 597 Nm (440 lb·ft) instead of 569 Nm, see comment",
 };
 
 // ───────────────────────────── Petrol ─────────────────────────────
