@@ -28,6 +28,8 @@ export const SOUND_SPEED_TAIL_MS = 450;
 export const SOUND_SPEED_BURNT_MS = 950;
 /** Exhaust valve opens ≈ 130 °CA after firing TDC; the blowdown pulse starts there. [S] */
 export const EXHAUST_OPEN_AFTER_TDC_DEG = 130;
+/** Arrival-time difference between the two tail pipes at the listener (2-bank engines). [S] */
+export const BANK_LISTENER_OFFSET_S = 0.0009;
 
 // ---------------------------------------------------------------------------------------------
 // Frequencies
@@ -282,7 +284,12 @@ export function deriveVoice(cfg: EngineConfig, summary: EngineSummary): Voice {
   const dispL = summary.displacementL > 0 ? summary.displacementL : (Math.PI / 4) * (b.boreMm / 10) ** 2 * (b.strokeMm / 10) * n / 1000;
   const banksSeq = bankSequence(b.layout, n, b.v8Crank);
   const bankCount: 1 | 2 = banksSeq.some((x) => x === 1) ? 2 : 1;
-  const slots = buildPulsePlan(summary.firingIntervalsDeg, banksSeq, headerExtraLengthsM(b.layout, cfg.exhaust.manifold, n));
+  // Two tail pipes: the test-cell microphone is ≈ 0.3 m closer to one of them → 0.9 ms at 343 m/s.
+  // Without it the two banks of a crossplane V8 would sum to a perfectly even 90° train in mono. [S]
+  const extra = headerExtraLengthsM(b.layout, cfg.exhaust.manifold, n).map(
+    (L, i) => L + (banksSeq[i] === 1 ? (BANK_LISTENER_OFFSET_S * SOUND_SPEED_HOT_MS) : 0),
+  );
+  const slots = buildPulsePlan(summary.firingIntervalsDeg, banksSeq, extra);
   const forced = forcedInduction(cfg.induction.aspiration);
   const turbo = forced === "turbo" || forced === "twin-turbo" || forced === "e-turbo";
 
