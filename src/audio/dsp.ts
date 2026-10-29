@@ -411,7 +411,7 @@ export class EngineDsp {
     const degPerSample = dAng;
     const load = this.load;
     // Loudness grows ≈ +6 dB per rpm doubling (petrol.md §6.6), tamed to keep idle audible.
-    const rpmGain = clamp(Math.sqrt(rpm / 3000), 0.22, 1.7);
+    const rpmGain = clamp(Math.sqrt(rpm / 3000), 0.32, 1.7);
     for (let s = 0; s < v.slots.length; s++) {
       const slot = v.slots[s]!;
       // Exhaust pulse at exhaust-valve opening.
