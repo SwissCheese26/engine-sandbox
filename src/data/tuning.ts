@@ -169,10 +169,10 @@ export function tuningWarnings(cfg: EngineConfig, stage: TuningStage): Warning[]
   if (pMax > lim.peakPressureMaxBar) {
     out.push({
       code: "peak-pressure", severity: "warning", field: "block.pistons",
-      message: `Spitzendruck bis ${Math.round(pMax)} bar, ausgelegt sind ${Math.round(lim.peakPressureMaxBar)} bar${cast ? " – die Gussteile halten das nicht dauerhaft" : ""}.`,
+      message: `Spitzendruck bis ${Math.round(pMax)} bar, ausgelegt sind ${Math.round(lim.peakPressureMaxBar)} bar${cast ? ` – ${castParts(cfg)} halten das nicht dauerhaft` : ""}.`,
     });
   }
-  if (egt > lim.egtMaxC) {
+  if (Math.round(egt) > Math.round(lim.egtMaxC)) {
     out.push({ code: "egt-high", severity: "warning", field: "exhaust.manifold", message: `Abgastemperatur bis ${Math.round(egt)} °C bei Volllast (Grenze ${Math.round(lim.egtMaxC)} °C).` });
   }
   if (stage === 3 && cast) {
@@ -182,4 +182,10 @@ export function tuningWarnings(cfg: EngineConfig, stage: TuningStage): Warning[]
     });
   }
   return out;
+}
+
+function castParts(cfg: EngineConfig): string {
+  const p = cfg.block.pistons === "cast-aluminium";
+  const r = cfg.block.conrods === "cast-steel";
+  return p && r ? "Guss-Kolben und -Pleuel" : p ? "die Guss-Kolben" : "die Guss-Pleuel";
 }
