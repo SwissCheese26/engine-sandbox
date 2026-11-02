@@ -1368,3 +1368,14 @@ kbd {
 .gearbox__gear.is-braking {
   box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.18), 0 0 0 3px var(--ink-torque);
 }
+
+/* instruments with switchable units: click / Enter cycles kW → PS → hp etc. */
+.is-switchable {
+  cursor: pointer;
+  border-radius: var(--radius-plate);
+}
+.is-switchable:hover .gauge__unit,
+.is-switchable:hover .meter__unit {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
