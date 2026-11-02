@@ -60,7 +60,11 @@ describe("workbench fields", () => {
   });
   test("cylinder options follow the layout", () => {
     expect(cylinderOptions("boxer").every((n) => n % 2 === 0)).toBe(true);
-    expect(cylinderOptions("v").every((n) => n % 2 === 0 && n >= 4)).toBe(true);
+    // V2 is allowed since issue #25 (motorcycle twins)
+    expect(cylinderOptions("v").every((n) => n % 2 === 0 && n >= 2)).toBe(true);
+    expect(cylinderOptions("v")).toContain(2);
+    expect(cylinderOptions("boxer")).toContain(2);
+    expect(cylinderOptions("inline").slice(0, 3)).toEqual([1, 2, 3]);
     expect(cylinderOptions("w")).toEqual([8, 12, 16]);
     expect(cylinderOptions("vr")).toEqual([5, 6]);
   });
