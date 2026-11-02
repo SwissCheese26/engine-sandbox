@@ -26,3 +26,5 @@ export function defaultInputs(): SimInputs {
     ambientKpa: 101.325,
   };
 }
+export { Drivetrain, DEFAULT_VEHICLE, GEARBOXES, theoreticalVmax } from "./drivetrain.ts";
+export type { DrivetrainState, GearboxType } from "./drivetrain.ts";
