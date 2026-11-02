@@ -1355,6 +1355,26 @@ kbd {
   font-size: var(--fs-20);
   font-weight: 600;
 }
+.gearbox__vmax-note {
+  font-size: var(--fs-14);
+  font-weight: 400;
+  color: var(--alu-shade);
+}
+.gearbox__out {
+  display: grid;
+  gap: var(--space-2);
+}
+.gearbox__notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.gearbox__notes:not(:has(> :not([hidden]))) {
+  display: none;
+}
+.gearbox__notes .note {
+  margin: 0;
+}
 @media (max-width: 1100px) {
   .gearbox {
     grid-template-columns: 1fr;

@@ -1,6 +1,6 @@
 // Getriebe-Pult for the chassis dyno (issue #14 base): gearbox type, final drive, gear indicator,
 // speed, top speed and 0–100 stopwatch, shift buttons (keys Q = down, E = up).
-import { Drivetrain, theoreticalVmax, dynoSweep } from "../core/index.ts";
+import { Drivetrain, theoreticalVmax, dynoSweep, SPEED_LIMIT_OPTIONS, TYRE_RATING_W_KMH } from "../core/index.ts";
 import type { EngineConfig, EngineSummary, GearboxType } from "../core/index.ts";
 
 const TYPE_LABEL: Record<GearboxType, string> = {
@@ -8,6 +8,11 @@ const TYPE_LABEL: Record<GearboxType, string> = {
   dsg: "Doppelkupplung (DSG), 7 Gänge",
   cvt: "Stufenlos (CVT)",
 };
+
+const LIMIT_KEY = "pruefzelle.vmaxLimit";
+/** Tyre warning hysteresis around W = 270 km/h, so the note does not flicker at the rating (review PR #34). */
+const TYRE_WARN_ON_KMH = TYRE_RATING_W_KMH + 1;
+const TYRE_WARN_OFF_KMH = TYRE_RATING_W_KMH - 2;
 
 const fmt1 = (n: number) => n.toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const fmt0 = (n: number) => Math.round(n).toLocaleString("de-DE");
@@ -23,12 +28,16 @@ export class GearboxPanel {
   private vmaxEl: HTMLElement;
   private t100El: HTMLElement;
   private calcEl: HTMLElement;
+  private limitSel: HTMLSelectElement;
+  private vmaxNoteEl: HTMLElement;
+  private govNoteEl: HTMLElement;
+  private tyreNoteEl: HTMLElement;
   private downBtn: HTMLButtonElement;
   private upBtn: HTMLButtonElement;
   private autoBtn: HTMLButtonElement;
   private cfg: EngineConfig;
   private summary: EngineSummary;
-  private last = { gear: "", speed: "", vmax: "", t100: "" };
+  private last = { gear: "", speed: "", vmax: "", t100: "", vmaxNote: false, gov: false, tyre: false };
   private moving = false;
   /** Set by the app: puts the vehicle in the simulator back to standstill. */
   onResetVehicle: () => void = () => {};
@@ -52,6 +61,10 @@ export class GearboxPanel {
           <input type="range" min="2.5" max="5.5" step="0.05" data-control="final-drive" />
           <output class="num"></output>
         </label>
+        <label class="gearbox__field"><span>Vmax-Begrenzer</span>
+          <select data-control="speed-limit">${SPEED_LIMIT_OPTIONS
+            .map((v) => `<option value="${v ?? "off"}">${v === null ? "aus (aufgehoben)" : `${v} km/h`}</option>`).join("")}</select>
+        </label>
         <p class="gearbox__hint">Kürzer übersetzt zieht stärker und dreht früher in den Begrenzer, länger übersetzt bringt mehr Vmax, wenn die Leistung reicht. Fahrzeug: 1450 kg, cW 0,30.</p>
         <p class="gearbox__calc num"></p>
       </div>
@@ -64,11 +77,17 @@ export class GearboxPanel {
         </div>
         <p class="gearbox__keys">Gas <kbd>W</kbd>, Bremse <kbd>S</kbd></p>
       </div>
+      <div class="gearbox__out">
       <dl class="gearbox__readouts">
         <div><dt>Tempo</dt><dd class="num"><span data-out="speed">0</span> km/h</dd></div>
-        <div><dt>Vmax gemessen</dt><dd class="num"><span data-out="vmax">0</span> km/h</dd></div>
+        <div><dt>Vmax gemessen</dt><dd class="num"><span data-out="vmax">0</span> km/h<small class="gearbox__vmax-note" hidden> (abgeregelt)</small></dd></div>
         <div><dt>0–100 km/h</dt><dd class="num"><span data-out="t100">–</span> s</dd></div>
-      </dl>`;
+      </dl>
+      <div class="gearbox__notes" aria-live="polite">
+        <p class="note note--info" data-out="governor" hidden>Abgeregelt: Der Vmax-Begrenzer nimmt das Gas zurück.</p>
+        <p class="note note--warning" data-out="tyre" hidden>Reifenfreigabe W = ${TYRE_RATING_W_KMH} km/h überschritten</p>
+      </div>
+      </div>`;
     this.el = el;
     const q = <T extends Element>(s: string) => el.querySelector<T>(s)!;
     this.typeSel = q("[data-control=gearbox]");
@@ -79,6 +98,10 @@ export class GearboxPanel {
     this.vmaxEl = q("[data-out=vmax]");
     this.t100El = q("[data-out=t100]");
     this.calcEl = q(".gearbox__calc");
+    this.limitSel = q("[data-control=speed-limit]");
+    this.vmaxNoteEl = q(".gearbox__vmax-note");
+    this.govNoteEl = q("[data-out=governor]");
+    this.tyreNoteEl = q("[data-out=tyre]");
     this.downBtn = q("[data-control=shift-down]");
     this.upBtn = q("[data-control=shift-up]");
     this.autoBtn = q("[data-control=shift-auto]");
@@ -89,6 +112,25 @@ export class GearboxPanel {
     });
     this.fdInput.addEventListener("input", () => {
       this.drivetrain.setFinalDrive(Number(this.fdInput.value));
+      this.syncSetup();
+    });
+    // the governor can be recoded at any time, also while driving (issue #32)
+    // the choice is remembered per browser (review PR #34)
+    try {
+      const saved = localStorage.getItem(LIMIT_KEY);
+      if (saved !== null && [...this.limitSel.options].some((o) => o.value === saved)) {
+        this.drivetrain.setSpeedLimit(saved === "off" ? null : Number(saved));
+      }
+    } catch {
+      // storage blocked: keep the default
+    }
+    this.limitSel.addEventListener("change", () => {
+      this.drivetrain.setSpeedLimit(this.limitSel.value === "off" ? null : Number(this.limitSel.value));
+      try {
+        localStorage.setItem(LIMIT_KEY, this.limitSel.value);
+      } catch {
+        // storage blocked: setting lasts for this session only
+      }
       this.syncSetup();
     });
     this.downBtn.addEventListener("click", () => this.drivetrain.shift(-1));
@@ -132,6 +174,7 @@ export class GearboxPanel {
     const s = this.drivetrain.state;
     this.typeSel.value = s.type;
     this.fdInput.value = String(s.finalDrive);
+    this.limitSel.value = s.speedLimitKmh === null ? "off" : String(s.speedLimitKmh);
     this.fdOut.textContent = fmt1(s.finalDrive).replace(",0", ",00").replace(/,(\d)$/, ",$10");
     const cvt = s.type === "cvt";
     this.downBtn.hidden = cvt;
@@ -145,9 +188,14 @@ export class GearboxPanel {
         return best.torqueNm;
       };
       const r = theoreticalVmax(torqueAt, this.cfg.revLimitRpm, s.type, s.finalDrive);
-      this.calcEl.textContent = r.limitedBy === "limiter"
-        ? `Berechnete Vmax ${fmt0(r.vmaxKmh)} km/h, begrenzt durch den Drehzahlbegrenzer im ${r.gear}. Gang: länger übersetzen bringt mehr.`
-        : `Berechnete Vmax ${fmt0(r.vmaxKmh)} km/h, begrenzt durch den Luftwiderstand.`;
+      // physical top speed without the governor; the governor note follows when it caps below that
+      const lim = s.speedLimitKmh;
+      const capped = lim !== null && r.vmaxKmh > lim
+        ? ` Der Vmax-Begrenzer regelt bei ${fmt0(lim)} km/h ab.`
+        : "";
+      this.calcEl.textContent = (r.limitedBy === "limiter"
+        ? `Berechnete Vmax ohne Begrenzer ${fmt0(r.vmaxKmh)} km/h, begrenzt durch den Drehzahlbegrenzer im ${r.gear}. Gang: länger übersetzen bringt mehr.`
+        : `Berechnete Vmax ohne Begrenzer ${fmt0(r.vmaxKmh)} km/h, begrenzt durch den Luftwiderstand.`) + capped;
     } catch {
       this.calcEl.textContent = "";
     }
@@ -166,6 +214,11 @@ export class GearboxPanel {
     if (vmax !== this.last.vmax) this.vmaxEl.textContent = this.last.vmax = vmax;
     if (t100 !== this.last.t100) this.t100El.textContent = this.last.t100 = t100;
     this.autoBtn.hidden = !(s.type === "dsg" && s.manualMode);
+    const vmaxNote = s.maxSpeedLimited && s.maxSpeedKmh > 0.5;
+    if (vmaxNote !== this.last.vmaxNote) this.vmaxNoteEl.hidden = !(this.last.vmaxNote = vmaxNote);
+    if (s.limiting !== this.last.gov) this.govNoteEl.hidden = !(this.last.gov = s.limiting);
+    const tyre = this.last.tyre ? s.speedKmh >= TYRE_WARN_OFF_KMH : s.speedKmh > TYRE_WARN_ON_KMH;
+    if (tyre !== this.last.tyre) this.tyreNoteEl.hidden = !(this.last.tyre = tyre);
     this.gearEl.classList.toggle("is-braking", braking);
     // gearbox and final drive can only be changed at standstill (review #19)
     const moving = s.speedKmh > 0.5;
