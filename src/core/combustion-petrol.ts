@@ -31,7 +31,7 @@ export function petrolConsts(cfg: EngineConfig): PetrolConsts {
   // §3.5 Otto cycle with effective κ = 1.30
   const etaOtto = 1 - Math.pow(eps, 1 - 1.3);
   // §3.5 Gütegrad
-  let etaG = 0.84; // spec 0.82, fine calibration 0.82 → 0.85 allowed by §3.8 "Fazit"; 0.84 chosen (PR table)
+  let etaG = 0.85; // spec 0.82; §3.8 "Fazit" allows fine calibration 0.82 → 0.85 (PR table)
   if (cfg.head.valvesPerCylinder === 2) etaG -= 0.03;
   if (fs.mixture === "carburettor") etaG -= 0.04;
   if (cfg.block.boreMm > 95) etaG -= 0.001 * (cfg.block.boreMm - 95);

@@ -69,7 +69,8 @@ export function veParams(cfg: EngineConfig): VeParams {
     const camCurve = (cam: number) => {
       const cmPeak = 10 + 10 * cam;
       const w = (0.55 - 0.2 * cam) * VVT_WIDEN[h.variableTiming];
-      return { nPeak: rpmAtPistonSpeed(S, cmPeak), wLo: 1.25 * w, wHi: 0.8 * w };
+      // upper slope 1.0·w instead of the spec's 0.8·w [S, calibration: S54/LS3/F136 power peaks, PR table]
+      return { nPeak: rpmAtPistonSpeed(S, cmPeak), wLo: 1.25 * w, wHi: 1.0 * w };
     };
     const lo = camCurve(h.camProfile);
     p.nPeak = lo.nPeak; p.wLo = lo.wLo; p.wHi = lo.wHi;

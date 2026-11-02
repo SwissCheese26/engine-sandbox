@@ -38,6 +38,8 @@ export interface Model {
   throttleA0: number;
   /** Intake manifold volume [m³] (petrol.md §3.3: 1.0 … 1.5·Vh, ITB 0.2·Vh). */
   VMan: number;
+  /** Compressor choke mass flow [kg/s] (diesel.md §3.9: 140 kg/(s·m²)·π/4·D²), Infinity without exhaust turbo. */
+  chokeKgS: number;
   /** ECU peak pressure protection [bar] (diesel.md §3.2 mFuelTorqueLimit). */
   pMaxProtect: number;
   /** Lazily filled full-load table (100 rpm grid) for load and λ strategy. */
@@ -77,15 +79,21 @@ export function getModel(cfg: EngineConfig): Model {
     nRated, mDotAirRated, throttleA0,
     VMan: (cfg.induction.individualThrottleBodies && fuel === "petrol" ? 0.2 : 1.2) * Vh,
     pMaxProtect: engineLimits(cfg).peakPressureMaxBar / 0.95,
+    chokeKgS: charged && isExhaust(asp)
+      ? 140 * (Math.PI / 4) * (Math.max(15, cfg.induction.compressorInducerMm) / 1000) ** 2 * (asp === "twin-turbo-sequential" ? 1.5 : 1)
+      : Number.POSITIVE_INFINITY,
     fullTorque: null, fullAir: null,
   };
   if (m.d) {
-    // diesel.md §3.2c: kInj so that the injection system leaves ~10 % reserve over the smoke limit at
-    // rated rpm, evaluated at the system's reference pressure. Lower pressure than reference → less capacity.
-    const mAirRatedCyc = veRated * rhoRated * Vh;
-    const need = 1.1 * smokeLimitFuel(m.d, mAirRatedCyc);
-    const window = ((35 / 360) * 60) / nRated;
-    m.d.kInj = need / (Math.sqrt(m.d.sys.pInjRef) * window);
+    // diesel.md §3.2c: capacity ∝ √Δp · injection window (35 °CA → time ∝ 1/n). Calibration decision [S, PR]:
+    // at the system's reference pressure the capacity equals the smoke-limited quantity at the end of the
+    // torque plateau n_c = 0.55·revLimit (reference engines: N57 3000/5400, OM654 2400/4800, 6BT 1600/2800).
+    // Above n_c the fuel per cycle falls (∝ n^−0.7, see injectionCapacity), which gives the typical diesel torque drop towards rated power.
+    // Lower injection pressure than the reference → proportionally less capacity (e.g. 6BT at 1000 bar).
+    const nC = Math.max(800, 0.55 * cfg.revLimitRpm);
+    const mAirCyc = volumetricEfficiency(ve, nC, 320) * rhoRated * Vh;
+    m.d.nC = nC;
+    m.d.kInj = smokeLimitFuel(m.d, mAirCyc) / Math.sqrt(m.d.sys.pInjRef);
   }
   modelCache.set(cfg, m);
   return m;
@@ -197,6 +205,7 @@ export function evaluateCycle(m: Model, op: OpPoint): CycleOut {
   let xWall = 0.25;
   let lhv: number;
   let density: number;
+  let residual = 0;
   if (m.d) {
     const d = m.d;
     lhv = d.lhv;
@@ -224,6 +233,12 @@ export function evaluateCycle(m: Model, op: OpPoint): CycleOut {
     const p = m.p!;
     lhv = p.lhv;
     density = p.density;
+    // Residual gas (Heywood ch. 6 qualitatively; coefficients [S]): at low manifold pressure exhaust flows back
+    // during valve overlap, displacing fresh charge and slowing combustion. Relative to WOT (pExh/pMan ≈ 1):
+    // idle (≈ 4 … 5) loses ≈ 20 … 25 % → idle manifold 30 … 40 kPa as in petrol.md §3.3.
+    const xr = 0.08 * (1 + 0.6 * m.cfg.head.camProfile) * Math.max(0, Math.sqrt(Math.max(1, pExhKpa / Math.max(5, op.pManKpa))) - 1.1);
+    residual = Math.min(0.5, xr);
+    mAirCyc *= 1 - 0.5 * residual;
     const lam = petrolLambda(p, op.relLoad, op.coolantC);
     if (op.combust && !op.fuelCut) {
       mFuelCyc = mAirCyc / (lam * p.afr);
@@ -232,7 +247,7 @@ export function evaluateCycle(m: Model, op: OpPoint): CycleOut {
       knock = knockIntensity(margin, op.knockRetardDeg);
     }
     const c = petrolCombustion(p, n, mAirCyc, mFuelCyc, lam, Vh, op.knockRetardDeg, op.pManKpa, op.TManK - 273.15, op.relLoad);
-    imep = c.imepBar;
+    imep = c.imepBar * (1 - 0.5 * residual);
     peak = c.peakPressureBar;
     egtC = c.egtC;
   }
@@ -258,6 +273,18 @@ export function evaluateCycle(m: Model, op: OpPoint): CycleOut {
     fmepBar: fmep, bmepBar: bmep, torqueNm: torque, peakPressureBar: peak, egtC, smoke, knock, knockMargin: margin,
     heatToCoolantKw, exhaustMassFlowKgS: (mAirCyc + mFuelCyc) * cyclesPerS, mFuelFull, fuelLhv: lhv, fuelDensity: density,
   };
+}
+
+/**
+ * Pressure after the compressor, limited by the compressor choke line (diesel.md §3.9 "Stopfgrenze"):
+ * the charger cannot pass more than ṁ_choke, so above it the deliverable pressure falls with rpm.
+ */
+export function chokeLimitedUpKpa(m: Model, pUpKpa: number, rpm: number, TManK: number, ambientKpa: number): number {
+  if (!Number.isFinite(m.chokeKgS) || rpm < 100) return pUpKpa;
+  const veEff = volumetricEfficiency(m.ve, rpm, TManK);
+  const flow = (veEff * ((pUpKpa * 1000) / (R_AIR * TManK)) * m.Vh * rpm) / 120;
+  if (flow <= m.chokeKgS) return pUpKpa;
+  return Math.max(ambientKpa, (pUpKpa * m.chokeKgS) / flow);
 }
 
 /** Charge temperature in the manifold [K]: compressor + intercooler (PR #12) + manifold pick-up (petrol.md §3.2c). */
@@ -300,7 +327,7 @@ export function steadyFullLoad(m: Model, rpm: number, ambientC = 20, ambientKpa 
     const TManK = manifoldTempK(m, boost, ambientC);
     op.TManK = TManK;
     op.boostBar = boost;
-    const pUp = ambientKpa - 2 + 100 * boost; // air filter loss ≈ 2 kPa (diesel.md §3.1)
+    const pUp = chokeLimitedUpKpa(m, ambientKpa - 2 + 100 * boost, rpm, TManK, ambientKpa); // air filter ≈ 2 kPa (diesel.md §3.1)
     if (m.fuel === "petrol") pMan = pUp * steadyManifoldRatio(throttleA(m, 1, rpm, TManK), 1);
     else pMan = pUp;
     op.pManKpa = pMan;

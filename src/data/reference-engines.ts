@@ -157,10 +157,8 @@ const CUMMINS_6BT: ReferenceEngine = {
       boostTargetBar: 1.4, intercooler: "air-to-air", intakeRunnerLengthMm: 300, individualThrottleBodies: false,
     },
     fuelSystem: {
-      // Real: Bosch P7100 inline pump. Kern-Physik is adding DieselInjection "mechanical-pump";
-      // until that is in main, use "unit-injector" @ 1000 bar as diesel.md §5 proposes.
-      // TODO: switch to injection: "mechanical-pump" once the enum value lands.
-      kind: "diesel", injection: "unit-injector", injectionPressureBar: 1000, fuel: "diesel",
+      // Real: Bosch P7100 inline pump → DieselInjection "mechanical-pump" (lead decision, added in #3).
+      kind: "diesel", injection: "mechanical-pump", injectionPressureBar: 1000, fuel: "diesel",
       smokeLimitLambda: 1.35, injectionTimingOffsetDeg: 0,
     },
     exhaust: { manifold: "cast-log", egr: false, catalyst: false, particulateFilter: false, scr: false },

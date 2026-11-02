@@ -7,7 +7,7 @@
  */
 import { R_AIR, throttlePsi, volumetricEfficiency } from "./airpath.ts";
 import { dieselFires } from "./combustion-diesel.ts";
-import { evaluateCycle, fullLoadAt, getModel, manifoldTempK, newOpPoint, steadyFullLoad } from "./cycle.ts";
+import { chokeLimitedUpKpa, evaluateCycle, fullLoadAt, getModel, manifoldTempK, newOpPoint, steadyFullLoad } from "./cycle.ts";
 import type { CycleOut, Model, OpPoint } from "./cycle.ts";
 import { meanPistonSpeed } from "./geometry.ts";
 import { createLimitTracker, evaluateLimits, oilPressureBar, stepThermal, stepTurbo, turboMaxRpm } from "./subsystems.ts";
@@ -167,7 +167,7 @@ export class EngineSimulator {
     op.boostBar = x.turbo.boostBar;
     const TManK = manifoldTempK(m, x.turbo.boostBar, ambientC);
     op.TManK = TManK;
-    const pUpKpa = ambientKpa - 2 + 100 * x.turbo.boostBar;
+    const pUpKpa = chokeLimitedUpKpa(m, ambientKpa - 2 + 100 * x.turbo.boostBar, x.rpm, TManK, ambientKpa);
     const Vl = m.Vh * 1000;
     const T0 = 80 + 60 * Vl; // starter torque at standstill (diesel.md §3.11)
     const idle = cfg.idleRpm;
@@ -200,7 +200,8 @@ export class EngineSimulator {
       const overrun = pedal < 0.01 && rpm > idle + 300 && x.running;
       // --- idle governor (PI, diesel.md §3.11), acts as a minimum command
       const e = (idle - rpm) / idle;
-      const uMaxIdle = m.fuel === "diesel" ? 0.6 : 0.3;
+      // all-speed governor: may command the full quantity to avoid stalling (diesel); petrol idle valve ≤ 30 %
+      const uMaxIdle = m.fuel === "diesel" ? 1 : 0.3;
       if (combust) x.idleI = clamp(x.idleI + 3 * this.idleU0 * e * h, 0, uMaxIdle);
       const uIdle = clamp(x.idleI + 4 * this.idleU0 * e, 0, uMaxIdle);
       op.rpm = rpm;
@@ -209,7 +210,10 @@ export class EngineSimulator {
       op.fuelCut = x.limiterCut || (overrun && m.fuel === "petrol");
       op.loadPrev = x.load;
       op.cranking = starter;
-      op.egrRate = cfg.exhaust.egr && rpm < 3000 && x.running ? 0.35 * (1 - x.load) * clamp(x.thermal.coolantC / 60, 0, 1) : 0;
+      // diesel.md §3.1 EGR, part load only. Load taken from the fuel command (the ECU closes the valve as soon as
+      // the driver asks for torque); shape (1 − load)² instead of (1 − load) [S, PR] so that λ stays > 2.5 at 25 % load.
+      const uCmd = Math.max(pedal, uIdle);
+      op.egrRate = m.d && cfg.exhaust.egr && rpm < 3000 && x.running ? 0.35 * (1 - Math.min(1, Math.max(x.load, uCmd))) ** 2 * clamp(x.thermal.coolantC / 60, 0, 1) : 0;
       if (m.fuel === "diesel") {
         op.pManKpa = pUpKpa;
         x.pManKpa = pUpKpa;

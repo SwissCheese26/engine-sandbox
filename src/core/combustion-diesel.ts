@@ -16,7 +16,9 @@ export const INJECTION_SYSTEMS: Record<DieselInjection, { piK: number; phiK: num
   "indirect-prechamber": { piK: 0.35, phiK: 1.2, guete: 0.65, pInjRef: 300 },
   // Lead decision (mechanical inline/distributor pump): diesel.md §7 suggests Gütegrad ≈ 0.74,
   // no pilot injection → slightly more pressure rise than CR; pInjRef 900 bar [S].
-  "mechanical-pump": { piK: 0.75, phiK: 0.95, guete: 0.74, pInjRef: 900 },
+  // pInjRef 1800 bar: delivery capacity referenced like a CR system, so a 1000 bar pump is fuel-limited
+  // (old fuel-plate calibrations, e.g. Cummins 6BT bmep ≈ 12.7 bar) [S, PR].
+  "mechanical-pump": { piK: 0.75, phiK: 0.95, guete: 0.74, pInjRef: 1800 },
 };
 
 /** Seiliger (dual) cycle efficiency (diesel.md §3.3, Pischinger/Merker, Heywood). */
@@ -37,6 +39,8 @@ export interface DieselConsts {
   guete0: number;
   /** Injection capacity coefficient: mFuelInjMax = kInj·√p·window (diesel.md §3.2c), set in cycle.ts. */
   kInj: number;
+  /** Reference speed for kInj [rpm] (end of the torque plateau). */
+  nC: number;
   lambda50: number;
   egr: boolean;
   dpf: boolean;
@@ -48,7 +52,9 @@ export function dieselConsts(cfg: EngineConfig): DieselConsts {
   const fs = cfg.fuelSystem;
   const f = DIESEL_FUELS[fs.fuel];
   const sys = INJECTION_SYSTEMS[fs.injection] ?? INJECTION_SYSTEMS["common-rail"];
-  let g = sys.guete;
+  // Calibration factor 0.96 on the Gütegrad of diesel.md §3.3 [S]: centres the reference engines'
+  // peak torque (N57, OM654, DV6, VW PD) inside ±10 % (PR calibration table); BSFC stays at 195 … 205 g/kWh.
+  let g = sys.guete * 0.96;
   // diesel.md §3.3: injection pressure refines atomisation (DI only)
   if (fs.injection === "common-rail" || fs.injection === "unit-injector" || fs.injection === "mechanical-pump") {
     g *= 1 + 0.03 * Math.log(Math.max(50, fs.injectionPressureBar) / sys.pInjRef);
@@ -63,26 +69,27 @@ export function dieselConsts(cfg: EngineConfig): DieselConsts {
   if (fs.injection === "mechanical-pump") lambda50 += 0.05; // no pilot/multiple injection → more soot [S]
   return {
     fs, eps: cfg.block.compressionRatio, bore: cfg.block.boreMm, lhv: f.lhvJkg, afr: f.afr, density: f.densityKgL,
-    sootFactor: f.sootFactor, sys, guete0: g, kInj: 0, lambda50, egr: cfg.exhaust.egr, dpf: cfg.exhaust.particulateFilter,
+    sootFactor: f.sootFactor, sys, guete0: g, kInj: 0, nC: 3000, lambda50, egr: cfg.exhaust.egr, dpf: cfg.exhaust.particulateFilter,
     revLimit: cfg.revLimitRpm,
   };
 }
 
-/**
- * Smoke-limited full-load fuel mass per cycle [kg] (diesel.md §3.2b).
- * Decision (PR): the ECU meters fuel *volume* calibrated for EN 590 diesel, so other fuels get
- * the diesel-equivalent volume: m = mAir/(afrDiesel·λsmoke)·ρfuel/ρdiesel. This reproduces the
- * −8 … 10 % torque with biodiesel from diesel.md §2 (energy per litre is lower).
- */
+/** Smoke-limited full-load fuel mass per cycle [kg] (diesel.md §3.2b): mAir/(AFR_st·λ_smoke). */
 export function smokeLimitFuel(c: DieselConsts, mAirCyc: number): number {
-  const ref = DIESEL_FUELS.diesel;
-  return (mAirCyc / (ref.afr * c.fs.smokeLimitLambda)) * (c.density / ref.densityKgL);
+  return mAirCyc / (c.afr * c.fs.smokeLimitLambda);
 }
 
-/** Injection capacity per cycle [kg] (diesel.md §3.2c): ∝ √Δp · window(35 °CA → time ∝ 1/n). */
+/**
+ * Injection capacity per cycle [kg] (diesel.md §3.2c): ∝ √Δp · injection time.
+ * Deviation [S, PR]: the spec's fixed 35 °CA window (time ∝ 1/n) makes the torque fall so fast that the
+ * power peak sits right at the end of the plateau; real calibrations widen the window in °CA with speed.
+ * Time ∝ n^−0.7 puts the power peak at ≈ 0.75 … 0.85·revLimit like the reference engines.
+ * `kInj` is defined against the reference speed n_c (cycle.ts).
+ */
 export function injectionCapacity(c: DieselConsts, rpm: number): number {
-  const window = ((35 / 360) * 60) / Math.max(200, rpm);
-  return c.kInj * Math.sqrt(Math.max(50, c.fs.injectionPressureBar)) * window * (c.density / DIESEL_FUELS.diesel.densityKgL);
+  // mechanical (plunger) pumps meter a fixed stroke per cycle: capacity independent of rpm [S]
+  const time = c.fs.injection === "mechanical-pump" ? 1 : Math.pow(c.nC / Math.max(200, rpm), 0.7);
+  return c.kInj * Math.sqrt(Math.max(50, c.fs.injectionPressureBar)) * time;
 }
 
 /** Governor ramp (diesel.md §3.2d): quantity ramps to 0 over ≈ 250 rpm around the limit. */
