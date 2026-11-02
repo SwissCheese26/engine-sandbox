@@ -206,7 +206,9 @@ export class Drivetrain {
       // manual: open; DSG: second clutch takes over, slip syncs within the shift
       clutch = s.type === "dsg" ? 0.85 : 0;
     } else if (brake > 0.05 && pedal < 0.02 && inputRpm < idle * 1.4) {
-      // braking down to a stop: the automatic clutch opens before the engine is dragged below idle
+      // braking down to a stop: the automatic clutch opens before the engine is dragged below idle.
+      // With pedal AND brake (left-foot braking) the clutch stays engaged on purpose: the engine works against
+      // the brake and can stall, like a real car (review #20).
       this.holdLaunch = 0;
       clutch = 0;
     } else if (inputRpm < idle * 1.05) {
