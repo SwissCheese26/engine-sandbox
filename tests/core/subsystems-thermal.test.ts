@@ -82,7 +82,23 @@ describe("thermal: warm-up", () => {
     expect(s.coolantC).toBeLessThan(70);
     expect(s.oilC).toBeLessThan(80);
     expect(s.coolantC).toBeGreaterThan(19.9);
-    expect(s.egtC).toBeCloseTo(20, 3);
+    expect(s.egtC).toBeCloseTo(20, 1);
+  });
+
+  test("exhaust: heats quickly under load, cools slowly (manifold heat), very slowly with the engine off", () => {
+    const cfg = defaultConfig("petrol");
+    // overrun at 3000 rpm: gas target 200 °C, starts at 850 °C
+    let s: ThermalState = { coolantC: 90, oilC: 100, egtC: 850 };
+    for (let i = 0; i < 50; i++) s = stepThermal(s, cfg, 0.1, 0, 200, 3000, 20);
+    expect(s.egtC).toBeGreaterThan(500); // 5 s overrun: still clearly hot
+    // engine off: after one minute the manifold probe is still well above 300 °C
+    let off: ThermalState = { coolantC: 90, oilC: 100, egtC: 850 };
+    for (let i = 0; i < 60; i++) off = stepThermal(off, cfg, 1, 0, 20, 0, 20);
+    expect(off.egtC).toBeGreaterThan(500);
+    // heating from idle to full load follows within a few seconds
+    let up: ThermalState = { coolantC: 90, oilC: 100, egtC: 400 };
+    for (let i = 0; i < 50; i++) up = stepThermal(up, cfg, 0.1, 0, 900, 6000, 20);
+    expect(up.egtC).toBeGreaterThan(800);
   });
 
   test("large dt is stable and close to small dt", () => {

@@ -24,6 +24,10 @@ export class ControlPanel {
 
   /** Lever position set by mouse/touch/arrow keys. */
   private lever = 0;
+  /** Gas key response: 0 = instant full throttle, otherwise seconds from 0 to 100 % (setting). */
+  private gasRampS = 0;
+  /** Current key-driven pedal 0 … 1 (ramps towards gasHeld). */
+  private gasLevel = 0;
   private gasHeld = false;
   private starterKey = false;
   /** S held: brake (chassis dyno). */
@@ -77,6 +81,14 @@ export class ControlPanel {
         <label class="console__field console__vol">
           <span>Lautstärke</span>
           <input type="range" min="0" max="1" step="0.05" data-control="volume" />
+        </label>
+        <label class="console__field console__gasramp">
+          <span>Gas mit <kbd>W</kbd></span>
+          <select data-control="gas-ramp">
+            <option value="0">Sofort Vollgas</option>
+            <option value="1">Zügig (1 s)</option>
+            <option value="3">Gefühlvoll (3 s)</option>
+          </select>
         </label>
         <button type="button" class="btn" data-control="reset">Motor zurücksetzen</button>
       </div>
@@ -165,6 +177,22 @@ export class ControlPanel {
       if (this.inputs.dynoMode === "torque") this.inputs.dynoBrakeTorqueNm = v;
       else this.inputs.dynoTargetRpm = v;
       this.syncTarget();
+    });
+    const ramp = this.el.querySelector<HTMLSelectElement>('[data-control="gas-ramp"]')!;
+    try {
+      const saved = localStorage.getItem("pruefzelle.gasRamp");
+      if (saved && [...ramp.options].some((o) => o.value === saved)) ramp.value = saved;
+    } catch {
+      /* default: instant */
+    }
+    this.gasRampS = Number(ramp.value);
+    ramp.addEventListener("change", () => {
+      this.gasRampS = Number(ramp.value);
+      try {
+        localStorage.setItem("pruefzelle.gasRamp", ramp.value);
+      } catch {
+        /* per visit only */
+      }
     });
     this.muteBtn.addEventListener("click", () => {
       this.muted = !this.muted;
@@ -258,6 +286,7 @@ export class ControlPanel {
   /** Releases held keys when the window loses focus, so the throttle never sticks open. */
   releaseAll() {
     this.gasHeld = false;
+    this.gasLevel = 0;
     this.starterKey = false;
     this.brakeHeld = false;
     this.starterPointer = false;
@@ -287,8 +316,24 @@ export class ControlPanel {
     this.starter.classList.toggle("is-pressed", this.starterKey || this.starterPointer);
   }
 
+  /**
+   * Per frame: the gas key ramps the pedal up with the chosen response (instant / 1 s / 3 s); releasing
+   * is 4× faster, like lifting the foot. Returns nothing; updates inputs.pedal.
+   */
+  tick(dt: number) {
+    const target = this.gasHeld ? 1 : 0;
+    if (this.gasLevel === target) return;
+    if (this.gasRampS <= 0) this.gasLevel = target;
+    else {
+      const rate = (target > this.gasLevel ? 1 : 4) / this.gasRampS;
+      const step = rate * Math.max(0, dt);
+      this.gasLevel = target > this.gasLevel ? Math.min(target, this.gasLevel + step) : Math.max(target, this.gasLevel - step);
+    }
+    this.renderPedal();
+  }
+
   private renderPedal() {
-    const p = this.gasHeld ? 1 : this.lever;
+    const p = Math.max(this.gasRampS <= 0 && this.gasHeld ? 1 : this.gasLevel, this.lever);
     this.inputs.pedal = p;
     this.pedalEl.style.setProperty("--p", String(p));
     this.pedalFill.style.transform = `scaleY(${p})`;
