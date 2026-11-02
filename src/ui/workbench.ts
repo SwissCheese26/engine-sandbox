@@ -4,6 +4,7 @@ import { validateConfig } from "../core/index.ts";
 import type { EngineConfig, FuelKind, Warning } from "../core/index.ts";
 import { defaultConfig } from "../data/presets.ts";
 import { ENGINE_LIBRARY, libraryConfig } from "../data/engine-library.ts";
+import type { LibraryEngine } from "../data/engine-library.ts";
 import { FIELDS, GROUPS, getPath, isVisible, setPath } from "./fields.ts";
 import type { Field } from "./fields.ts";
 import { clamp, fmt, parseNumber, snap } from "./format.ts";
@@ -46,7 +47,7 @@ export class Workbench {
         <button type="button" class="btn btn--small" data-action="preset">Grundausstattung laden</button>
       </div>
       <label class="bench__library"><span>Serienmotor laden</span>
-        <select data-action="library"><option value="">Motor wählen …</option>${(["diesel", "petrol"] as const).map((f) => `<optgroup label="${f === "diesel" ? "Diesel" : "Benziner"}">${ENGINE_LIBRARY.filter((e) => e.config.fuel === f).map((e) => `<option value="${e.config.id}">${e.config.name}</option>`).join("")}</optgroup>`).join("")}</select>
+        <select data-action="library"><option value="">Motor wählen …</option>${([["Diesel", (e: LibraryEngine) => e.category !== "motorcycle" && e.config.fuel === "diesel"], ["Benziner", (e: LibraryEngine) => e.category !== "motorcycle" && e.config.fuel === "petrol"], ["Motorrad", (e: LibraryEngine) => e.category === "motorcycle"]] as const).map(([label, pick]) => `<optgroup label="${label}">${ENGINE_LIBRARY.filter(pick).map((e) => `<option value="${e.config.id}">${e.config.name}</option>`).join("")}</optgroup>`).join("")}</select>
       </label>
       <p class="bench__libinfo" hidden></p>
       <p class="bench__lock" role="status" aria-live="polite" hidden>Zum Umbauen Motor abstellen: Zündung aus mit <kbd>I</kbd>.</p>
