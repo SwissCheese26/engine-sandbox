@@ -401,7 +401,9 @@ function stepVehicle(x: Internal, c: VehicleCoupling, engineTorqueNm: number, J:
   const wIn = i > 0 ? (x.vSpeed / r) * i : 0; // gearbox input shaft speed, rad/s
   const lock = clamp(c.clutch, 0, 1);
   const cap = lock * c.clutchCapacityNm;
-  const fRes = roadLoadN(veh, x.vSpeed);
+  // service brake: friction brake up to μ·m·g with μ ≈ 1.0 (road tyre on dry asphalt) [S]; holds the car at rest
+  const fBrake = x.vSpeed > 0 ? clamp(c.brake ?? 0, 0, 1) * 1.0 * veh.massKg * G : 0;
+  const fRes = roadLoadN(veh, x.vSpeed) + fBrake;
   const slip = wEng - wIn;
   // rigid if the clutch is (almost) closed, synchronised and able to carry the torque
   if (i > 0 && lock > 0.98 && Math.abs(slip) < 2) {

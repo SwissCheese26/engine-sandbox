@@ -26,6 +26,8 @@ export class ControlPanel {
   private lever = 0;
   private gasHeld = false;
   private starterKey = false;
+  /** S held: brake (chassis dyno). */
+  brakeHeld = false;
   private starterPointer = false;
   private lastMsgKey = "";
   private lastStatus = "";
@@ -48,9 +50,9 @@ export class ControlPanel {
           <span class="toggle__lever" aria-hidden="true"></span>
           <span class="toggle__text">Zündung <kbd>I</kbd></span>
         </label>
-        <button type="button" class="starter" data-control="starter" aria-keyshortcuts="S">
+        <button type="button" class="starter" data-control="starter" aria-keyshortcuts="A">
           <span class="starter__cap" aria-hidden="true"></span>
-          <span class="starter__text">Starter <kbd>S</kbd><span class="kbd-hint"> halten</span></span>
+          <span class="starter__text">Starter <kbd>A</kbd><span class="kbd-hint"> halten</span></span>
         </button>
         <button type="button" class="btn btn--small console__more" aria-expanded="false">Prüfstand und Ton</button>
       </div>
@@ -229,10 +231,14 @@ export class ControlPanel {
       }
       return true;
     }
-    if (key === "s") {
+    if (key === "a") {
       if (e.repeat) return true;
       this.starterKey = down;
       this.updateStarter();
+      return true;
+    }
+    if (key === "s") {
+      if (!e.repeat) this.brakeHeld = down;
       return true;
     }
     if (key === "w" || (key === " " && !activatable)) {
@@ -253,6 +259,7 @@ export class ControlPanel {
   releaseAll() {
     this.gasHeld = false;
     this.starterKey = false;
+    this.brakeHeld = false;
     this.starterPointer = false;
     this.updateStarter();
     this.renderPedal();
@@ -358,9 +365,9 @@ export class ControlPanel {
     let status: string;
     if (s.destroyed) status = "Motor zerstört. Setze ihn zurück, um weiterzumachen.";
     else if (!this.inputs.ignition) status = "Zündung aus. Schalte sie mit I ein.";
-    else if (s.running) status = this.inputs.dynoMode === "free" ? "Motor läuft. Gib Gas mit der Leertaste." : "Motor läuft unter Last.";
+    else if (s.running) status = this.inputs.dynoMode === "free" ? "Motor läuft. Gib Gas mit der Leertaste." : (this.inputs.dynoMode === "vehicle" ? "Motor läuft. W gibt Gas, S bremst, E und Q schalten." : "Motor läuft unter Last.");
     else if (this.inputs.starter) status = "Starter dreht …";
-    else status = "Zündung ein. Halte S, um zu starten.";
+    else status = "Zündung ein. Halte A, um zu starten.";
     if (status !== this.lastStatus) {
       this.status.textContent = status;
       this.lastStatus = status;

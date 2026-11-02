@@ -190,6 +190,8 @@ export interface VehicleCoupling {
   clutch: number;
   /** Max torque the closed clutch can transmit, Nm. */
   clutchCapacityNm: number;
+  /** Service brake 0 … 1 (1 ≈ full braking, about 1 g). Optional, default 0. */
+  brake?: number;
 }
 
 export type Severity = "info" | "warning" | "critical";

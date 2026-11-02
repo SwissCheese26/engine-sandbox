@@ -147,7 +147,7 @@ export class Drivetrain {
    * Called once per frame BEFORE simulator.step(): updates shift logic, clutch and CVT ratio from the last engine
    * state and returns the coupling for this frame.
    */
-  inputs(dt: number, engine: EngineState, pedal: number): VehicleCoupling {
+  inputs(dt: number, engine: EngineState, pedal: number, brake = 0): VehicleCoupling {
     const s = this.st;
     const g = GEARBOXES[s.type];
     const v = engine.vehicleSpeedMs ?? 0;
@@ -205,6 +205,10 @@ export class Drivetrain {
     } else if (s.shifting) {
       // manual: open; DSG: second clutch takes over, slip syncs within the shift
       clutch = s.type === "dsg" ? 0.85 : 0;
+    } else if (brake > 0.05 && pedal < 0.02 && inputRpm < idle * 1.4) {
+      // braking down to a stop: the automatic clutch opens before the engine is dragged below idle
+      this.holdLaunch = 0;
+      clutch = 0;
     } else if (inputRpm < idle * 1.05) {
       // launch: engage with engine speed above idle (anti-stall), harder with pedal
       const launchRpm = idle + 200 + pedal * 900;
@@ -238,6 +242,7 @@ export class Drivetrain {
       efficiency: g.efficiency,
       clutch,
       clutchCapacityNm: Math.max(250, this.summary.peakTorqueNm * 1.6),
+      brake,
     };
   }
 

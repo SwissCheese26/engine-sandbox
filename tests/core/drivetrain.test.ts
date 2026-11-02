@@ -81,3 +81,25 @@ describe("drivetrain review #19", () => {
     expect(c.clutch).toBe(0);
   });
 });
+
+describe("service brake", () => {
+  test("full brake from 100 km/h stops in ≈ 35–50 m without stalling the engine", () => {
+    const cfg = defaultConfig("petrol");
+    const sim = new EngineSimulator(cfg);
+    const dt = new Drivetrain(cfg, summarize(cfg), "dsg");
+    const inp = { ...defaultInputs(), ignition: true, starter: true, dynoMode: "vehicle" as const };
+    const step = (pedal: number, brake: number) => {
+      const vehicle = dt.inputs(1 / 60, sim.state, pedal, brake);
+      sim.step(1 / 60, { ...inp, vehicle, pedal: dt.effectivePedal(pedal) });
+    };
+    for (let i = 0; i < 240; i++) { if (i === 120) inp.starter = false; step(0, 0); }
+    let k = 0;
+    while ((sim.state.vehicleSpeedMs ?? 0) < 100 / 3.6 && k++ < 60 * 30) step(1, 0);
+    let dist = 0;
+    for (let i = 0; i < 60 * 10; i++) { dist += (sim.state.vehicleSpeedMs ?? 0) / 60; step(0, 1); }
+    expect(sim.state.vehicleSpeedMs).toBeLessThan(0.1);
+    expect(dist).toBeGreaterThan(30);
+    expect(dist).toBeLessThan(55);
+    expect(sim.state.running).toBe(true);
+  });
+});

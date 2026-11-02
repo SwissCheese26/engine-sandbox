@@ -45,7 +45,7 @@ Mobil: Die Zelle wird gestapelt. Die Werkbank ist eine ausklappbare Lade, das Pe
 1. **Die Mutigkeit steckt im Linienschreiber.** Ein Papierstreifen läuft durch, Stifte schreiben Drehzahl, Drehmoment und Leistung live mit, und das Volllastdiagramm erscheint als gedruckter Bogen. Alles andere bleibt ruhig.
 2. **Gelb heißt Grenze.** Wenn etwas gelb ist, ist etwas am Limit. Das gilt immer und ohne Ausnahme.
 3. **Jede Zahl hat eine Einheit**, und jede Einstellung zeigt sofort ihre Wirkung. Jede Werkbank-Platte hat eine kurze Wirkungszeile, z. B. „+ Verdichtung → besserer Wirkungsgrad, höherer Spitzendruck“.
-4. **Bedienelemente wie in der Zelle:** Kippschalter für die Zündung, ein Taster für den Starter, ein großer vertikaler Pedalschieber. Sie müssen per Tastatur bedienbar sein: Leertaste oder W gibt Gas, S startet, I schaltet die Zündung.
+4. **Bedienelemente wie in der Zelle:** Kippschalter für die Zündung, ein Taster für den Starter, ein großer vertikaler Pedalschieber. Sie müssen per Tastatur bedienbar sein: Leertaste oder W gibt Gas, S bremst (Rollenprüfstand), A betätigt den Starter, I schaltet die Zündung.
 5. **Bewegung nur als Antwort.** Nadeln, Stifte und das Schnittbild bewegen sich, weil der Motor läuft. Es gibt keine Einblend-Animationen. `prefers-reduced-motion` dämpft die Nadeln.
 6. **Sprache:** Deutsch, Satzanfang groß, aktive Verben. „Motor starten“, nicht „Submit“.
 
