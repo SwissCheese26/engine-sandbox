@@ -2,6 +2,8 @@ import { describe, expect, test } from "bun:test";
 import { Drivetrain, EngineSimulator, defaultInputs, summarize, theoreticalVmax } from "../../src/core/index.ts";
 import type { GearboxType } from "../../src/core/index.ts";
 import { defaultConfig } from "../../src/data/presets.ts";
+import { libraryConfig } from "../../src/data/engine-library.ts";
+import type { EngineConfig } from "../../src/core/index.ts";
 
 function run(fuel: "diesel" | "petrol", type: GearboxType, seconds: number) {
   const cfg = defaultConfig(fuel);
@@ -101,5 +103,146 @@ describe("service brake", () => {
     expect(dist).toBeGreaterThan(30);
     expect(dist).toBeLessThan(55);
     expect(sim.state.running).toBe(true);
+  });
+});
+
+describe("top-speed governor (issue #32)", () => {
+  function drive(fuel: "diesel" | "petrol" | EngineConfig, type: GearboxType, limit: number | null, seconds: number) {
+    const cfg = typeof fuel === "string" ? defaultConfig(fuel) : fuel;
+    const sim = new EngineSimulator(cfg);
+    const dt = new Drivetrain(cfg, summarize(cfg), type);
+    dt.setSpeedLimit(limit);
+    const inp = { ...defaultInputs(), ignition: true, starter: true, dynoMode: "vehicle" as const };
+    const step = (pedal: number) => {
+      const vehicle = dt.inputs(1 / 60, sim.state, pedal);
+      sim.step(1 / 60, { ...inp, vehicle, pedal: dt.effectivePedal(pedal) });
+    };
+    for (let i = 0; i < 120; i++) step(0);
+    inp.starter = false;
+    for (let i = 0; i < 120; i++) step(0);
+    const tail: number[] = [];
+    let gearChanges = 0;
+    let lastGear = dt.state.gear;
+    for (let i = 0; i < seconds * 60; i++) {
+      // manual: driver shifts up near the limiter (as in run())
+      if (type === "manual" && sim.state.rpm > cfg.revLimitRpm - 250 && !dt.state.shifting && dt.state.clutch > 0.95 && dt.state.gear < dt.state.gearCount) dt.shift(1);
+      step(1);
+      if (i >= (seconds - 20) * 60) {
+        tail.push(dt.state.speedKmh);
+        if (dt.state.gear !== lastGear) gearChanges++;
+      }
+      lastGear = dt.state.gear;
+    }
+    return { dt, sim, step, tail, gearChanges };
+  }
+
+  test("default limit is 250 km/h", () => {
+    const cfg = defaultConfig("petrol");
+    expect(new Drivetrain(cfg, summarize(cfg), "dsg").state.speedLimitKmh).toBe(250);
+  });
+
+  test("petrol DSG at 210: no overshoot above 212, holds 210 ± 2 without oscillating", () => {
+    const { dt, tail, gearChanges } = drive("petrol", "dsg", 210, 90);
+    expect(dt.state.maxSpeedKmh).toBeLessThanOrEqual(212);
+    expect(Math.min(...tail)).toBeGreaterThan(208);
+    expect(Math.max(...tail)).toBeLessThan(212);
+    expect(Math.max(...tail) - Math.min(...tail)).toBeLessThan(1);
+    expect(gearChanges).toBe(0);
+    expect(dt.state.limiting).toBe(true);
+    expect(dt.state.maxSpeedLimited).toBe(true);
+    expect(dt.effectivePedal(1)).toBeLessThan(0.95); // pedal really held back
+  });
+
+  test("petrol DSG with the governor off ('Aufhebung') goes beyond 250", () => {
+    const { dt } = drive("petrol", "dsg", null, 90);
+    expect(dt.state.speedLimitKmh).toBeNull();
+    expect(dt.state.maxSpeedKmh).toBeGreaterThan(250);
+    expect(dt.state.limiting).toBe(false);
+    expect(dt.state.maxSpeedLimited).toBe(false);
+  });
+
+  test("diesel DSG stays below 250, governor never intervenes", () => {
+    const on = drive("diesel", "dsg", 250, 90);
+    const off = drive("diesel", "dsg", null, 90);
+    expect(on.dt.state.maxSpeedKmh).toBeLessThan(245);
+    expect(on.dt.state.limiting).toBe(false);
+    expect(on.dt.state.maxSpeedLimited).toBe(false);
+    expect(Math.abs(on.dt.state.maxSpeedKmh - off.dt.state.maxSpeedKmh)).toBeLessThan(0.01);
+  });
+
+  test("driver lifting below the cap gets exactly his pedal, reset keeps the setting", () => {
+    const { dt } = drive("petrol", "cvt", 180, 60);
+    expect(dt.effectivePedal(0)).toBe(0);
+    dt.reset();
+    expect(dt.state.speedLimitKmh).toBe(180);
+    expect(dt.state.limiting).toBe(false);
+    dt.setSpeedLimit(null);
+    expect(dt.effectivePedal(1)).toBe(1);
+  });
+
+  for (const limit of [180, 250] as const) {
+    test(`petrol DSG at ${limit}: holds ± 2 and does not hunt between gears`, () => {
+      const { tail, gearChanges } = drive("petrol", "dsg", limit, 90);
+      expect(Math.min(...tail)).toBeGreaterThan(limit - 2);
+      expect(Math.max(...tail)).toBeLessThan(limit + 2);
+      expect(gearChanges).toBeLessThanOrEqual(1);
+    });
+  }
+
+  test("BMW S65 (library) DSG at 270: holds 270 ± 2, no gear hunting", () => {
+    const { dt, tail, gearChanges } = drive(libraryConfig("lib-bmw-s65b40"), "dsg", 270, 90);
+    expect(dt.state.maxSpeedKmh).toBeLessThanOrEqual(272);
+    expect(Math.min(...tail)).toBeGreaterThan(268);
+    expect(Math.max(...tail)).toBeLessThan(272);
+    expect(gearChanges).toBeLessThanOrEqual(1);
+  });
+
+  test("manual gearbox at 210: holds 210 ± 2", () => {
+    const { dt, tail } = drive("petrol", "manual", 210, 90);
+    expect(dt.state.maxSpeedKmh).toBeLessThanOrEqual(212);
+    expect(Math.min(...tail)).toBeGreaterThan(208);
+    expect(Math.max(...tail)).toBeLessThan(212);
+    expect(dt.state.limiting).toBe(true);
+  });
+
+  test("setType resets the governor but keeps the chosen limit", () => {
+    const { dt } = drive("petrol", "dsg", 210, 60);
+    expect(dt.state.limiting).toBe(true);
+    dt.setType("cvt");
+    expect(dt.state.limiting).toBe(false);
+    expect(dt.state.speedLimitKmh).toBe(210);
+    expect(dt.effectivePedal(1)).toBe(1);
+  });
+
+  test("anti-windup: short lift inside the window, full throttle holds the limit again at once", () => {
+    const { dt, step } = drive("petrol", "dsg", 210, 90);
+    for (let i = 0; i < 20; i++) step(0); // lift 1/3 s
+    const vLift = dt.state.speedKmh;
+    let min = Infinity;
+    let backS = -1;
+    for (let i = 0; i < 120; i++) {
+      step(1);
+      min = Math.min(min, dt.state.speedKmh);
+      if (backS < 0 && dt.state.speedKmh >= 209.5) backS = i / 60;
+    }
+    expect(min).toBeGreaterThan(vLift - 0.3); // no further sag from a wound-down integrator
+    expect(min).toBeGreaterThan(208);
+    expect(backS).toBeGreaterThanOrEqual(0);
+    expect(backS).toBeLessThan(1.5);
+  });
+
+  test("anti-windup: after a 1 s lift the governor gives full pedal until close to the limit", () => {
+    const { dt, step } = drive("petrol", "dsg", 210, 90);
+    for (let i = 0; i < 60; i++) step(0); // 1 s lift: drag alone costs ≈ 4–5 km/h at 210
+    const vLift = dt.state.speedKmh;
+    let min = Infinity;
+    for (let i = 0; i < 300; i++) {
+      if (dt.state.speedKmh < 207) expect(dt.effectivePedal(1)).toBeGreaterThan(0.95);
+      step(1);
+      min = Math.min(min, dt.state.speedKmh);
+    }
+    expect(min).toBeGreaterThan(vLift - 0.3);
+    expect(dt.state.speedKmh).toBeGreaterThan(208);
+    expect(dt.state.speedKmh).toBeLessThan(212);
   });
 });
