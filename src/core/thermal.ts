@@ -27,6 +27,14 @@
  * is stable for any dt and any radiator size (stiff case: tiny engine + huge radiator), and accurate for the
  * slow warm-up dynamics. EGT uses the exact solution of the first-order lag.
  *
+ * Air / oil-air cooling (issue #25, `cooling.type`) [S]: no coolant circuit. The "coolant" state is the
+ * cylinder-head temperature (lumped metal of heads and finned cylinders, 25 % of the engine mass). Fins reject
+ *   Q = radiatorCapacityKw · k_air(v) · (T_head − T_amb) / 150 K,  k_air = 0.06 + 0.94 · min(1.4, √(v / 25 m/s))
+ * (forced convection h ∝ v^0.5 … 0.8 on finned surfaces; at standstill only natural convection ≈ 6 %). On the
+ * engine dyno (no ram air) an air-cooled engine therefore overheats quickly at load, as on a real bench without
+ * blower. Oil: head → oil coupling 0.2× (air) / 0.35× (oil-air, oil jets on the head); oil → air via sump and
+ * oil cooler 20 / 60 W/K × k_air (oil-air ×2).
+ *
  * Pure functions, no DOM.
  */
 import type { EngineConfig } from "./types.ts";
@@ -45,11 +53,25 @@ function displacementL(cfg: EngineConfig): number {
   return ((Math.PI / 4) * (boreMm / 10) ** 2 * (strokeMm / 10) * cylinders) / 1000;
 }
 
+/** True for air and oil-air cooling (no coolant circuit, issue #25). */
+export function isAirCooled(cfg: EngineConfig): boolean {
+  return cfg.cooling.type === "air" || cfg.cooling.type === "oil-air";
+}
+
+/** Ram-air factor of fins / oil cooler at air speed v (m/s), 1 at 25 m/s (header). */
+export function airCoolingFactor(airSpeedMs: number): number {
+  return 0.06 + 0.94 * Math.min(1.4, Math.sqrt(Math.max(0, airSpeedMs) / 25));
+}
+
 /** Heat capacities of the coolant and oil circuits, J/K (diesel.md §3.10, metal share see header). */
 export function heatCapacities(cfg: EngineConfig): { coolantJK: number; oilJK: number } {
   const vl = displacementL(cfg);
   const mass = engineMassKg(cfg);
   const cMetal = cfg.block.blockMaterial === "aluminium" ? 900 : 460;
+  if (isAirCooled(cfg)) {
+    // head + finned cylinders as one metal mass (header); oil as below
+    return { coolantJK: 0.25 * mass * cMetal, oilJK: (2 + 0.6 * vl) * 0.85 * 2000 + 0.03 * mass * cMetal };
+  }
   return {
     // coolant 50 % glycol: ρ 1.04 kg/l, c_p 3.5 kJ/(kg K); small-circuit volume (see header)
     coolantJK: (1.5 + 0.6 * vl) * 1.04 * 3500 + 0.1 * mass * cMetal,
@@ -118,21 +140,30 @@ export function stepThermal(
   targetEgtC: number,
   rpm: number,
   ambientC: number,
+  /** Ram air speed at the engine, m/s (vehicle speed on the chassis dyno; 0 on the engine dyno). Air cooling only. */
+  airSpeedMs = 0,
 ): ThermalState {
   if (!(dt > 0)) return { ...s };
   const { coolantJK, oilJK } = heatCapacities(cfg);
   const qComb = Math.max(0, heatToCoolantKw) * 1000;
   const qOilIn = oilHeatW(cfg, heatToCoolantKw, rpm);
+  const air = isAirCooled(cfg);
+  const oilAir = cfg.cooling.type === "oil-air";
+  const kAir = airCoolingFactor(airSpeedMs);
   // Oil → coolant via oil cooler (plate heat exchanger) or block walls; sump → air (diesel.md §3.10).
-  const uaOil = oilToCoolantUA(cfg, rpm);
+  // Air cooling: oil ↔ head coupling (header).
+  const uaOil = oilToCoolantUA(cfg, rpm) * (air ? (oilAir ? 0.35 : 0.2) : 1);
   // Natural convection of the block surface to ambient, W/K [S].
   const uaBlock = 0.03 * engineMassKg(cfg);
   // sump → air, diesel.md §3.10: 10 W/K incl. block surface (here split into sump 6 W/K + block above)
-  const uaSump = 6;
+  const sizeOil = (Math.max(0.1, displacementL(cfg)) / 2) ** 0.6;
+  const uaSump = 6 + (air ? (cfg.cooling.oilCooler ? 60 : 20) * (oilAir ? 2 : 1) * kAir * sizeOil : 0);
+  const finUA = air ? (cfg.cooling.radiatorCapacityKw * 1000 * kAir) / 150 : 0;
+  const reject = (c: number) => (air ? finUA * Math.max(0, c - ambientC) : radiatorHeatW(cfg, c, ambientC, rpm));
   const f = (c: number, o: number): [number, number] => {
     const qOilToCool = uaOil * (o - c);
     return [
-      (qComb + qOilToCool - radiatorHeatW(cfg, c, ambientC, rpm) - uaBlock * (c - ambientC)) / coolantJK,
+      (qComb + qOilToCool - reject(c) - uaBlock * (c - ambientC)) / coolantJK,
       (qOilIn - qOilToCool - uaSump * (o - ambientC)) / oilJK,
     ];
   };

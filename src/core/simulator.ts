@@ -12,6 +12,7 @@ import type { CycleOut, Model, OpPoint } from "./cycle.ts";
 import { meanPistonSpeed } from "./geometry.ts";
 import { createLimitTracker, evaluateLimits, oilPressureBar, stepThermal, stepTurbo } from "./subsystems.ts";
 import type { LimitTracker, ThermalState, TurboState } from "./subsystems.ts";
+import { isAirCooled } from "./thermal.ts";
 import type { EngineConfig, EngineState, SimInputs, VehicleCoupling, Warning } from "./types.ts";
 
 const clamp = (x: number, lo: number, hi: number) => (x < lo ? lo : x > hi ? hi : x);
@@ -155,7 +156,7 @@ export class EngineSimulator {
       // lead decision: temperatures start at the ambient of the first step after reset();
       // "warm start" (Arthur's wish): engine at operating temperature, exhaust manifold still warm
       x.thermal = input.startWarm
-        ? { coolantC: Math.max(ambientC, cfg.cooling.thermostatOpenC), oilC: Math.max(ambientC, 90), egtC: Math.max(ambientC, 150) }
+        ? { coolantC: Math.max(ambientC, isAirCooled(cfg) ? 140 : cfg.cooling.thermostatOpenC), oilC: Math.max(ambientC, 90), egtC: Math.max(ambientC, 150) }
         : { coolantC: ambientC, oilC: ambientC, egtC: ambientC };
       x.pManKpa = ambientKpa;
       x.initialised = true;
@@ -177,7 +178,9 @@ export class EngineSimulator {
     const op = this.op;
     op.ambientKpa = ambientKpa;
     op.TambK = ambientC + 273.15;
-    op.coolantC = x.thermal.coolantC;
+    // air cooling (#25): the state holds the head temperature, which runs ≈ 90 K above a coolant jacket; the
+    // combustion model (warm-up enrichment, knock) expects a coolant-equivalent temperature [S]
+    op.coolantC = isAirCooled(cfg) ? Math.max(Math.min(x.thermal.coolantC, ambientC), x.thermal.coolantC - 90) : x.thermal.coolantC;
     op.oilC = x.thermal.oilC;
     op.boostBar = x.turbo.boostBar;
     const TManK = manifoldTempK(m, x.turbo.boostBar, ambientC);
@@ -328,7 +331,7 @@ export class EngineSimulator {
     x.turbo = stepTurbo(x.turbo, cfg, dt, out.exhaustMassFlowKgS, x.thermal.egtC, boostReq, rpm, ambientKpa);
     if (!Number.isFinite(x.turbo.boostBar) || !Number.isFinite(x.turbo.shaftRpm)) x.turbo = { shaftRpm: 0, boostBar: 0 };
     // --- thermal (PR #12 stepThermal)
-    x.thermal = stepThermal(x.thermal, cfg, dt, out.heatToCoolantKw, out.egtC, rpm, ambientC);
+    x.thermal = stepThermal(x.thermal, cfg, dt, out.heatToCoolantKw, out.egtC, rpm, ambientC, input.dynoMode === "vehicle" ? x.vSpeed : 0);
     if (!Number.isFinite(x.thermal.coolantC + x.thermal.oilC + x.thermal.egtC)) x.thermal = { coolantC: ambientC, oilC: ambientC, egtC: ambientC };
     const full = fullLoadAt(m, Math.max(rpm, 300)).torque;
     x.load = clamp(torque / Math.max(1, full), 0, 1);
@@ -390,6 +393,17 @@ export function roadLoadN(v: VehicleCoupling["vehicle"], speedMs: number): numbe
 }
 
 /**
+ * Wheelie limit of the drive force, N (issue #25): the front wheel lifts when the pitching moment of the drive
+ * force about the rear contact patch, F·h, exceeds the weight moment m·g·l_r (l_r = CG ahead of the rear axle;
+ * Cossalter, Motorcycle Dynamics, ch. 3 "wheelie limit"; aero drag acts at ≈ CG height, so F_drive is the total
+ * force). Infinity for vehicles without CG data (cars).
+ */
+export function wheelieLimitN(v: VehicleCoupling["vehicle"]): number {
+  if (!(v.cgHeightM && v.cgHeightM > 0 && v.cgToRearAxleM && v.cgToRearAxleM > 0)) return Infinity;
+  return (v.massKg * G * v.cgToRearAxleM) / v.cgHeightM;
+}
+
+/**
  * One sub-step of engine + vehicle (dynoMode "vehicle"). Clutch closed and synchronised: rigid coupling,
  * engine inertia reflected to the wheel. Otherwise the slipping clutch transmits a friction torque
  * (sign of the slip, limited by engagement × capacity) and both sides integrate separately.
@@ -412,10 +426,13 @@ function stepVehicle(x: Internal, c: VehicleCoupling, engineTorqueNm: number, J:
   /** Net longitudinal force; at rest the brake absorbs drive force up to its capacity. */
   const net = (fDrive: number) => (atRest ? Math.max(0, fDrive - brakeCapN) : fDrive - fRes);
   const slip = wEng - wIn;
+  // anti-wheelie (simplified): drive force above the wheelie limit is cut by the ECU (#25)
+  const fWheelie = wheelieLimitN(veh);
+  const cut = (f: number) => (f > fWheelie ? fWheelie : f);
   // rigid if the clutch is (almost) closed, synchronised and able to carry the torque
   if (i > 0 && lock > 0.98 && Math.abs(slip) < 2) {
     const mEff = veh.massKg + (J * i * i) / (r * r);
-    const fDrive = (engineTorqueNm * i * (engineTorqueNm >= 0 ? eta : 1 / eta)) / r;
+    const fDrive = cut((engineTorqueNm * i * (engineTorqueNm >= 0 ? eta : 1 / eta)) / r);
     if (Math.abs(engineTorqueNm) <= cap * 1.2) {
       x.vSpeed = Math.max(0, x.vSpeed + (net(fDrive) / mEff) * h);
       x.rpm = ((x.vSpeed / r) * i) * RPM_PER_RADS;
@@ -427,6 +444,6 @@ function stepVehicle(x: Internal, c: VehicleCoupling, engineTorqueNm: number, J:
   let wE = wEng + ((engineTorqueNm - tc) / J) * h;
   if (wE < 0) wE = 0;
   x.rpm = wE * RPM_PER_RADS;
-  const fDrive = i > 0 ? (tc * i * (tc >= 0 ? eta : 1 / eta)) / r : 0;
+  const fDrive = i > 0 ? cut((tc * i * (tc >= 0 ? eta : 1 / eta)) / r) : 0;
   x.vSpeed = Math.max(0, x.vSpeed + (net(fDrive) / veh.massKg) * h);
 }
