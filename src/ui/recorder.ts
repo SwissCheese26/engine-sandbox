@@ -20,6 +20,8 @@ interface Sample {
 }
 
 export interface Run {
+  /** Made by the automatic measurement (replaced on the next config change); manual runs stay. */
+  auto?: boolean;
   label: string;
   points: DynoPoint[];
   peakTorque: DynoPoint;
@@ -42,6 +44,9 @@ export class Recorder {
   private sheet: HTMLCanvasElement;
   private legend: HTMLOListElement;
   private measureBtn: HTMLButtonElement;
+  private autoBox: HTMLInputElement;
+  private autoTimer: ReturnType<typeof setTimeout> | undefined;
+  private sum: EngineSummary | undefined;
   private clearBtn: HTMLButtonElement;
   private samples: Sample[] = [];
   private lastSampleT = -1;
@@ -54,7 +59,7 @@ export class Recorder {
   private print = 1;
   private cfg: EngineConfig | null = null;
   private live: { rpm: number; tq: number; pw: number } = { rpm: 0, tq: 0, pw: 0 };
-  private onMeasure: (() => void) | null = null;
+  private onMeasure: ((auto: boolean) => void) | null = null;
 
   constructor() {
     this.el = document.createElement("section");
@@ -71,6 +76,7 @@ export class Recorder {
         <div class="recorder__actions">
           <button type="button" class="btn btn--primary" data-action="measure">Volllastkurve messen</button>
           <button type="button" class="btn" data-action="clear" disabled>Bogen leeren</button>
+          <label class="recorder__auto"><input type="checkbox" data-action="auto" checked /> Automatisch messen</label>
         </div>
       </div>
       <div class="recorder__paper">
@@ -86,6 +92,20 @@ export class Recorder {
     this.measureBtn = this.el.querySelector('[data-action="measure"]')!;
     this.clearBtn = this.el.querySelector('[data-action="clear"]')!;
     this.measureBtn.addEventListener("click", () => this.measure());
+    this.autoBox = this.el.querySelector('[data-action="auto"]')!;
+    try {
+      if (localStorage.getItem("pruefzelle.autoMeasure") === "0") this.autoBox.checked = false;
+    } catch {
+      /* default on */
+    }
+    this.autoBox.addEventListener("change", () => {
+      try {
+        localStorage.setItem("pruefzelle.autoMeasure", this.autoBox.checked ? "1" : "0");
+      } catch {
+        /* per visit only */
+      }
+      if (this.autoBox.checked) this.scheduleAuto();
+    });
     this.clearBtn.addEventListener("click", () => {
       this.runs = [];
       this.renderLegend();
@@ -96,13 +116,28 @@ export class Recorder {
   }
 
   /** Optional hook (e.g. to announce the result to screen readers). */
-  onMeasured(cb: () => void) {
+  /** Stops a pending automatic measurement (App.dispose). */
+  dispose() {
+    clearTimeout(this.autoTimer);
+  }
+
+  onMeasured(cb: (auto: boolean) => void) {
     this.onMeasure = cb;
   }
 
   configure(cfg: EngineConfig, sum: EngineSummary) {
     this.cfg = cfg;
+    this.sum = sum;
+    if (this.autoBox.checked) this.scheduleAuto();
     this.limitRpm = Math.min(cfg.revLimitRpm, sum.safeMaxRpm);
+    this.rescale();
+  }
+
+  /** Scales fit the current engine but never shrink below the runs on the sheet (review #27: also after a run). */
+  private rescale() {
+    const cfg = this.cfg;
+    const sum = this.sum;
+    if (!cfg || !sum) return;
     // Scales fit the current engine but never shrink below earlier runs on the sheet.
     let tq = sum.peakTorqueNm;
     let pw = sum.peakPowerKw;
@@ -118,18 +153,35 @@ export class Recorder {
     this.drawSheet();
   }
 
-  measure() {
+  /**
+   * Automatic measurement (default on): after every configuration change the full-load curve is measured
+   * again. Debounced while sliders move; the automatic run replaces the previous automatic run, runs measured
+   * with the button stay on the sheet for comparison.
+   */
+  private scheduleAuto() {
+    clearTimeout(this.autoTimer);
+    this.autoTimer = setTimeout(() => this.measure(true), 250);
+  }
+
+  measure(auto = false) {
     if (!this.cfg) return;
     const pts = dynoSweep(this.cfg, { fromRpm: 1000, toRpm: this.cfg.revLimitRpm, stepRpm: 100 }).filter(
       (p) => Number.isFinite(p.torqueNm) && Number.isFinite(p.powerKw),
     );
     if (pts.length < 2) return;
-    this.runs.unshift(makeRun(this.cfg, pts));
+    const run = makeRun(this.cfg, pts);
+    if (auto) {
+      run.auto = true;
+      this.runs = this.runs.filter((r) => !r.auto);
+    }
+    this.runs.unshift(run);
+    this.rescale();
     this.runs.length = Math.min(this.runs.length, MAX_RUNS);
     this.clearBtn.disabled = false;
-    this.print = reducedMotion() ? 1 : 0;
+    // automatic runs appear at once (no printing animation on every slider move)
+    this.print = auto || reducedMotion() ? 1 : 0;
     this.renderLegend();
-    this.onMeasure?.();
+    this.onMeasure?.(auto);
   }
 
   get latestRun(): Run | undefined {

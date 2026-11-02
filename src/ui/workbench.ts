@@ -3,6 +3,7 @@
 import { validateConfig } from "../core/index.ts";
 import type { EngineConfig, FuelKind, Warning } from "../core/index.ts";
 import { defaultConfig } from "../data/presets.ts";
+import { ENGINE_LIBRARY, libraryConfig } from "../data/engine-library.ts";
 import { FIELDS, GROUPS, getPath, isVisible, setPath } from "./fields.ts";
 import type { Field } from "./fields.ts";
 import { clamp, fmt, parseNumber, snap } from "./format.ts";
@@ -44,6 +45,10 @@ export class Workbench {
       <div class="bench__tools">
         <button type="button" class="btn btn--small" data-action="preset">Grundausstattung laden</button>
       </div>
+      <label class="bench__library"><span>Serienmotor laden</span>
+        <select data-action="library"><option value="">Motor wählen …</option>${(["diesel", "petrol"] as const).map((f) => `<optgroup label="${f === "diesel" ? "Diesel" : "Benziner"}">${ENGINE_LIBRARY.filter((e) => e.config.fuel === f).map((e) => `<option value="${e.config.id}">${e.config.name}</option>`).join("")}</optgroup>`).join("")}</select>
+      </label>
+      <p class="bench__libinfo" hidden></p>
       <p class="bench__lock" role="status" aria-live="polite" hidden>Zum Umbauen Motor abstellen: Zündung aus mit <kbd>I</kbd>.</p>
       <div class="bench__notes" role="status" aria-live="polite"></div>`;
     this.notes = head.querySelector(".bench__notes")!;
@@ -55,6 +60,21 @@ export class Workbench {
       });
     }
     head.querySelector('[data-action="preset"]')!.addEventListener("click", () => this.loadPreset(this.cfg.fuel));
+    const lib = head.querySelector<HTMLSelectElement>('[data-action="library"]')!;
+    const libInfo = head.querySelector<HTMLElement>(".bench__libinfo")!;
+    lib.addEventListener("change", () => {
+      const e = ENGINE_LIBRARY.find((x) => x.config.id === lib.value);
+      if (!e || this.locked) {
+        lib.value = "";
+        return;
+      }
+      this.loadLibrary(e.config.id);
+      const kw = Math.round(e.expected.peakPowerKw);
+      const ps = Math.round(e.expected.peakPowerKw * 1.35962);
+      libInfo.textContent = `${e.maker}, ${e.years}: ${e.cars}. Werk: ${kw} kW (${ps} PS), ${Math.round(e.expected.peakTorqueNm)} Nm. Alle Werte sind danach frei veränderbar.`;
+      libInfo.hidden = false;
+      lib.value = "";
+    });
     this.body = document.createElement("div");
     this.body.className = "bench__plates";
     this.el.append(head, this.body);
@@ -86,6 +106,13 @@ export class Workbench {
 
   get isLocked(): boolean {
     return this.locked;
+  }
+
+  /** Loads a production engine from the library (#15); its name is kept until the player renames it. */
+  loadLibrary(id: string) {
+    if (this.locked) return;
+    this.customName = true;
+    this.apply(libraryConfig(id));
   }
 
   loadPreset(fuel: FuelKind) {

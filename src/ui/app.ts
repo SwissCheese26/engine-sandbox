@@ -128,7 +128,9 @@ export class App {
       this.recorder.reset();
       this.announce("Motor zurückgesetzt.");
     };
-    this.recorder.onMeasured(() => {
+    this.recorder.onMeasured((auto) => {
+      // automatic runs follow every bench change: not announced, the screen reader would never stop
+      if (auto) return;
       const r = this.recorder.latestRun;
       if (r) this.announce(`Volllastkurve gemessen: ${fmt(r.peakTorque.torqueNm)} Newtonmeter bei ${fmt(r.peakTorque.rpm)}, ${fmt(r.peakPower.powerKw)} Kilowatt bei ${fmt(r.peakPower.rpm)} Umdrehungen pro Minute.`);
     });
@@ -250,6 +252,7 @@ export class App {
 
   /** Stops the loop, removes all global listeners and silences the sound (tests, hot reload). */
   dispose() {
+    this.recorder.dispose();
     if (this.disposed) return;
     this.disposed = true;
     cancelAnimationFrame(this.rafId);
