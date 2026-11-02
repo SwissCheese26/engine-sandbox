@@ -87,7 +87,8 @@ export function veParams(cfg: EngineConfig): VeParams {
     // diesel.md §3.1 bell curve around runner resonance
     p.dVeMax = ({ 2: 0.85, 3: 0.88, 4: 0.92, 5: 0.93 }[h.valvesPerCylinder] ?? 0.92) * (1 + 0.04 * h.camProfile);
     p.dNPeak = (1.2e6 / Math.max(50, ind.intakeRunnerLengthMm)) * (0.85 + 0.4 * h.camProfile);
-    let width = 0.25 * (1 - 0.5 * h.camProfile);
+    // curvature 0.18 instead of 0.25 [S, calibration: flatter diesel plateau, DV6/VW PD peak torque speed]
+    let width = 0.18 * (1 - 0.5 * h.camProfile);
     if (h.variableTiming !== "none") width *= 0.7;
     p.dWidth = width;
   }

@@ -88,7 +88,7 @@ export function getModel(cfg: EngineConfig): Model {
     // diesel.md §3.2c: capacity ∝ √Δp · injection window (35 °CA → time ∝ 1/n). Calibration decision [S, PR]:
     // at the system's reference pressure the capacity equals the smoke-limited quantity at the end of the
     // torque plateau n_c = 0.55·revLimit (reference engines: N57 3000/5400, OM654 2400/4800, 6BT 1600/2800).
-    // Above n_c the fuel per cycle falls (∝ n^−0.7, see injectionCapacity), which gives the typical diesel torque drop towards rated power.
+    // Above n_c the fuel per cycle falls (∝ n^−0.73, see injectionCapacity), which gives the typical diesel torque drop towards rated power.
     // Lower injection pressure than the reference → proportionally less capacity (e.g. 6BT at 1000 bar).
     const nC = Math.max(800, 0.55 * cfg.revLimitRpm);
     const mAirCyc = volumetricEfficiency(ve, nC, 320) * rhoRated * Vh;
@@ -283,8 +283,13 @@ export function chokeLimitedUpKpa(m: Model, pUpKpa: number, rpm: number, TManK: 
   if (!Number.isFinite(m.chokeKgS) || rpm < 100) return pUpKpa;
   const veEff = volumetricEfficiency(m.ve, rpm, TManK);
   const flow = (veEff * ((pUpKpa * 1000) / (R_AIR * TManK)) * m.Vh * rpm) / 120;
-  if (flow <= m.chokeKgS) return pUpKpa;
-  return Math.max(ambientKpa, (pUpKpa * m.chokeKgS) / flow);
+  // approaching choke the compressor efficiency collapses (diesel.md §3.9: "fällt etaC rapide → T2 steigt"),
+  // modelled as a density/pressure loss of up to 8 % between 0.9 and 1.0·ṁ_choke [S]
+  const r = flow / m.chokeKgS;
+  if (r <= 0.9) return pUpKpa;
+  const eff = 1 - 0.8 * Math.min(0.1, r - 0.9);
+  const p = pUpKpa * eff;
+  return Math.max(ambientKpa, r * eff > 1 ? p / (r * eff) : p);
 }
 
 /** Charge temperature in the manifold [K]: compressor + intercooler (PR #12) + manifold pick-up (petrol.md §3.2c). */
@@ -327,7 +332,8 @@ export function steadyFullLoad(m: Model, rpm: number, ambientC = 20, ambientKpa 
     const TManK = manifoldTempK(m, boost, ambientC);
     op.TManK = TManK;
     op.boostBar = boost;
-    const pUp = chokeLimitedUpKpa(m, ambientKpa - 2 + 100 * boost, rpm, TManK, ambientKpa); // air filter ≈ 2 kPa (diesel.md §3.1)
+    const cut = knockBoostCutBar(m, retard);
+    const pUp = chokeLimitedUpKpa(m, ambientKpa - 2 + 100 * Math.max(0, boost - cut), rpm, TManK, ambientKpa); // air filter ≈ 2 kPa (diesel.md §3.1)
     if (m.fuel === "petrol") pMan = pUp * steadyManifoldRatio(throttleA(m, 1, rpm, TManK), 1);
     else pMan = pUp;
     op.pManKpa = pMan;
@@ -335,6 +341,7 @@ export function steadyFullLoad(m: Model, rpm: number, ambientC = 20, ambientKpa 
     out = evaluateCycle(m, op);
     if (m.p) {
       // steady knock control (petrol.md §3.6): retard until margin 0, max 15 °CA
+      // knock retard counted from the current retard: margin already includes it via knockIntensity only
       const need = Math.min(m.p.maxRetard, Math.max(0, -out.knockMargin / 0.8));
       if (Math.abs(need - retard) > 0.05) {
         retard = need;
@@ -344,13 +351,24 @@ export function steadyFullLoad(m: Model, rpm: number, ambientC = 20, ambientKpa 
     }
     if (!m.charged) break;
     const nb = steadyBoostBar(m.cfg, rpm, out.exhaustMassFlowKgS, out.egtC, ambientKpa);
-    if (Math.abs(nb - boost) < 0.002) {
+    const cutChanged = Math.abs(knockBoostCutBar(m, retard) - cut) > 0.002;
+    if (Math.abs(nb - boost) < 0.002 && !cutChanged) {
       boost = nb;
       break;
     }
     boost = 0.5 * (boost + nb);
   }
   return { out, boostBar: boost, pManKpa: pMan, knockRetardDeg: retard };
+}
+
+/**
+ * Boost reduction of the knock control for charged petrol engines (petrol.md §3.6: "Regel-Rücknahme
+ * (Ladedruck −) bei Turbo, wenn knockRetardDeg > 10"). Rate 0.03 bar per degree above 10 °CA [S], so at the
+ * 15 °CA end stop the ECU takes 0.15 bar off.
+ */
+export function knockBoostCutBar(m: Model, retardDeg: number): number {
+  if (!m.p || !m.charged) return 0;
+  return 0.03 * Math.max(0, retardDeg - 10);
 }
 
 /** Full-load torque [Nm] and air charge [kg/cycle] at rpm (100 rpm table, filled on first use). */

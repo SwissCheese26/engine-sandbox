@@ -16,32 +16,11 @@ import { boostRiseTime, mean, partLoadPoint, runPhases, startEngine, sweepAt, sw
  * Cases that already hold with the placeholder physics (they run as normal tests). All others are
  * expected to fail on main and are registered with `test.failing`.
  */
-const PASS_ON_PLACEHOLDER = new Set<string>([
-  "displacement grows with bore, stroke and cylinders",
-  "diesel: larger bore → more peak torque",
-  "petrol: larger bore → more peak torque",
-  "torque scales roughly with displacement: 6 instead of 4 equal cylinders → ×1.35 … 1.65",
-  "summary: mean piston speed at the limiter = 2·S·n/60",
-  "best BSFC in the literature bands: CR diesel 190 … 235, petrol 220 … 290 g/kWh",
-  "diesel is more efficient than petrol at full load (best BSFC)",
-  "diesel: no throttle → manifold ≥ ambient and λ > 2.5 at 25 % load",
-  "petrol: λ ≈ 1 at part load (catalyst), enriched at full load",
-  "diesel peak cylinder pressure > petrol",
-  "peak pressure bands: diesel 120 … 220 bar, NA petrol 50 … 110 bar",
-  "full-load EGT: diesel colder than petrol",
-  "petrol turbo: more boost → more peak power",
-  "diesel: more boost → more peak torque (nearly linear)",
-  "diesel: turbo vs naturally aspirated → ×1.6 or more peak torque",
-  "diesel never knocks, petrol never smokes",
-  "diesel: particulate filter removes visible smoke",
-  "no false alarms: default engines at 3000 rpm / half load have no critical warning",
-  "summary: firing intervals — crossplane V8 even 90°, R4 180°",
-]);
+// Integration done (#3/#4): every case is a normal test.
 
 const SLOW = 30_000;
 function spec(name: string, fn: () => void, timeout = SLOW) {
-  // scharf schalten nach Integration (#3/#4)
-  (PASS_ON_PLACEHOLDER.has(name) ? test : test.failing)(name, fn, timeout);
+  test(name, fn, timeout);
 }
 
 const diesel = () => defaultConfig("diesel");

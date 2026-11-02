@@ -67,20 +67,13 @@ describe("reference engine data", () => {
 });
 
 /**
- * Cases that the placeholder physics on main happens to hit by chance (crude constant-bmep model).
- * They run as normal tests so that `test.failing` does not report "passed unexpectedly". Everything
- * else is `test.failing` until the real physics lands. After integration (#3/#4) delete this set and
- * use plain `test` for every case.
+ * Known calibration gaps after integration (#3). All other cases are sharp.
+ * EA888: the reference config asks for 1.3 bar; the mean value model turns that into bmep ≈ 26 bar,
+ * the data-sheet 350 Nm plateau is an ECU torque limit the config cannot express (petrol.md §3.8 / §7).
+ * The model hits 350 Nm at ≈ 0.9 bar. See PR "Mittelwertmodell Diesel & Benziner".
  */
-const PLACEHOLDER_HITS = new Set([
-  "ref-bmw-n57d30o1:torque",
-  "ref-mercedes-om654-220d:torque",
-  "ref-mercedes-om654-220d:power",
-  "ref-psa-16-hdi-dv6ted4:power",
-  "ref-gm-ls3-62:torque",
-  "ref-gm-ls3-62:power",
-]);
-const calib = (id: string, kind: "torque" | "power") => (PLACEHOLDER_HITS.has(`${id}:${kind}`) ? test : test.failing);
+const KNOWN_GAPS = new Set(["ref-vw-ea888-gen3-chhb:torque", "ref-vw-ea888-gen3-chhb:power"]);
+const calib = (id: string, kind: "torque" | "power") => (KNOWN_GAPS.has(`${id}:${kind}`) ? test.failing : test);
 
 describe("dynoSweep hits the reference engines (±10 % value, ±12 % rpm)", () => {
   for (const ref of REFERENCE_ENGINES) {

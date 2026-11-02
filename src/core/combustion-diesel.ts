@@ -61,6 +61,8 @@ export function dieselConsts(cfg: EngineConfig): DieselConsts {
   }
   // diesel.md §3.3: quadratic loss around the optimum start of injection
   g *= Math.max(0.5, 1 - 0.0012 * fs.injectionTimingOffsetDeg ** 2);
+  // diesel.md §2 "pistons steel: BSFC ↓ leicht (Spaltmaß, Wärme)": +2 % Gütegrad [S]
+  if (cfg.block.pistons === "steel") g *= 1.02;
   // diesel.md §3.3: small combustion chambers lose more wall heat
   g *= 1 - 0.04 * Math.max(0, (80 - cfg.block.boreMm) / 20);
   // diesel.md §3.8: λ at 50 % opacity
@@ -83,12 +85,12 @@ export function smokeLimitFuel(c: DieselConsts, mAirCyc: number): number {
  * Injection capacity per cycle [kg] (diesel.md §3.2c): ∝ √Δp · injection time.
  * Deviation [S, PR]: the spec's fixed 35 °CA window (time ∝ 1/n) makes the torque fall so fast that the
  * power peak sits right at the end of the plateau; real calibrations widen the window in °CA with speed.
- * Time ∝ n^−0.7 puts the power peak at ≈ 0.75 … 0.85·revLimit like the reference engines.
+ * Time ∝ n^−0.73 puts the power peak at ≈ 0.75 … 0.85·revLimit like the reference engines.
  * `kInj` is defined against the reference speed n_c (cycle.ts).
  */
 export function injectionCapacity(c: DieselConsts, rpm: number): number {
   // mechanical (plunger) pumps meter a fixed stroke per cycle: capacity independent of rpm [S]
-  const time = c.fs.injection === "mechanical-pump" ? 1 : Math.pow(c.nC / Math.max(200, rpm), 0.7);
+  const time = c.fs.injection === "mechanical-pump" ? 1 : Math.pow(c.nC / Math.max(200, rpm), 0.73);
   return c.kInj * Math.sqrt(Math.max(50, c.fs.injectionPressureBar)) * time;
 }
 

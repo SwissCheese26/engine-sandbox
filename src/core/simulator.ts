@@ -7,7 +7,7 @@
  */
 import { R_AIR, throttlePsi, volumetricEfficiency } from "./airpath.ts";
 import { dieselFires } from "./combustion-diesel.ts";
-import { chokeLimitedUpKpa, evaluateCycle, fullLoadAt, getModel, manifoldTempK, newOpPoint, steadyFullLoad } from "./cycle.ts";
+import { chokeLimitedUpKpa, evaluateCycle, fullLoadAt, knockBoostCutBar, getModel, manifoldTempK, newOpPoint, steadyFullLoad } from "./cycle.ts";
 import type { CycleOut, Model, OpPoint } from "./cycle.ts";
 import { meanPistonSpeed } from "./geometry.ts";
 import { createLimitTracker, evaluateLimits, oilPressureBar, stepThermal, stepTurbo, turboMaxRpm } from "./subsystems.ts";
@@ -36,6 +36,7 @@ interface Internal {
   stallT: number;
   stalled: boolean;
   limiterCut: boolean;
+  boostCut: number;
   relLoad: number;
   load: number;
   initialised: boolean;
@@ -108,7 +109,7 @@ export class EngineSimulator {
     this.x = {
       rpm: 0, crank: 0, pManKpa: 101.325, turbo: { shaftRpm: 0, boostBar: 0 },
       thermal: { coolantC: amb, oilC: amb, egtC: amb }, knockRetard: 0, idleI: this.idleU0, dynoI: 0,
-      running: false, armed: false, stallT: 0, stalled: false, limiterCut: false, relLoad: 0, load: 0,
+      running: false, armed: false, stallT: 0, stalled: false, limiterCut: false, relLoad: 0, load: 0, boostCut: 0,
       initialised: false, wear: 0, destroyed: false,
     };
     this.lastOut = null;
@@ -167,7 +168,9 @@ export class EngineSimulator {
     op.boostBar = x.turbo.boostBar;
     const TManK = manifoldTempK(m, x.turbo.boostBar, ambientC);
     op.TManK = TManK;
-    const pUpKpa = chokeLimitedUpKpa(m, ambientKpa - 2 + 100 * x.turbo.boostBar, x.rpm, TManK, ambientKpa);
+    // knock control boost cut (petrol.md §3.6) acts on the wastegate: follows with τ ≈ 0.3 s
+    x.boostCut += (knockBoostCutBar(m, x.knockRetard) - x.boostCut) * (1 - Math.exp(-dt / 0.3));
+    const pUpKpa = chokeLimitedUpKpa(m, ambientKpa - 2 + 100 * Math.max(0, x.turbo.boostBar - x.boostCut), x.rpm, TManK, ambientKpa);
     const Vl = m.Vh * 1000;
     const T0 = 80 + 60 * Vl; // starter torque at standstill (diesel.md §3.11)
     const idle = cfg.idleRpm;
@@ -202,8 +205,11 @@ export class EngineSimulator {
       const e = (idle - rpm) / idle;
       // all-speed governor: may command the full quantity to avoid stalling (diesel); petrol idle valve ≤ 30 %
       const uMaxIdle = m.fuel === "diesel" ? 1 : 0.3;
-      if (combust) x.idleI = clamp(x.idleI + 3 * this.idleU0 * e * h, 0, uMaxIdle);
-      const uIdle = clamp(x.idleI + 4 * this.idleU0 * e, 0, uMaxIdle);
+      // gains relative to the idle feed-forward; diesel with an extra absolute anti-stall share [S]
+      const kp = m.fuel === "diesel" ? 4 * this.idleU0 + 1.5 : 4 * this.idleU0;
+      const ki = m.fuel === "diesel" ? 3 * this.idleU0 + 1.0 : 3 * this.idleU0;
+      if (combust) x.idleI = clamp(x.idleI + ki * e * h, 0, uMaxIdle);
+      const uIdle = clamp(x.idleI + kp * e, 0, uMaxIdle);
       op.rpm = rpm;
       op.knockRetardDeg = x.knockRetard;
       op.combust = combust;
@@ -211,13 +217,14 @@ export class EngineSimulator {
       op.loadPrev = x.load;
       op.cranking = starter;
       // diesel.md §3.1 EGR, part load only. Load taken from the fuel command (the ECU closes the valve as soon as
-      // the driver asks for torque); shape (1 − load)² instead of (1 − load) [S, PR] so that λ stays > 2.5 at 25 % load.
-      const uCmd = Math.max(pedal, uIdle);
-      op.egrRate = m.d && cfg.exhaust.egr && rpm < 3000 && x.running ? 0.35 * (1 - Math.min(1, Math.max(x.load, uCmd))) ** 2 * clamp(x.thermal.coolantC / 60, 0, 1) : 0;
+      // the driver asks for torque); shape (1 − load)³ instead of (1 − load) [S, PR] so that λ stays > 2.5 at 25 % load.
+      const uCmd = Math.max(pedal * (2 - pedal), uIdle);
+      op.egrRate = m.d && cfg.exhaust.egr && rpm < 3000 && x.running ? 0.35 * (1 - Math.min(1, Math.max(x.load, uCmd))) ** 3 * clamp(x.thermal.coolantC / 60, 0, 1) : 0;
       if (m.fuel === "diesel") {
         op.pManKpa = pUpKpa;
         x.pManKpa = pUpKpa;
-        op.fuelCmd = Math.max(pedal, uIdle);
+        // progressive pedal map (pedal → torque request, typical diesel ECU) [S]: 50 % pedal = 75 % quantity
+        op.fuelCmd = Math.max(pedal * (2 - pedal), uIdle);
         op.relLoad = op.fuelCmd;
       } else {
         // throttle (petrol.md §3.3): φ = φidle + (1 − φidle)·pedal^1.8, manifold filling, semi-implicit
@@ -282,7 +289,9 @@ export class EngineSimulator {
     const torque = tOutSum / nSub;
     const fuelGs = fuelSum / nSub;
     // --- turbo (PR #12 stepTurbo): pedal demand; idle governor fuel does not demand boost
-    x.turbo = stepTurbo(x.turbo, cfg, dt, out.exhaustMassFlowKgS, x.thermal.egtC, x.running ? pedal : 0, rpm, ambientKpa);
+    // diesel: the boost map follows the injected quantity (torque request), petrol: the pedal
+    const boostReq = !x.running ? 0 : m.fuel === "diesel" ? clamp(pedal * (2 - pedal), 0, 1) : pedal;
+    x.turbo = stepTurbo(x.turbo, cfg, dt, out.exhaustMassFlowKgS, x.thermal.egtC, boostReq, rpm, ambientKpa);
     if (!Number.isFinite(x.turbo.boostBar) || !Number.isFinite(x.turbo.shaftRpm)) x.turbo = { shaftRpm: 0, boostBar: 0 };
     // --- thermal (PR #12 stepThermal)
     x.thermal = stepThermal(x.thermal, cfg, dt, out.heatToCoolantKw, out.egtC, rpm, ambientC);
