@@ -94,7 +94,11 @@ export function injectionCapacity(c: DieselConsts, rpm: number): number {
   return c.kInj * Math.sqrt(Math.max(50, c.fs.injectionPressureBar)) * time;
 }
 
-/** Governor ramp (diesel.md §3.2d): quantity ramps to 0 over ≈ 250 rpm around the limit. */
+/**
+ * Governor ramp (diesel.md §3.2d): quantity ramps to 0 over 250 rpm. Deviation [S]: the ramp ends 50 rpm
+ * above revLimitRpm (spec: at revLimitRpm) so that the engine settles *at* the configured limit instead of
+ * ≈ 50 rpm below it (the remaining quantity balances friction there).
+ */
 export function governor(c: DieselConsts, rpm: number): number {
   return clamp((c.revLimit + 50 - rpm) / 250, 0, 1);
 }

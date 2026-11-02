@@ -2,8 +2,7 @@
 // Spec: peak torque and peak power within ±10 % (lead decision; research proposed ±7 % / ±10 %),
 // rpm of the peaks within ±12 % (petrol.md §7; plateau engines are handled by peakRpmOk()).
 //
-// All cases run against the placeholder physics on main and are therefore expected to fail:
-// scharf schalten nach Integration (#3/#4) – replace `test.failing` by `test`.
+// Since the integration of #3/#4 every case is a normal test; known gaps are listed in KNOWN_GAPS below.
 import { describe, expect, test } from "bun:test";
 import { REFERENCE_DIESELS, REFERENCE_ENGINES, REFERENCE_PETROLS } from "../../src/data/reference-engines.ts";
 import type { ReferenceEngine } from "../../src/data/reference-engines.ts";
@@ -77,7 +76,6 @@ const calib = (id: string, kind: "torque" | "power") => (KNOWN_GAPS.has(`${id}:$
 
 describe("dynoSweep hits the reference engines (±10 % value, ±12 % rpm)", () => {
   for (const ref of REFERENCE_ENGINES) {
-    // scharf schalten nach Integration (#3/#4)
     calib(ref.config.id, "torque")(`${ref.config.name}: peak torque ${ref.expected.peakTorqueNm} Nm @ ${ref.expected.peakTorqueRpm}`, () => {
       const s = sweepPeaks(ref.config, { fromRpm: 1000 });
       const msg = describeMiss(ref, "peak torque", s.torque.torqueNm, ref.expected.peakTorqueNm, "Nm");
@@ -88,7 +86,6 @@ describe("dynoSweep hits the reference engines (±10 % value, ±12 % rpm)", () =
       ).toBe(true);
     });
 
-    // scharf schalten nach Integration (#3/#4)
     calib(ref.config.id, "power")(`${ref.config.name}: peak power ${ref.expected.peakPowerKw} kW @ ${ref.expected.peakPowerRpm}`, () => {
       const s = sweepPeaks(ref.config, { fromRpm: 1000 });
       const msg = describeMiss(ref, "peak power", s.power.powerKw, ref.expected.peakPowerKw, "kW");

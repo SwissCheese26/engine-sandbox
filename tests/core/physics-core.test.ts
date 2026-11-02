@@ -7,7 +7,7 @@ import { knockIntensity, lambdaWorkFactor } from "../../src/core/combustion-petr
 import { firingIntervalsDeg, firingOrder, meanPistonSpeed } from "../../src/core/geometry.ts";
 import { steadyManifoldRatio, throttlePsi } from "../../src/core/airpath.ts";
 import { defaultConfig } from "../../src/data/presets.ts";
-import { referenceConfig } from "../../src/data/reference-engines.ts";
+import { REFERENCE_ENGINES, referenceConfig } from "../../src/data/reference-engines.ts";
 
 const v = (fuel: "diesel" | "petrol", f: (c: EngineConfig) => void) => {
   const c = defaultConfig(fuel);
@@ -113,12 +113,13 @@ describe("summary and validation", () => {
   });
 });
 
+const run = (sim: EngineSimulator, s: number, input: Partial<ReturnType<typeof defaultInputs>>, dt = 1 / 60) => {
+  const out = [];
+  for (let i = 0; i < Math.round(s / dt); i++) out.push(sim.step(dt, { ...defaultInputs(), ...input }));
+  return out;
+};
+
 describe("simulator", () => {
-  const run = (sim: EngineSimulator, s: number, input: Partial<ReturnType<typeof defaultInputs>>, dt = 1 / 60) => {
-    const out = [];
-    for (let i = 0; i < Math.round(s / dt); i++) out.push(sim.step(dt, { ...defaultInputs(), ...input }));
-    return out;
-  };
   test("temperatures start at ambient of the first step (lead decision)", () => {
     const sim = new EngineSimulator(defaultConfig("diesel"));
     const s = sim.step(1 / 60, { ...defaultInputs(), ambientC: -15 });
@@ -163,5 +164,80 @@ describe("simulator", () => {
     expect(last.damage.length).toBe(1);
     expect(last.running).toBe(false);
     for (const [k, val] of Object.entries(last)) if (typeof val === "number" && k !== "bsfcGkWh") expect(Number.isFinite(val)).toBe(true);
+  });
+});
+
+describe("review #17: thermal endurance, boost request, warm idle", () => {
+  const all = (): EngineConfig[] => [defaultConfig("diesel"), defaultConfig("petrol"), ...REFERENCE_ENGINES.map((r) => structuredClone(r.config))];
+  const fullLoad = (cfg: EngineConfig, seconds: number) => {
+    const rated = summarize(cfg).peakPowerRpm;
+    const sim = new EngineSimulator(cfg);
+    const dt = 1 / 20;
+    let maxCoolant = -Infinity;
+    for (let i = 0; i < 2 / dt; i++) sim.step(dt, { ...defaultInputs(), ignition: true, starter: true });
+    for (let i = 0; i < seconds / dt; i++) {
+      const s = sim.step(dt, { ...defaultInputs(), ignition: true, pedal: 1, dynoMode: "hold-rpm", dynoTargetRpm: rated });
+      maxCoolant = Math.max(maxCoolant, s.coolantC);
+    }
+    return { s: sim.state, maxCoolant };
+  };
+
+  test("10 min full load at rated speed: no fatal damage, coolant < 110 °C (all reference engines + presets)", () => {
+    const bad: string[] = [];
+    for (const cfg of all()) {
+      const r = fullLoad(cfg, 600);
+      if (r.s.destroyed || r.maxCoolant >= 110) bad.push(`${cfg.id}: coolant ${r.maxCoolant.toFixed(0)} °C, ${r.s.damage.map((d) => d.code).join()}`);
+    }
+    expect(bad).toEqual([]);
+  }, 120_000);
+
+  test("radiator of 0.25 × rated power still overheats at sustained full load", () => {
+    for (const base of [defaultConfig("diesel"), defaultConfig("petrol"), referenceConfig("ref-ferrari-f136fb-458")]) {
+      const cfg = structuredClone(base);
+      cfg.cooling.radiatorCapacityKw = Math.round(0.25 * summarize(cfg).peakPowerKw);
+      const r = fullLoad(cfg, 600);
+      expect(r.maxCoolant).toBeGreaterThan(118);
+    }
+  }, 120_000);
+
+  test("free revving without load builds almost no boost, the loaded engine builds full boost", () => {
+    for (const fuel of ["diesel", "petrol"] as const) {
+      const cfg = defaultConfig(fuel);
+      const free = new EngineSimulator(cfg);
+      run(free, 2, { ignition: true, starter: true });
+      run(free, 2, { ignition: true });
+      const tail = run(free, 6, { ignition: true, pedal: 1 }).slice(-120);
+      expect(Math.max(...tail.map((s) => s.boostBar))).toBeLessThan(0.3 * cfg.induction.boostTargetBar);
+      const loaded = new EngineSimulator(cfg);
+      run(loaded, 2, { ignition: true, starter: true });
+      const s = run(loaded, 8, { ignition: true, pedal: 1, dynoMode: "hold-rpm", dynoTargetRpm: 3000 }).at(-1)!;
+      expect(s.boostBar).toBeGreaterThan(0.8 * cfg.induction.boostTargetBar);
+    }
+  });
+
+  test("warm idle in the spec bands (diesel 0.5 … 0.9 l/h, petrol 0.7 … 1.1 l/h at 30 … 40 kPa)", () => {
+    for (const fuel of ["diesel", "petrol"] as const) {
+      const sim = new EngineSimulator(defaultConfig(fuel));
+      run(sim, 2, { ignition: true, starter: true });
+      run(sim, 240, { ignition: true, pedal: 0.4, dynoMode: "hold-rpm", dynoTargetRpm: 2500 }, 1 / 30);
+      const idle = run(sim, 30, { ignition: true }, 1 / 30).slice(-60);
+      const lh = idle.reduce((a, s) => a + s.fuelFlowLh, 0) / idle.length;
+      const kpa = idle.reduce((a, s) => a + s.manifoldAbsKpa, 0) / idle.length;
+      expect(idle.at(-1)!.coolantC).toBeGreaterThan(80);
+      if (fuel === "diesel") {
+        expect(lh).toBeGreaterThan(0.5);
+        expect(lh).toBeLessThan(0.9);
+      } else {
+        expect(lh).toBeGreaterThan(0.7);
+        expect(lh).toBeLessThan(1.1);
+        expect(kpa).toBeGreaterThan(30);
+        expect(kpa).toBeLessThan(40);
+      }
+    }
+  });
+
+  test("validateConfig warns about a too low idle and excessive boost", () => {
+    expect(validateConfig(v("diesel", (c) => (c.idleRpm = 300))).some((w) => w.field === "idleRpm")).toBe(true);
+    expect(validateConfig(v("petrol", (c) => (c.induction.boostTargetBar = 5))).some((w) => w.field === "induction.boostTargetBar")).toBe(true);
   });
 });

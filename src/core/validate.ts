@@ -37,6 +37,8 @@ export function validateConfig(cfg: EngineConfig): Warning[] {
   if (charged && ind.boostTargetBar <= 0) add("warning", "induction.boostTargetBar", "Aufgeladener Motor mit 0 bar Ladedruck – der Lader bringt nichts.");
   if (!charged && ind.boostTargetBar > 0) add("info", "induction.boostTargetBar", "Saugmotor: Der Ladedruck-Sollwert wird ignoriert.");
   if (cfg.idleRpm >= cfg.revLimitRpm * 0.6) add("critical", "idleRpm", "Leerlaufdrehzahl liegt zu nah am Begrenzer.");
+  else if (cfg.idleRpm < 500) add("warning", "idleRpm", `Leerlauf ${Math.round(cfg.idleRpm)} 1/min ist zu niedrig – der Motor würgt ab (üblich 600 … 1000 1/min).`, "stall");
+  if (charged && ind.boostTargetBar > 3.5) add("warning", "induction.boostTargetBar", `Ladedruck ${n(ind.boostTargetBar)} bar liegt über dem sinnvollen Bereich (max. 3,5 bar) – Spitzendruck und Bauteile sind überfordert.`, "overboost");
   const cmLimit = meanPistonSpeed(b.strokeMm, cfg.revLimitRpm);
   const lim = engineLimits(cfg);
   if (cfg.revLimitRpm > safeMaxRpm(cfg)) {

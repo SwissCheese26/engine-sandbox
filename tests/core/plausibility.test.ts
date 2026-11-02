@@ -1,10 +1,7 @@
 // Physical plausibility: relationships taken from the specifications (docs/research/petrol.md §2–§4,
 // docs/research/diesel.md §2–§4). Every case names the section it comes from.
 //
-// Cases the placeholder physics on main cannot satisfy are `test.failing`:
-// scharf schalten nach Integration (#3/#4) – after integration make `spec()` always use plain `test`.
-// Some cases in PASS_ON_PLACEHOLDER hold only trivially on main (e.g. smoke is always 0); they are
-// still correct per spec and stay active as regression guards.
+// Since the integration of #3/#4 every case is a normal test.
 import { describe, expect, test } from "bun:test";
 import { EngineSimulator, displacementL, summarize, validateConfig } from "../../src/core/index.ts";
 import type { EngineConfig, EngineState, SimInputs } from "../../src/core/index.ts";
@@ -12,11 +9,6 @@ import { defaultConfig } from "../../src/data/presets.ts";
 import { referenceConfig } from "../../src/data/reference-engines.ts";
 import { boostRiseTime, mean, partLoadPoint, runPhases, startEngine, sweepAt, sweepPeaks, variant } from "./helpers.ts";
 
-/**
- * Cases that already hold with the placeholder physics (they run as normal tests). All others are
- * expected to fail on main and are registered with `test.failing`.
- */
-// Integration done (#3/#4): every case is a normal test.
 
 const SLOW = 30_000;
 function spec(name: string, fn: () => void, timeout = SLOW) {

@@ -5,12 +5,12 @@
  * Fixed internal step of 1 ms for the fast states (crank speed, manifold pressure, controllers);
  * turbo, thermal and limits are advanced once per call (they sub-step internally). No DOM.
  */
-import { R_AIR, throttlePsi, volumetricEfficiency } from "./airpath.ts";
+import { R_AIR, steadyManifoldRatio, throttlePsi, volumetricEfficiency } from "./airpath.ts";
 import { dieselFires } from "./combustion-diesel.ts";
-import { chokeLimitedUpKpa, evaluateCycle, fullLoadAt, knockBoostCutBar, getModel, manifoldTempK, newOpPoint, steadyFullLoad } from "./cycle.ts";
+import { chokeLimitedUpKpa, evaluateCycle, fullLoadAt, getModel, knockBoostCutBar, manifoldTempK, newOpPoint } from "./cycle.ts";
 import type { CycleOut, Model, OpPoint } from "./cycle.ts";
 import { meanPistonSpeed } from "./geometry.ts";
-import { createLimitTracker, evaluateLimits, oilPressureBar, stepThermal, stepTurbo, turboMaxRpm } from "./subsystems.ts";
+import { createLimitTracker, evaluateLimits, oilPressureBar, stepThermal, stepTurbo } from "./subsystems.ts";
 import type { LimitTracker, ThermalState, TurboState } from "./subsystems.ts";
 import type { EngineConfig, EngineState, SimInputs, Warning } from "./types.ts";
 
@@ -98,6 +98,10 @@ export class EngineSimulator {
     this.init();
   }
 
+  /**
+   * Replaces the configuration and resets the engine. Configs are treated as immutable: derived model data is
+   * cached per config object, so pass a new object (e.g. structuredClone) instead of mutating the old one.
+   */
   setConfig(cfg: EngineConfig) {
     this.config = cfg;
     this.init();
@@ -185,6 +189,7 @@ export class EngineSimulator {
     let fuelSum = 0;
     let airSum = 0;
     let anyFire = false;
+    let fuelCycSum = 0;
     for (let i = 0; i < nSub; i++) {
       const rpm = x.rpm;
       // --- combustion permission
@@ -211,7 +216,10 @@ export class EngineSimulator {
       if (combust) x.idleI = clamp(x.idleI + ki * e * h, 0, uMaxIdle);
       const uIdle = clamp(x.idleI + kp * e, 0, uMaxIdle);
       op.rpm = rpm;
-      op.knockRetardDeg = x.knockRetard;
+      // petrol idle torque reserve (review #17 B3) [S]: the ECU idles ≈ 15 °CA retarded from MBT so that
+      // spark advance can catch load steps instantly; fades out over 300 rpm above idle / with pedal.
+      const reserve = m.p && x.running ? 15 * clamp(1 - pedal / 0.05, 0, 1) * clamp(1 - (rpm - idle) / 300, 0, 1) : 0;
+      op.knockRetardDeg = x.knockRetard + reserve;
       op.combust = combust;
       op.fuelCut = x.limiterCut || (overrun && m.fuel === "petrol");
       op.loadPrev = x.load;
@@ -233,10 +241,12 @@ export class EngineSimulator {
         const k = (R_AIR * TManK) / m.VMan / 1000; // kPa per kg
         const cTh = (phi * m.throttleA0 * m.Vh) / (120 * R_AIR * TManK); // kg/(s·kPa) · ψ
         const cEng = (veEff * m.Vh * Math.max(rpm, 0)) / 120 / (R_AIR * TManK) * 1000; // kg/s per kPa
-        const mTh = cTh * 1000 * pUpKpa * throttlePsi(clamp(x.pManKpa / pUpKpa, 0, 1));
-        // reverse flow when the manifold is above the upstream pressure (boost collapse)
-        const back = x.pManKpa > pUpKpa ? (x.pManKpa - pUpKpa) * cTh * 1000 * 5 : 0;
-        x.pManKpa = (x.pManKpa + k * (mTh - back) * h) / (1 + k * cEng * h);
+        // Filling/emptying of the manifold (petrol.md §3.3 mass balance) solved as first-order relaxation to the
+        // throttle/engine flow equilibrium with the linearised time constant VMan/(R·T·(c_eng + c_throttle)).
+        // Unconditionally stable (explicit Euler oscillated with ITB plenums at high rpm, review of #17).
+        const pSteady = pUpKpa * (cEng > 0 ? steadyManifoldRatio((cTh * 1000) / cEng, 1) : 1);
+        const tau = 1 / (k * (cEng + cTh * 1000));
+        x.pManKpa += (pSteady - x.pManKpa) * (1 - Math.exp(-h / tau));
         x.pManKpa = clamp(x.pManKpa, 5, pUpKpa + 5);
         op.pManKpa = x.pManKpa;
         op.relLoad = x.relLoad;
@@ -272,6 +282,7 @@ export class EngineSimulator {
       fuelSum += out.fuelMassFlowGS;
       airSum += out.airMassFlowKgS;
       if (out.mFuelCyc > 0) anyFire = true;
+      fuelCycSum += out.mFuelCyc;
       // --- running / stall (diesel.md §3.11: rpm < 0.5·idle without starter → stall)
       if (combust && out.mFuelCyc > 0 && x.rpm > 0.6 * idle) x.running = true;
       if (x.running && !starter && x.rpm < 0.5 * idle) {
@@ -289,8 +300,16 @@ export class EngineSimulator {
     const torque = tOutSum / nSub;
     const fuelGs = fuelSum / nSub;
     // --- turbo (PR #12 stepTurbo): pedal demand; idle governor fuel does not demand boost
-    // diesel: the boost map follows the injected quantity (torque request), petrol: the pedal
-    const boostReq = !x.running ? 0 : m.fuel === "diesel" ? clamp(pedal * (2 - pedal), 0, 1) : pedal;
+    // Boost request from the actual load, not the pedal (review #17 B2): diesel from the injected quantity
+    // relative to the (ungoverned) full-load quantity, petrol from the torque load (×1.1 so full load demands
+    // the full target), capped by the pedal. Free revving without brake (torque ≈ 0 at the limiter) builds
+    // almost no boost; under load the turbo still lags physically.
+    let boostReq = 0;
+    if (x.running) {
+      boostReq = m.fuel === "diesel"
+        ? clamp(fuelCycSum / nSub / Math.max(1e-9, out.mFuelMax), 0, 1)
+        : Math.min(pedal, clamp(1.1 * x.load, 0, 1));
+    }
     x.turbo = stepTurbo(x.turbo, cfg, dt, out.exhaustMassFlowKgS, x.thermal.egtC, boostReq, rpm, ambientKpa);
     if (!Number.isFinite(x.turbo.boostBar) || !Number.isFinite(x.turbo.shaftRpm)) x.turbo = { shaftRpm: 0, boostBar: 0 };
     // --- thermal (PR #12 stepThermal)
@@ -318,7 +337,7 @@ export class EngineSimulator {
     s.fuelFlowLh = (fuelGs * 3.6) / out.fuelDensity;
     s.bsfcGkWh = powerKw > 0.5 ? (fuelGs * 3600) / powerKw : Number.NaN;
     s.efficiency = powerKw > 0.5 && fuelGs > 0 ? (powerKw * 1000) / ((fuelGs / 1000) * out.fuelLhv) : 0;
-    s.lambda = anyFire ? clamp(out.lambda, 0.3, 99) : m.fuel === "diesel" ? 99 : 99;
+    s.lambda = anyFire ? clamp(out.lambda, 0.3, 99) : 99;
     s.egtC = x.thermal.egtC;
     s.coolantC = x.thermal.coolantC;
     s.oilC = x.thermal.oilC;
@@ -340,8 +359,6 @@ export class EngineSimulator {
     }
     s.destroyed = x.destroyed;
     if (x.destroyed) s.running = false;
-    void turboMaxRpm;
-    void steadyFullLoad;
     this.s = s;
     return s;
   }

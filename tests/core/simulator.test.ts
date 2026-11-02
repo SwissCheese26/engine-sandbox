@@ -1,6 +1,5 @@
 // Transient simulator behaviour (issue #7; docs/research/diesel.md §3.11, petrol.md §3.3/§4).
-// Cases the placeholder simulator on main cannot meet are `test.failing`:
-// scharf schalten nach Integration (#3/#4) – then make `spec()` always use plain `test`.
+// Since the integration of #3/#4 every case is a normal test.
 import { describe, expect, test } from "bun:test";
 import { EngineSimulator, defaultInputs, dynoSweep } from "../../src/core/index.ts";
 import type { EngineConfig, EngineState } from "../../src/core/index.ts";
@@ -8,8 +7,6 @@ import { defaultConfig } from "../../src/data/presets.ts";
 import { REFERENCE_ENGINES } from "../../src/data/reference-engines.ts";
 import { mean, nonFiniteFields, randomConfig, rng, runPhases, sample, startEngine } from "./helpers.ts";
 
-/** Cases that already hold with the placeholder simulator (normal tests, regression guards). */
-// Integration done (#3/#4): every case is a normal test.
 function spec(name: string, fn: () => void, timeout = 60_000) {
   test(name, fn, timeout);
 }

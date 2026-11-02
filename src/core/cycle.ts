@@ -147,6 +147,8 @@ export interface CycleOut {
   exhaustMassFlowKgS: number;
   /** Diesel: full-load fuel quantity at this point [kg/cycle]. */
   mFuelFull: number;
+  /** Diesel: full-load quantity before the governor ramp [kg/cycle] (reference for the boost request). */
+  mFuelMax: number;
   fuelLhv: number;
   fuelDensity: number;
 }
@@ -195,6 +197,7 @@ export function evaluateCycle(m: Model, op: OpPoint): CycleOut {
   mAirCyc *= 1 - 0.03 * Math.max(0, pExhKpa / op.pManKpa - 1);
   let mFuelCyc = 0;
   let mFuelFull = 0;
+  let mFuelMax = 0;
   let lambda = 99;
   let imep = 0;
   let peak = 0;
@@ -218,6 +221,7 @@ export function evaluateCycle(m: Model, op: OpPoint): CycleOut {
     const pComp = pIntBar * d.eps ** 1.33;
     const piMax = m.pMaxProtect / (pComp * Math.max(0.5, 1 + 0.03 * d.fs.injectionTimingOffsetDeg));
     if (piMax > 1.05) full = Math.min(full, mFresh / (d.afr * (d.sys.piK / (piMax - 1))));
+    mFuelMax = full;
     full *= governor(d, n);
     mFuelFull = full;
     mFuelCyc = op.combust && !op.fuelCut ? clamp(op.fuelCmd, 0, 1) * full : 0;
@@ -235,8 +239,9 @@ export function evaluateCycle(m: Model, op: OpPoint): CycleOut {
     density = p.density;
     // Residual gas (Heywood ch. 6 qualitatively; coefficients [S]): at low manifold pressure exhaust flows back
     // during valve overlap, displacing fresh charge and slowing combustion. Relative to WOT (pExh/pMan ≈ 1):
-    // idle (≈ 4 … 5) loses ≈ 20 … 25 % → idle manifold 30 … 40 kPa as in petrol.md §3.3.
-    const xr = 0.08 * (1 + 0.6 * m.cfg.head.camProfile) * Math.max(0, Math.sqrt(Math.max(1, pExhKpa / Math.max(5, op.pManKpa))) - 1.1);
+    // idle (≈ 4) loses ≈ 15 %; together with the accessory load and the idle spark reserve (simulator.ts) the
+    // warm idle manifold pressure lands at ≈ 30 … 33 kPa (petrol.md §3.3: 30 … 40 kPa).
+    const xr = 0.11 * (1 + 0.6 * m.cfg.head.camProfile) * Math.max(0, Math.sqrt(Math.max(1, pExhKpa / Math.max(5, op.pManKpa))) - 1.1);
     residual = Math.min(0.5, xr);
     mAirCyc *= 1 - 0.5 * residual;
     const lam = petrolLambda(p, op.relLoad, op.coolantC);
@@ -257,7 +262,13 @@ export function evaluateCycle(m: Model, op: OpPoint): CycleOut {
   else pmep = (pExhKpa - op.pManKpa) / 100;
   // cranking: compression losses of the dragged engine (diesel.md §3.11: + 0.3·pComp/40 bar)
   if (op.cranking && mFuelCyc === 0) pmep += (0.3 * ((op.pManKpa / 100) * m.cfg.block.compressionRatio ** 1.3)) / 40;
-  const fmep = fmepBar(m.fr, peak, cm, op.oilC);
+  // Accessories (review #17 B3) [S]: alternator with base electrical load (ECU, fuel pump, fans ≈ 50 A,
+  // η ≈ 0.55 → ≈ 1.4 kW) plus a small speed-dependent share; water and oil pump are already part of the
+  // Chen-Flynn constants (petrol.md §3.8), A/C off. Expressed as an fmep share; the torque is capped below
+  // 0.5·idle so cranking stays possible.
+  const nAcc = Math.max(n, 0.5 * m.cfg.idleRpm);
+  const pAccW = 1400 + 20 * (Vh * 1000) * (nAcc / 1000);
+  const fmep = fmepBar(m.fr, peak, cm, op.oilC) + (pAccW * 120) / (Vh * nAcc) / 1e5;
   const bmep = imep - fmep - pmep;
   let torque = (bmep * 1e5 * Vh) / (4 * Math.PI);
   // supercharger drive power (petrol.md §3.12, PR #12 superchargerPowerKw)
@@ -267,11 +278,12 @@ export function evaluateCycle(m: Model, op: OpPoint): CycleOut {
   const pFricW = fmep * 1e5 * Vh * cyclesPerS;
   // heat into the coolant (diesel.md §3.10: xWall·P_fuel + ½·P_fric; petrol.md §3.10: 0.25 … 0.35·P_fuel)
   const wallShare = m.fuel === "diesel" ? xWall : 0.25 + 0.1 * (1 - clamp(op.relLoad, 0, 1));
-  const heatToCoolantKw = (wallShare * pFuelW + 0.5 * pFricW) / 1000;
+  // petrol.md §3.10 gives the total (incl. friction) as a share of the fuel power → no extra friction term
+  const heatToCoolantKw = (wallShare * pFuelW + (m.fuel === "diesel" ? 0.5 * pFricW : 0)) / 1000;
   return {
     mAirCyc, airMassFlowKgS: mAirCyc * cyclesPerS, mFuelCyc, fuelMassFlowGS, lambda, imepBar: imep, pmepBar: pmep,
     fmepBar: fmep, bmepBar: bmep, torqueNm: torque, peakPressureBar: peak, egtC, smoke, knock, knockMargin: margin,
-    heatToCoolantKw, exhaustMassFlowKgS: (mAirCyc + mFuelCyc) * cyclesPerS, mFuelFull, fuelLhv: lhv, fuelDensity: density,
+    heatToCoolantKw, exhaustMassFlowKgS: (mAirCyc + mFuelCyc) * cyclesPerS, mFuelFull, mFuelMax, fuelLhv: lhv, fuelDensity: density,
   };
 }
 

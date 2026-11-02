@@ -121,7 +121,9 @@ export function petrolCombustion(c: PetrolConsts, rpm: number, mAirCyc: number, 
   // §3.10 exhaust temperature
   const Qrel = (mAirCyc / c.afr) * c.lhv * Math.min(1, 1 / lam);
   let fExh = 0.36 + 0.006 * Math.max(0, -dIgn) + (0.02 * rpm) / 6000;
-  fExh *= 0.75 + 0.25 * clamp(load, 0, 1);
+  // spec: ×(0.75 + 0.25·load); steeper load factor [S, review #17] so idle lands at 400 … 550 °C (§3.10 Richtwert
+  // 350 … 500 °C incl. the idle spark reserve), full load unchanged
+  fExh *= 0.4 + 0.6 * clamp(load, 0, 1);
   let egtC = TManC + (fExh * Qrel) / ((mAirCyc + mFuelCyc) * 1200);
   egtC -= 600 * Math.max(0, 1 - lam);
   return { imepBar, peakPressureBar, egtC, dIgn };

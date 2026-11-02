@@ -416,7 +416,7 @@ export const FIELDS: Field[] = [
     kind: "number", path: "cooling.radiatorCapacityKw", group: "cooling", label: "Kühlerleistung", unit: "kW", decimals: 0,
     effect: "+ Kühler → mehr Dauerleistung ohne Überhitzen.",
     warns: ["overheat-coolant"],
-    range: () => ({ min: 20, max: 300, step: 5 }),
+    range: () => ({ min: 20, max: 600, step: 5 }),
   },
   {
     kind: "number", path: "cooling.thermostatOpenC", group: "cooling", label: "Thermostat öffnet", unit: "°C", decimals: 0,
