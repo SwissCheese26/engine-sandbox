@@ -1379,3 +1379,28 @@ kbd {
   text-decoration: underline dotted;
   text-underline-offset: 3px;
 }
+.bench__library {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--fs-14);
+  color: var(--alu-shade);
+}
+.bench__library {
+  min-width: 0;
+}
+.bench__library select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 36px;
+  padding: 4px 8px;
+  border-radius: 2px;
+  border: 1px solid var(--alu-shade);
+  background: var(--hammer);
+  color: var(--alu);
+}
+.bench__libinfo {
+  font-size: var(--fs-12);
+  color: var(--alu);
+  max-width: 60ch;
+}
