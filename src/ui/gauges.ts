@@ -147,7 +147,7 @@ class RoundGauge {
     const div = this.def.scaleDiv ?? 1;
     const dMin = this.min * k + off;
     const dSpan = span * k;
-    const step = div > 1 ? div : tickStep(dSpan, R > 70 ? 8 : 2);
+    const step = div > 1 ? div : tickStep(dSpan, R > 70 ? 8 : 2) || 1; // guard: zero span → no endless loop
     const minor = step / (R > 70 ? 5 : 2);
     ctx.strokeStyle = t.alu;
     const first = Math.ceil(dMin / minor - 1e-9) * minor;
@@ -225,6 +225,7 @@ class Meter {
   private shown = 0;
   private alarm = false;
   private unitIdx = 0;
+  private lastState?: EngineState;
 
   constructor(readonly def: MeterDef) {
     this.el = document.createElement("div");
@@ -245,6 +246,7 @@ class Meter {
         this.unitIdx = (this.unitIdx + 1) % units.length;
         saveUnit(def.id, this.unitIdx);
         unitEl.textContent = units[this.unitIdx]!.unit;
+        if (this.lastState) this.update(this.lastState, 0, new Set());
       });
     }
   }
@@ -258,6 +260,7 @@ class Meter {
   }
 
   update(s: EngineState, dt: number, active: Set<WarningCode>) {
+    this.lastState = s;
     const v = this.def.value(s);
     const ok = Number.isFinite(v);
     const tau = reducedMotion() ? 0.35 : 0.08;

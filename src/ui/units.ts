@@ -59,12 +59,14 @@ export function makeSwitchable(el: HTMLElement, label: string, onCycle: () => vo
   el.classList.add("is-switchable");
   el.tabIndex = 0;
   el.setAttribute("role", "button");
-  el.title = "Klicken: Einheit wechseln";
-  el.setAttribute("aria-label", `${label}, Einheit wechseln`);
+  // accessible name comes from the content (label, value, unit); the action is described separately
+  el.title = `${label}: klicken, um die Einheit zu wechseln`;
+  el.setAttribute("aria-roledescription", "Instrument, Einheit umschaltbar");
   el.addEventListener("click", onCycle);
   el.addEventListener("keydown", (e) => {
     if (e.key === "Enter" || e.key === " ") {
       e.preventDefault();
+      if (e.repeat) return;
       e.stopPropagation();
       onCycle();
     }

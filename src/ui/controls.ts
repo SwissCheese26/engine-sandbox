@@ -224,7 +224,7 @@ export class ControlPanel {
     const typing = tag === "INPUT" && !["checkbox", "radio", "range"].includes((t as HTMLInputElement).type) || tag === "SELECT" || tag === "TEXTAREA";
     if (typing || e.ctrlKey || e.metaKey || e.altKey) return false;
     const key = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-    const activatable = tag === "BUTTON" || (tag === "INPUT" && ["checkbox", "radio"].includes((t as HTMLInputElement).type));
+    const activatable = tag === "BUTTON" || t?.getAttribute("role") === "button" || (tag === "INPUT" && ["checkbox", "radio"].includes((t as HTMLInputElement).type));
     if (key === "i") {
       if (down && !e.repeat) {
         this.setIgnition(!this.ignition.checked);
