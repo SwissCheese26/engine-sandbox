@@ -109,6 +109,11 @@ export class EngineSimulator {
     this.init();
   }
 
+  /** Vehicle back to standstill (chassis dyno), engine state untouched. */
+  resetVehicle() {
+    this.x.vSpeed = 0;
+  }
+
   reset() {
     this.tracker = createLimitTracker();
     const amb = 20;

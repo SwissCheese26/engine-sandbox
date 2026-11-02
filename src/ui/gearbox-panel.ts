@@ -29,6 +29,9 @@ export class GearboxPanel {
   private cfg: EngineConfig;
   private summary: EngineSummary;
   private last = { gear: "", speed: "", vmax: "", t100: "" };
+  private moving = false;
+  /** Set by the app: puts the vehicle in the simulator back to standstill. */
+  onResetVehicle: () => void = () => {};
 
   constructor(cfg: EngineConfig, summary: EngineSummary) {
     this.cfg = cfg;
@@ -95,12 +98,13 @@ export class GearboxPanel {
 
   setVisible(on: boolean) {
     this.el.hidden = !on;
-    if (on) this.drivetrain.reset();
+    if (on) this.reset();
   }
 
   configure(cfg: EngineConfig, summary: EngineSummary) {
     this.cfg = cfg;
     this.summary = summary;
+    // the simulator was reset by setConfig() (engine and vehicle at rest), so the gearbox follows
     this.drivetrain.setEngine(cfg, summary);
     this.drivetrain.reset();
     this.syncSetup();
@@ -109,13 +113,14 @@ export class GearboxPanel {
   /** Vehicle back to standstill (engine reset). */
   reset() {
     this.drivetrain.reset();
+    this.onResetVehicle();
   }
 
   /** Q / E shift keys. Returns true when handled. */
   handleKey(e: KeyboardEvent, down: boolean): boolean {
     if (this.el.hidden || e.ctrlKey || e.metaKey || e.altKey) return false;
     const tag = (e.target as HTMLElement | null)?.tagName;
-    if (tag === "INPUT" && (e.target as HTMLInputElement).type === "text") return false;
+    if (tag === "SELECT" || tag === "TEXTAREA" || (tag === "INPUT" && (e.target as HTMLInputElement).type === "text")) return false;
     const key = e.key.toLowerCase();
     if (key !== "q" && key !== "e") return false;
     if (down && !e.repeat) this.drivetrain.shift(key === "e" ? 1 : -1);
@@ -160,5 +165,12 @@ export class GearboxPanel {
     if (vmax !== this.last.vmax) this.vmaxEl.textContent = this.last.vmax = vmax;
     if (t100 !== this.last.t100) this.t100El.textContent = this.last.t100 = t100;
     this.autoBtn.hidden = !(s.type === "dsg" && s.manualMode);
+    // gearbox and final drive can only be changed at standstill (review #19)
+    const moving = s.speedKmh > 0.5;
+    if (moving !== this.moving) {
+      this.moving = moving;
+      this.typeSel.disabled = moving;
+      this.fdInput.disabled = moving;
+    }
   }
 }

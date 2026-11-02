@@ -113,6 +113,7 @@ export class App {
     this.bench.onChange((cfg) => {
       this.pendingCfg = cfg;
     });
+    this.gearbox.onResetVehicle = () => this.sim.resetVehicle();
     this.console.onModeChange = (mode) => this.gearbox.setVisible(mode === "vehicle");
     this.console.onIgnition = (on) => {
       if (on) void this.ensureSound();

@@ -63,3 +63,21 @@ describe("drivetrain (issue #14 base)", () => {
     expect(short.vmaxKmh).toBeLessThan(long.vmaxKmh);
   });
 });
+
+describe("drivetrain review #19", () => {
+  test("DSG refuses a downshift that would over-rev, reset clears launch memory", () => {
+    const cfg = defaultConfig("petrol");
+    const sum = summarize(cfg);
+    const dt = new Drivetrain(cfg, sum, "dsg");
+    // fake state: running at 200 km/h in 7th
+    const fake = { running: true, rpm: 4000, vehicleSpeedMs: 200 / 3.6 } as Parameters<Drivetrain["inputs"]>[1];
+    for (let g = 0; g < 6; g++) dt.shift(1), dt.inputs(0.2, fake, 0.5);
+    expect(dt.state.gear).toBe(7);
+    for (let k = 0; k < 6; k++) dt.shift(-1), dt.inputs(0.2, fake, 0.5);
+    // 1st gear at 200 km/h would be ≈ 20 000 1/min: never selected
+    expect(dt.state.gear).toBeGreaterThan(2);
+    dt.reset();
+    const c = dt.inputs(1 / 60, { running: true, rpm: 800, vehicleSpeedMs: 0 } as typeof fake, 0);
+    expect(c.clutch).toBe(0);
+  });
+});

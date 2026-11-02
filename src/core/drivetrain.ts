@@ -59,6 +59,7 @@ export class Drivetrain {
   private shiftT = 0;
   private pendingGear = 0;
   private holdLaunch = 0;
+  private lastSpeedMs = 0;
 
   constructor(
     private cfg: EngineConfig,
@@ -88,18 +89,27 @@ export class Drivetrain {
   }
 
   setType(type: GearboxType) {
-    this.st = this.fresh(type, GEARBOXES[type].finalDrive);
+    this.clearTransient();
+    Object.assign(this.st, this.fresh(type, GEARBOXES[type].finalDrive));
   }
 
   /** Final drive ratio ("Achsübersetzung"): shorter = more pull, lower top speed. */
   setFinalDrive(fd: number) {
-    this.st = { ...this.st, finalDrive: Math.min(6, Math.max(2, fd)) };
+    this.st.finalDrive = Math.min(6, Math.max(2, fd));
   }
 
   /** Vehicle back to standstill, first gear, records kept. */
   reset() {
     const keep = { maxSpeedKmh: this.st.maxSpeedKmh, t0to100S: this.st.t0to100S };
-    this.st = { ...this.fresh(this.st.type, this.st.finalDrive), ...keep };
+    this.clearTransient();
+    Object.assign(this.st, this.fresh(this.st.type, this.st.finalDrive), keep);
+  }
+
+  /** Shift timer, pending gear and launch-clutch memory back to rest (review #19). */
+  private clearTransient() {
+    this.shiftT = 0;
+    this.pendingGear = 0;
+    this.holdLaunch = 0;
   }
 
   /** Driver shift request: +1 up, −1 down. Ignored for CVT. */
@@ -108,6 +118,9 @@ export class Drivetrain {
     if (s.type === "cvt") return;
     if (s.type === "dsg") s.manualMode = true;
     const target = Math.max(0, Math.min(s.gearCount, (s.shifting ? this.pendingGear : s.gear) + dir));
+    // DSG refuses a downshift that would over-rev the engine (ECU protection); the manual gearbox lets you
+    // do it – the limits model then reports the over-rev (review #19)
+    if (s.type === "dsg" && dir < 0 && target > 0 && this.rpmInGear(target, this.lastSpeedMs) > this.cfg.revLimitRpm * 0.97) return;
     this.beginShift(target);
   }
 
@@ -138,6 +151,7 @@ export class Drivetrain {
     const s = this.st;
     const g = GEARBOXES[s.type];
     const v = engine.vehicleSpeedMs ?? 0;
+    this.lastSpeedMs = v;
     const rpm = engine.rpm;
     const idle = this.cfg.idleRpm;
     const limit = this.cfg.revLimitRpm;
@@ -184,6 +198,8 @@ export class Drivetrain {
     // --- clutch: automatic launch control and shift interruption
     const inputRpm = s.gear > 0 ? (v / this.vehicle.wheelRadiusM) * ratio * s.finalDrive * RAD_TO_RPM : 0;
     let clutch: number;
+    // Engine not running (ignition off, stalled): the automatic clutch opens, so there is no engine braking
+    // and the engine is not dragged along (simplification of an automated clutch, review #19).
     if (s.gear === 0 || !engine.running) {
       clutch = 0;
     } else if (s.shifting) {
@@ -206,7 +222,7 @@ export class Drivetrain {
     if (s.speedKmh > s.maxSpeedKmh) s.maxSpeedKmh = s.speedKmh;
     if (s.speedKmh < 0.5 && pedal > 0.05 && s.t0to100Running === null) s.t0to100Running = 0;
     if (s.t0to100Running !== null) {
-      if (s.speedKmh < 0.5 && pedal < 0.02) s.t0to100Running = null;
+      if ((s.speedKmh < 0.5 && pedal < 0.02) || !engine.running) s.t0to100Running = null;
       else {
         s.t0to100Running += dt;
         if (s.speedKmh >= 100) {
