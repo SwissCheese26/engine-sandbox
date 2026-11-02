@@ -4,8 +4,9 @@
 // checks that the rpm readout rises, and writes screenshots (1440×900, 390×844) to
 // tests/e2e/screenshots/.
 //
-// If the test cell UI is not present (no window.__pruefzelle and no [data-control] elements),
-// it prints "UI noch nicht vorhanden – übersprungen" and exits 0.
+// The rpm is read from the visible readout ([data-gauge="rpm"] .gauge__value), not from a debug hook.
+// Skip ("UI noch nicht vorhanden – übersprungen", exit 0) only when the UI root is missing (#app has
+// no rendered element); any other missing part is a real failure (exit 1).
 //
 // Usage: node tests/e2e/smoke.mjs [outDir]
 import { createServer } from "node:http";
@@ -66,20 +67,19 @@ const errors = [];
 const failures = [];
 let skipped = false;
 
-/** Ignore failures of optional external resources (Google Fonts offline in CI/sandbox). */
-const external = (text) => /fonts\.(googleapis|gstatic)\.com|ERR_(INTERNET_DISCONNECTED|NAME_NOT_RESOLVED|BLOCKED|FAILED)/.test(text);
+/** Ignore only failures of the optional Google Fonts hosts (offline in CI/sandbox). */
+const external = (text) => /fonts\.(googleapis|gstatic)\.com/.test(text);
 
+const RPM_READOUT = '[data-gauge="rpm"] .gauge__value';
+
+/** Reads the visible rpm readout (German format "4.750" → 4750). NaN if missing or unreadable. */
 async function readRpm(page) {
-  return page.evaluate(() => {
-    const w = window;
-    const st = w.__pruefzelle?.sim?.state;
-    if (st && typeof st.rpm === "number") return st.rpm;
-    const el = document.querySelector('[data-gauge="rpm"] .gauge__value, [data-gauge="rpm"] output');
-    if (!el) return NaN;
-    // German number formatting: "1.234" or "1 234" → 1234
-    const n = Number((el.textContent ?? "").replace(/[\s.  ]/g, "").replace(",", "."));
-    return n;
-  });
+  return page.evaluate((sel) => {
+    const el = document.querySelector(sel);
+    const text = (el?.textContent ?? "").trim();
+    if (!/\d/.test(text)) return NaN;
+    return Number(text.replace(/[\s.  ]/g, "").replace(",", "."));
+  }, RPM_READOUT);
 }
 
 async function run(label, viewport) {
@@ -95,8 +95,10 @@ async function run(label, viewport) {
   await page.goto(base, { waitUntil: "load" });
   await page.waitForTimeout(500);
 
-  const hasUi = await page.evaluate(() => Boolean(window.__pruefzelle) || document.querySelector("[data-control]") !== null);
-  if (!hasUi) {
+  // Skip only when the UI root is missing (#app has no rendered element). Missing gauges or
+  // controls inside a rendered UI are real failures (exit 1).
+  const hasUiRoot = await page.evaluate(() => (document.getElementById("app")?.childElementCount ?? 0) > 0);
+  if (!hasUiRoot) {
     skipped = true;
     await page.screenshot({ path: join(outDir, `smoke-${label}-placeholder.png`) });
     await page.close();
@@ -104,6 +106,9 @@ async function run(label, viewport) {
   }
 
   await page.screenshot({ path: join(outDir, `smoke-${label}-idle.png`) });
+  for (const sel of [RPM_READOUT, '[data-control="ignition"]', '[data-control="starter"]']) {
+    if (!(await page.$(sel))) failures.push(`${label}: Element ${sel} fehlt`);
+  }
   const rpm0 = await readRpm(page);
 
   // focus the document (not a button) so the global key handler receives the keys
@@ -125,7 +130,7 @@ async function run(label, viewport) {
 
   console.log(`${label}: rpm vor Start ${fmt(rpm0)}, nach Start ${fmt(rpmIdle)}, mit Gas ${fmt(rpmGas)}, Zündung ${ignitionOn}`);
   if (ignitionOn === false) failures.push(`${label}: Zündung (I) wurde nicht eingeschaltet`);
-  if (!Number.isFinite(rpmGas)) failures.push(`${label}: Drehzahlanzeige nicht lesbar`);
+  if (!Number.isFinite(rpmGas) || !Number.isFinite(rpmIdle)) failures.push(`${label}: Drehzahlanzeige nicht lesbar`);
   else if (!(rpmGas > Math.max(rpmIdle, rpm0 || 0) + 300)) failures.push(`${label}: Drehzahl steigt nicht (Leerlauf ${fmt(rpmIdle)}, Gas ${fmt(rpmGas)})`);
   if (Number.isFinite(rpmIdle) && !(rpmIdle > 200)) failures.push(`${label}: Motor springt nicht an (rpm ${fmt(rpmIdle)})`);
 
@@ -144,7 +149,7 @@ try {
   server.close();
 }
 
-if (skipped && errors.length === 0) {
+if (skipped && errors.length === 0 && failures.length === 0) {
   console.log("UI noch nicht vorhanden – übersprungen");
   process.exit(0);
 }
