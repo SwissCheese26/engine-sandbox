@@ -91,7 +91,7 @@ describe("thermal: warm-up", () => {
     let s: ThermalState = { coolantC: 90, oilC: 100, egtC: 850 };
     for (let i = 0; i < 50; i++) s = stepThermal(s, cfg, 0.1, 0, 200, 3000, 20);
     expect(s.egtC).toBeGreaterThan(500); // 5 s overrun: still clearly hot
-    // engine off: after one minute the manifold probe is still well above 300 °C
+    // engine off (preset: cast log manifold, τ 2.5 s base): after one minute the probe is still above 500 °C
     let off: ThermalState = { coolantC: 90, oilC: 100, egtC: 850 };
     for (let i = 0; i < 60; i++) off = stepThermal(off, cfg, 1, 0, 20, 0, 20);
     expect(off.egtC).toBeGreaterThan(500);

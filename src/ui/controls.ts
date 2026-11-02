@@ -341,7 +341,7 @@ export class ControlPanel {
     this.pedalOut.textContent = `${pct} %`;
     const track = this.pedalEl.querySelector(".pedal__track")!;
     track.setAttribute("aria-valuenow", String(pct));
-    track.setAttribute("aria-valuetext", `${pct} Prozent${this.gasHeld ? ", Vollgas gehalten" : ""}`);
+    track.setAttribute("aria-valuetext", `${pct} Prozent${this.gasHeld ? (p >= 1 ? ", Vollgas gehalten" : ", Gas steigt") : ""}`);
     this.pedalEl.classList.toggle("is-held", this.gasHeld);
   }
 

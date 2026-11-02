@@ -158,7 +158,7 @@ export function stepThermal(
   }
   const egt0 = Number.isFinite(s.egtC) ? s.egtC : targetEgtC;
   // Heating follows the gas quickly (sensor + thin gas boundary layer). Cooling is slower because the hot
-  // manifold/turbine housing gives its heat back to the gas and the probe [S, Arthur's question 02.11.]:
+  // manifold/turbine housing gives its heat back to the gas and the probe (petrol.md, Nachtrag Abgas-Abkühlung):
   // with flow (overrun, idle) ≈ 3× slower; without flow (engine off) only natural convection, τ ≈ 4–5 min.
   const tauBase = egtTimeConstantS(cfg);
   const tau = targetEgtC >= egt0 ? tauBase : rpm < 50 ? 270 : tauBase * 3;
