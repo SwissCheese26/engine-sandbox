@@ -33,7 +33,9 @@ export function validateConfig(cfg: EngineConfig): Warning[] {
   } else if (b.conrodLengthMm > 2.2 * b.strokeMm) {
     add("info", "block.conrodLengthMm", "Pleuel sehr lang (> 2,2 × Hub): Block baut hoch und schwer.");
   }
-  if (h.valvetrain === "ohv" && h.valvesPerCylinder > 2) add("critical", "head.valvesPerCylinder", "Stoßstangen-Ventiltrieb (OHV) ist nur mit 2 Ventilen pro Zylinder sinnvoll.");
+  // OHV with 4 valves exists (Harley-Davidson Milwaukee-Eight, Cummins ISB: forked rockers), 3 or 5 does not (#25).
+  if (h.valvetrain === "ohv" && h.valvesPerCylinder === 4) add("info", "head.valvesPerCylinder", "Stoßstangen mit 4 Ventilen (Gabelkipphebel) sind selten, z. B. Harley-Davidson Milwaukee-Eight.");
+  else if (h.valvetrain === "ohv" && h.valvesPerCylinder > 2) add("critical", "head.valvesPerCylinder", "Stoßstangen-Ventiltrieb (OHV) ist nur mit 2 oder 4 Ventilen pro Zylinder sinnvoll.");
   if (charged && ind.boostTargetBar <= 0) add("warning", "induction.boostTargetBar", "Aufgeladener Motor mit 0 bar Ladedruck – der Lader bringt nichts.");
   if (!charged && ind.boostTargetBar > 0) add("info", "induction.boostTargetBar", "Saugmotor: Der Ladedruck-Sollwert wird ignoriert.");
   if (cfg.idleRpm >= cfg.revLimitRpm * 0.6) add("critical", "idleRpm", "Leerlaufdrehzahl liegt zu nah am Begrenzer.");

@@ -25,6 +25,24 @@ export function rpmAtPistonSpeed(strokeMm: number, cm: number): number {
   return (30 * cm) / (strokeMm / 1000);
 }
 
+/**
+ * Valve-float speed factor from valve size and material (issue #25), shared by airpath.ts and limits.ts.
+ * Bore ≥ 86 mm: √(86/B) as before (petrol.md §4, calibrated car engines unchanged). Below 86 mm: (86/B)^2.5 [S, fit].
+ * Geometric similarity alone (valve mass ∝ d³, spring force ∝ d², lift ∝ d) gives n_float ∝ 1/d; small
+ * high-revving heads also have shorter stems and lighter followers (finger followers, small buckets). The exponent
+ * 2.5 is fitted so that steel-valve motorcycle engines (Triumph 765: 78 mm, ≈ 12 500 1/min) do not float below
+ * their limiter; car engines below 86 mm only gain headroom above their limiter (no effect on calibration).
+ * Titanium valves (≈ 40 % lighter; 1/√0.6 ≈ 1.29, mixed Ti intake / steel exhaust → 1.25) [S];
+ * desmodromic: no closing spring, the limit is cam/rocker stiffness, ×1.35 [S].
+ */
+export function valveFloatFactor(cfg: EngineConfig): number {
+  const B = Math.max(40, cfg.block.boreMm);
+  const size = B >= 86 ? Math.sqrt(86 / B) : (86 / B) ** 2.5;
+  const mat = cfg.head.valveMaterial === "titanium" ? 1.25 : 1;
+  const desmo = cfg.head.desmodromic ? 1.35 : 1;
+  return size * mat * desmo;
+}
+
 const even = (n: number) => Array.from({ length: n }, () => 720 / n);
 
 /**
@@ -34,10 +52,20 @@ const even = (n: number) => Array.from({ length: n }, () => 720 / n);
  * - V10 at 90°: common crankpins → alternating 90/54° (Viper); otherwise even 72°.
  * - V-twin: common crankpin → 360+α / 360−α (e.g. 45° → 405/315).
  * - V8 crossplane and flatplane both fire evenly every 90°; the difference is the per-bank pattern (firing order).
+ * Motorcycle layouts (issue #25, petrol.md §6.2 / standard crank geometry: a four-stroke cylinder fires every 720°,
+ * so the interval between two cylinders = crankpin offset + bank angle, mod 720):
+ * - single: 720; inline triple: even 240 (Triumph, Yamaha CP3); boxer twin: 360/360 (BMW R).
+ * - inline twin: crankpin offset 360° → 360/360, 180° → 180/540, 270° → 270/450 (`block.twinCrankDeg`).
+ * - inline four crossplane (Yamaha R1 2009+, `block.crossplaneI4`): 270-180-90-180, order 1-3-2-4.
  */
 export function firingIntervalsDeg(cfg: EngineConfig): number[] {
   const { layout, cylinders: n, bankAngleDeg } = cfg.block;
   if (n <= 1) return [720];
+  if (layout === "inline" && n === 2) {
+    const k = cfg.block.twinCrankDeg ?? 360;
+    return k === 360 ? [360, 360] : [k, 720 - k];
+  }
+  if (layout === "inline" && n === 4 && cfg.block.crossplaneI4) return [270, 180, 90, 180];
   if (layout === "v") {
     if (n === 2) {
       const a = Math.min(180, Math.max(0, bankAngleDeg));
@@ -52,6 +80,8 @@ const FIRING_ORDERS: Record<string, number[]> = {
   inline2: [1, 2],
   inline3: [1, 2, 3],
   inline4: [1, 3, 4, 2],
+  // Yamaha R1 crossplane (2009+)
+  inline4crossplane: [1, 3, 2, 4],
   inline5: [1, 2, 4, 5, 3],
   inline6: [1, 5, 3, 6, 2, 4],
   inline8: [1, 6, 2, 5, 8, 3, 7, 4],
@@ -74,7 +104,8 @@ const FIRING_ORDERS: Record<string, number[]> = {
 /** Firing order (1-based cylinder numbers), petrol.md §6.2; unknown combinations fall back to 1…n. */
 export function firingOrder(cfg: EngineConfig): number[] {
   const { layout, cylinders: n, v8Crank } = cfg.block;
-  const key = layout === "v" && n === 8 ? `v8${v8Crank}` : `${layout}${n}`;
+  const key = layout === "v" && n === 8 ? `v8${v8Crank}`
+    : layout === "inline" && n === 4 && cfg.block.crossplaneI4 ? "inline4crossplane" : `${layout}${n}`;
   const order = FIRING_ORDERS[key];
   if (order && order.length === n) return order.slice();
   return Array.from({ length: Math.max(1, n) }, (_, i) => i + 1);
@@ -91,5 +122,8 @@ export function crankInertia(cfg: EngineConfig): number {
   if (cfg.block.crankshaft === "billet") J *= 0.92;
   if (cfg.block.crankshaft === "forged") J *= 0.97;
   if (cfg.fuel === "petrol") J *= 0.8;
+  // Engines revving beyond 9500 1/min (motorcycles, issue #25) have no car flywheel: crank, primary gear and
+  // clutch basket only (CBR1000RR ≈ 0.05 kg·m²). (9500/n_limit)³ [S]; engines up to 9500 1/min are unchanged.
+  if (cfg.revLimitRpm > 9500) J *= Math.max(0.25, (9500 / cfg.revLimitRpm) ** 3);
   return J;
 }
