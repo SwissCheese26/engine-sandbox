@@ -225,6 +225,7 @@ export class App {
         this.pendingCfg = null;
         this.applyConfig(cfg);
       }
+      this.console.tick(dt);
       let s: EngineState;
       try {
         if (this.inputs.dynoMode === "vehicle") {

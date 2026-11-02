@@ -585,3 +585,10 @@ Fachliteratur (aus Fachwissen, nicht online geprüft):
 
 Nicht belegt / bewusst geschätzt: alle Klopfmodell-Koeffizienten, VE-Kurvenkonstanten, Ventilflatter-Basisdrehzahlen,
 Akustik-Mischanteile, Kat-/EGT-Schwellen (gängige Praxiswerte), Pleuellängen der Referenzmotoren, Kraftstoffdichten ron98/ron102.
+
+
+## Nachtrag: Abgas-Abkühlung (gilt für Benzin und Diesel)
+Das Thermoelement vor der Turbine sitzt im Krümmer. Dessen Wandmasse (Grauguss mehrere kg) speichert Wärme. [S, abgeleitet aus typischen Datalogs]
+- Aufheizen unter Last: Die Messung folgt dem Gas mit τ ≈ 1 s (Rohrkrümmer) bis 2,5 s (Gusskrümmer).
+- Abkühlen mit Gasdurchsatz (Schub, Leerlauf): Die Wand gibt Wärme ans Gas ab. Die Anzeige fällt etwa 3× langsamer, typisch 850 → 500 °C in ca. 5–10 s.
+- Motor aus, ohne Durchsatz: nur Eigenkonvektion, τ ≈ 4–5 min. Der Krümmer bleibt minutenlang heiß.
