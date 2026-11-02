@@ -280,3 +280,24 @@ describe("robustness", () => {
     }
   });
 });
+
+describe("warm start", () => {
+  test("startWarm: operating temperature, never below ambient; cold start at ambient; applies after reset()", () => {
+    const sim = new EngineSimulator(defaultConfig("diesel"));
+    sim.step(1 / 60, { ...defaultInputs(), ambientC: 5, startWarm: true });
+    expect(sim.state.coolantC).toBeGreaterThan(80);
+    expect(sim.state.oilC).toBeGreaterThan(80);
+    expect(sim.state.egtC).toBeGreaterThan(100);
+    // option is read only at the first step after reset()
+    sim.step(1 / 60, { ...defaultInputs(), ambientC: 5, startWarm: false });
+    expect(sim.state.coolantC).toBeGreaterThan(80);
+    sim.reset();
+    sim.step(1 / 60, { ...defaultInputs(), ambientC: 5, startWarm: false });
+    expect(sim.state.coolantC).toBeCloseTo(5, 0);
+    // hot desert: warm start never cools below ambient
+    sim.reset();
+    sim.step(1 / 60, { ...defaultInputs(), ambientC: 100, startWarm: true });
+    expect(sim.state.oilC).toBeGreaterThanOrEqual(99.9);
+    expect(sim.state.egtC).toBeGreaterThanOrEqual(149.9);
+  });
+});

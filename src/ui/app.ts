@@ -128,6 +128,16 @@ export class App {
       this.recorder.reset();
       this.announce("Motor zurückgesetzt.");
     };
+    this.console.onWarmChange = (warm) => {
+      if (App.turning(this.sim.state)) {
+        this.announce(warm ? "Warmstart gilt ab dem nächsten Zurücksetzen." : "Kaltstart gilt ab dem nächsten Zurücksetzen.");
+        return;
+      }
+      this.sim.reset();
+      this.recorder.reset();
+      this.gearbox.reset();
+      this.announce(warm ? "Motor ist warm." : "Motor ist kalt.");
+    };
     this.recorder.onMeasured((auto) => {
       // automatic runs follow every bench change: not announced, the screen reader would never stop
       if (auto) return;

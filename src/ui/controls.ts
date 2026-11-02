@@ -42,6 +42,8 @@ export class ControlPanel {
   onSound: (muted: boolean, volume: number) => void = () => {};
   onModeChange?: (mode: SimInputs["dynoMode"]) => void;
   onReset: () => void = () => {};
+  /** Warm/cold start toggled; the app resets a standing engine so the new temperatures apply. */
+  onWarmChange: (warm: boolean) => void = () => {};
 
   constructor(private inputs: SimInputs, soundAvailable: boolean) {
     this.el = document.createElement("section");
@@ -90,6 +92,7 @@ export class ControlPanel {
             <option value="3">Gefühlvoll (3 s)</option>
           </select>
         </label>
+        <label class="console__field console__warm"><input type="checkbox" data-control="warm" /> <span>Motor warm starten</span></label>
         <button type="button" class="btn" data-control="reset">Motor zurücksetzen</button>
       </div>
       <div class="console__foot">
@@ -177,6 +180,22 @@ export class ControlPanel {
       if (this.inputs.dynoMode === "torque") this.inputs.dynoBrakeTorqueNm = v;
       else this.inputs.dynoTargetRpm = v;
       this.syncTarget();
+    });
+    const warm = this.el.querySelector<HTMLInputElement>('[data-control="warm"]')!;
+    try {
+      warm.checked = localStorage.getItem("pruefzelle.startWarm") === "1";
+    } catch {
+      /* default: cold start */
+    }
+    this.inputs.startWarm = warm.checked;
+    warm.addEventListener("change", () => {
+      this.inputs.startWarm = warm.checked;
+      try {
+        localStorage.setItem("pruefzelle.startWarm", warm.checked ? "1" : "0");
+      } catch {
+        /* per visit only */
+      }
+      this.onWarmChange(warm.checked);
     });
     const ramp = this.el.querySelector<HTMLSelectElement>('[data-control="gas-ramp"]')!;
     try {
