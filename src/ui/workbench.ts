@@ -64,7 +64,10 @@ export class Workbench {
     const libInfo = head.querySelector<HTMLElement>(".bench__libinfo")!;
     lib.addEventListener("change", () => {
       const e = ENGINE_LIBRARY.find((x) => x.config.id === lib.value);
-      if (!e || this.locked) return;
+      if (!e || this.locked) {
+        lib.value = "";
+        return;
+      }
       this.loadLibrary(e.config.id);
       const kw = Math.round(e.expected.peakPowerKw);
       const ps = Math.round(e.expected.peakPowerKw * 1.35962);

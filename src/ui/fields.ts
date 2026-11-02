@@ -416,7 +416,7 @@ export const FIELDS: Field[] = [
     kind: "number", path: "cooling.radiatorCapacityKw", group: "cooling", label: "Kühlerleistung", unit: "kW", decimals: 0,
     effect: "+ Kühler → mehr Dauerleistung ohne Überhitzen.",
     warns: ["overheat-coolant"],
-    // up to 2000 kW: hypercar / race radiators (Arthur's wish); slider steps grow with the value
+    // up to 2000 kW: hypercar / race radiators (Arthur's wish), constant 5 kW steps
     range: () => ({ min: 20, max: 2000, step: 5 }),
   },
   {

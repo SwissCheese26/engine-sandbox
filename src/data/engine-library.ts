@@ -38,14 +38,14 @@ const EXTRA: LibraryEngine[] = [
     maker: "BMW", cars: "530d E60/E61, X5 3.0d E70", years: "2005–2010",
     config: {
       id: "lib-bmw-m57d30tu2", name: "BMW M57D30TÜ2 (3.0d, 170 kW)", fuel: "diesel",
-      block: blk("inline", 6, 84, 90, 135, 17, "aluminium"),
+      block: blk("inline", 6, 84, 90, 135, 16.5, "aluminium"),
       head: { valvetrain: "dohc", valvesPerCylinder: 4, camProfile: 0.3, variableTiming: "none" },
       induction: { aspiration: "turbo", compressorInducerMm: 44, turbineAR: 0.6, variableGeometry: true, boostTargetBar: 1.0, intercooler: "air-to-air", intakeRunnerLengthMm: 350, individualThrottleBodies: false },
       fuelSystem: dieselFuel(2000, 1.15), exhaust: dieselExhaust,
       cooling: { radiatorCapacityKw: 155, thermostatOpenC: 88, oilCooler: true }, revLimitRpm: 4800, idleRpm: 750,
     },
     expected: { peakTorqueNm: 500, peakTorqueRpm: 2375, peakPowerKw: 170, peakPowerRpm: 4000 },
-    source: "Wikipedia „BMW M57“ (M57D30TÜ2: 84 × 90 mm, 170 kW @ 4000, 500 Nm @ 1750–3000); Verdichtung 17:1 [S]",
+    source: "Wikipedia „BMW M57“ (M57D30TÜ2: 84 × 90 mm, 170 kW @ 4000, 500 Nm @ 1750–3000); Verdichtung 16,5:1 (übliche Angabe, Wikipedia nennt 16,5–18 für die Familie)",
   },
   {
     maker: "VW", cars: "Golf 6 2.0 TDI, Passat B7, Audi A3 8P", years: "2008–2015",
