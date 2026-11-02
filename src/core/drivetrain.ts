@@ -81,6 +81,8 @@ export class Drivetrain {
   private govActive = false;
   private govI = 0;
   private govCap = 1;
+  /** Remembered integrator (hold pedal) for the current limit, null = none yet. */
+  private govHold: number | null = null;
 
   constructor(
     private cfg: EngineConfig,
@@ -145,13 +147,16 @@ export class Drivetrain {
     this.govActive = false;
     this.govI = 0;
     this.govCap = 1;
+    this.govHold = null;
     this.st.limiting = false;
   }
 
   /**
    * Top-speed governor (issue #32): PI controller on the speed margin, output is a pedal cap. Takes over at
-   * (limit − 5 km/h) with a bumpless start (cap = driver pedal), anti-windup by tracking the driver pedal so it
-   * never builds up authority the driver does not ask for. Releases with 1 km/h hysteresis below the window.
+   * (limit − 5 km/h). The integrator only runs while the governor actually holds the pedal back; when the driver
+   * lifts it is frozen (conditional-integration anti-windup), and its last hold value is remembered across a drop
+   * out of the window, so full throttle after a lift picks up the hold point immediately (review PR #34).
+   * First entry without a memory is bumpless (cap starts at the current pedal).
    */
   private governor(dt: number, speedKmh: number, pedal: number) {
     const s = this.st;
@@ -168,19 +173,21 @@ export class Drivetrain {
         return;
       }
       this.govActive = true;
-      this.govI = pedal - GOV_KP * e; // bumpless: cap starts at the current pedal
-    } else if (e > GOV_WINDOW_KMH + 1 && this.govCap >= pedal) {
-      this.resetGovernor();
+      this.govI = this.govHold ?? pedal - GOV_KP * e;
+    } else if (e > GOV_WINDOW_KMH + 1) {
+      // out of the window: release, but keep the integrator as hold memory
+      this.govActive = false;
+      this.govHold = this.govI;
+      this.govCap = 1;
+      s.limiting = false;
       return;
     }
-    let out = GOV_KP * e + this.govI;
-    // integrate only while not saturated (or when the error drives the output back inside)
-    if ((out < 1 || e < 0) && (out > 0 || e > 0)) this.govI += GOV_KI * e * dt;
-    out = GOV_KP * e + this.govI;
-    // anti-windup: never hold more pedal in reserve than the driver gives
-    if (out > pedal) this.govI = pedal - GOV_KP * e;
-    this.govI = Math.min(1, Math.max(-1, this.govI));
-    this.govCap = Math.min(1, Math.max(0, out));
+    const outPrev = GOV_KP * e + this.govI;
+    // integrate only while the governor is in control (its output below the driver pedal) or overspeed
+    if (outPrev < pedal || e < 0) this.govI += GOV_KI * e * dt;
+    this.govI = Math.min(1, Math.max(-0.5, this.govI));
+    this.govHold = this.govI;
+    this.govCap = Math.min(1, Math.max(0, GOV_KP * e + this.govI));
     s.limiting = this.govCap < pedal - 0.01;
   }
 
@@ -237,11 +244,12 @@ export class Drivetrain {
       }
     }
 
+    // torque request the engine really gets (governor cap from the last frame): DSG shift points and CVT target
+    // follow it, so with the governor holding the speed they settle at low rpm instead of fighting it (issue #32)
+    const req = this.govActive ? Math.min(pedal, this.govCap) : pedal;
+
     // --- DSG automatic shift schedule (Drive mode) [S]: upshift point rises with pedal, downshift keeps torque
     if (s.type === "dsg" && !s.shifting && s.gear > 0) {
-      // shift on the torque request the engine really gets: with the governor holding the speed the DSG
-      // settles in a high gear instead of cruising at high rpm (issue #32)
-      const req = this.govActive ? Math.min(pedal, this.govCap) : pedal;
       const upRpm = Math.min(limit * 0.97, idle + 900 + Math.pow(req, 0.8) * (limit * 0.97 - idle - 900));
       const downRpm = Math.max(idle * 1.35, upRpm * 0.42);
       if (!s.manualMode) {
@@ -258,7 +266,8 @@ export class Drivetrain {
     if (s.type === "cvt") {
       // CVT holds a target engine speed set by the pedal (between idle and peak power) [S]
       const nPeak = this.summary.peakPowerRpm;
-      const target = idle + 300 + Math.pow(pedal, 1.3) * (nPeak - idle - 300);
+      // target from the governed pedal, so the CVT does not hold high rpm against the governor (issue #32)
+      const target = idle + 300 + Math.pow(req, 1.3) * (nPeak - idle - 300);
       const wheel = (v / this.vehicle.wheelRadiusM) * s.finalDrive * RAD_TO_RPM;
       const [lo, hi] = [g.ratios[1]!, g.ratios[0]!];
       const want = wheel > 1 ? Math.min(hi, Math.max(lo, target / wheel)) : hi;
