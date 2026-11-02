@@ -4,6 +4,7 @@ import type { EngineConfig, EngineState, EngineSummary, WarningCode } from "../c
 import { fitCanvas, reducedMotion, tokens } from "./canvas.ts";
 import { setText } from "./dom.ts";
 import { clamp, fmt, mixHex, niceCeil, tickStep } from "./format.ts";
+import { UNITS, makeSwitchable, saveUnit, savedUnit, type UnitOpt } from "./units.ts";
 import { FALLBACK_LIMITS as L, egtLimitC, lambdaLimit } from "./limits-fallback.ts";
 
 const SWEEP_START = (135 * Math.PI) / 180; // 7:30 o'clock
@@ -19,6 +20,8 @@ interface RoundDef {
   scaleDiv?: number;
   value: (s: EngineState) => number;
   warns: WarningCode[];
+  /** Switchable display units (first = base). */
+  units?: readonly UnitOpt[];
 }
 
 class RoundGauge {
@@ -31,6 +34,9 @@ class RoundGauge {
   limitFrom = Infinity;
   private dirty = true;
   private alarm = false;
+  private unitIdx = 0;
+  private unitEl!: HTMLElement;
+  private lastState?: EngineState;
 
   constructor(readonly def: RoundDef, big = false) {
     this.el = document.createElement("figure");
@@ -49,8 +55,33 @@ class RoundGauge {
     const unit = document.createElement("span");
     unit.className = "gauge__unit";
     unit.textContent = def.unit;
+    this.unitEl = unit;
     cap.append(lab, this.readout, unit);
     this.el.append(this.canvas, cap);
+    const units = def.units;
+    if (units && units.length > 1) {
+      this.unitIdx = savedUnit(def.id, units.length);
+      this.unitEl.textContent = units[this.unitIdx]!.unit;
+      makeSwitchable(this.el, def.label, () => {
+        this.unitIdx = (this.unitIdx + 1) % units.length;
+        saveUnit(def.id, this.unitIdx);
+        this.unitEl.textContent = units[this.unitIdx]!.unit;
+        this.dirty = true;
+        if (this.lastState) this.readout.textContent = this.fmtShown(this.def.value(this.lastState), this.lastState);
+        this.draw();
+      });
+    }
+  }
+
+  private get unitOpt(): UnitOpt | undefined {
+    return this.def.units?.[this.unitIdx];
+  }
+
+  private fmtShown(v: number, s?: EngineState): string {
+    const u = this.unitOpt;
+    if (!u) return fmt(v, this.def.decimals);
+    const d = u.conv(v, s);
+    return Number.isFinite(d) ? fmt(d, u.decimals) : "–";
   }
 
   setScale(min: number, max: number, limitFrom: number) {
@@ -70,7 +101,8 @@ class RoundGauge {
     const k = 1 - Math.exp(-dt / tau);
     const prev = this.needle;
     this.needle += (target - this.needle) * k;
-    setText(this.readout, fmt(target, this.def.decimals));
+    this.lastState = s;
+    setText(this.readout, this.fmtShown(target, s));
     const alarm = this.def.warns.some((w) => active.has(w)) || target >= this.limitFrom;
     if (alarm !== this.alarm) {
       this.alarm = alarm;
@@ -107,14 +139,21 @@ class RoundGauge {
       ctx.strokeStyle = t.signal;
       ctx.stroke();
     }
-    // ticks
+    // ticks: laid out in the shown unit (linear conversion), angles from the base value
+    const u = this.unitOpt;
+    const k = u ? u.conv(1) - u.conv(0) : 1;
+    const off = u ? u.conv(0) : 0;
+    const toBase = (d: number) => (d - off) / k;
     const div = this.def.scaleDiv ?? 1;
-    const step = div > 1 ? div : tickStep(span, R > 70 ? 8 : 2);
+    const dMin = this.min * k + off;
+    const dSpan = span * k;
+    const step = div > 1 ? div : tickStep(dSpan, R > 70 ? 8 : 2) || 1; // guard: zero span → no endless loop
     const minor = step / (R > 70 ? 5 : 2);
     ctx.strokeStyle = t.alu;
-    for (let v = this.min; v <= this.max + 1e-9; v += minor) {
-      const a = ang(v);
-      const major = Math.abs(((v - this.min) / step) - Math.round((v - this.min) / step)) < 1e-6;
+    const first = Math.ceil(dMin / minor - 1e-9) * minor;
+    for (let d = first; d <= dMin + dSpan + 1e-9; d += minor) {
+      const a = ang(toBase(d));
+      const major = Math.abs(d / step - Math.round(d / step)) < 1e-6;
       const r1 = R * 0.92;
       const r0 = major ? R * 0.76 : R * 0.84;
       ctx.beginPath();
@@ -129,10 +168,10 @@ class RoundGauge {
     ctx.font = `600 ${fs}px ${t.fontNum}`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    for (let v = this.min; v <= this.max + 1e-9; v += step) {
-      const a = ang(v);
+    for (let d = Math.ceil(dMin / step - 1e-9) * step; d <= dMin + dSpan + 1e-9; d += step) {
+      const a = ang(toBase(d));
       const r = R * 0.6;
-      const val = v / div;
+      const val = d / div;
       ctx.fillText(fmt(val, Math.abs(val - Math.round(val)) > 1e-6 ? 1 : 0), cx + Math.cos(a) * r, cy + Math.sin(a) * r);
     }
     if (this.def.scaleLabel) {
@@ -172,6 +211,8 @@ interface MeterDef {
   /** Temperatures fill along cold → hot. */
   thermal?: boolean;
   visible?: (cfg: EngineConfig) => boolean;
+  /** Switchable display units (first = base). */
+  units?: readonly UnitOpt[];
 }
 
 class Meter {
@@ -183,6 +224,8 @@ class Meter {
   private limit = 1;
   private shown = 0;
   private alarm = false;
+  private unitIdx = 0;
+  private lastState?: EngineState;
 
   constructor(readonly def: MeterDef) {
     this.el = document.createElement("div");
@@ -194,6 +237,18 @@ class Meter {
     this.fill = this.el.querySelector(".meter__fill")!;
     this.mark = this.el.querySelector(".meter__mark")!;
     this.out = this.el.querySelector(".meter__value")!;
+    const units = def.units;
+    if (units && units.length > 1) {
+      const unitEl = this.el.querySelector<HTMLElement>(".meter__unit")!;
+      this.unitIdx = savedUnit(def.id, units.length);
+      unitEl.textContent = units[this.unitIdx]!.unit;
+      makeSwitchable(this.el, def.label, () => {
+        this.unitIdx = (this.unitIdx + 1) % units.length;
+        saveUnit(def.id, this.unitIdx);
+        unitEl.textContent = units[this.unitIdx]!.unit;
+        if (this.lastState) this.update(this.lastState, 0, new Set());
+      });
+    }
   }
 
   configure(cfg: EngineConfig) {
@@ -205,11 +260,14 @@ class Meter {
   }
 
   update(s: EngineState, dt: number, active: Set<WarningCode>) {
+    this.lastState = s;
     const v = this.def.value(s);
     const ok = Number.isFinite(v);
     const tau = reducedMotion() ? 0.35 : 0.08;
     if (ok) this.shown += (v - this.shown) * (1 - Math.exp(-dt / tau));
-    setText(this.out, ok ? fmt(v, this.def.decimals) : "–");
+    const u = this.def.units?.[this.unitIdx];
+    const shown = ok && u ? u.conv(v, s) : v;
+    setText(this.out, ok && Number.isFinite(shown) ? fmt(shown, u ? u.decimals : this.def.decimals) : "–");
     const p = clamp((this.shown - this.def.min) / (this.max - this.def.min), 0, 1);
     this.fill.style.transform = `scaleX(${ok ? p : 0})`;
     const atLimit = ok && (this.def.lowLimit ? v <= this.limit && s.running : v >= this.limit);
@@ -247,20 +305,20 @@ export class InstrumentPanel {
     );
     this.round = [
       this.rpm,
-      new RoundGauge({ id: "torque", label: "Drehmoment", unit: "Nm", decimals: 0, value: (s) => Math.max(0, s.torqueNm), warns: ["conrod-stress"] }),
-      new RoundGauge({ id: "power", label: "Leistung", unit: "kW", decimals: 0, value: (s) => Math.max(0, s.powerKw), warns: [] }),
-      new RoundGauge({ id: "boost", label: "Ladedruck", unit: "bar", decimals: 2, value: (s) => s.boostBar, warns: ["overboost", "turbo-overspeed"] }),
+      new RoundGauge({ id: "torque", label: "Drehmoment", unit: "Nm", decimals: 0, value: (s) => Math.max(0, s.torqueNm), warns: ["conrod-stress"], units: UNITS.torque }),
+      new RoundGauge({ id: "power", label: "Leistung", unit: "kW", decimals: 0, value: (s) => Math.max(0, s.powerKw), warns: [], units: UNITS.power }),
+      new RoundGauge({ id: "boost", label: "Ladedruck", unit: "bar", decimals: 2, value: (s) => s.boostBar, warns: ["overboost", "turbo-overspeed"], units: UNITS.pressure(2) }),
     ];
     const T = (id: string, label: string, max: number, limit: (c: EngineConfig) => number, value: (s: EngineState) => number, warns: WarningCode[]): MeterDef => ({
-      id, label, unit: "°C", decimals: 0, min: 0, max: () => max, limit, value, warns, thermal: true,
+      id, label, unit: "°C", decimals: 0, min: 0, max: () => max, limit, value, warns, thermal: true, units: UNITS.temp,
     });
     this.meters = [
       new Meter(T("coolant", "Kühlmittel", 130, () => L.coolantMaxC, (s) => s.coolantC, ["overheat-coolant"])),
       new Meter(T("oil", "Öl", 160, () => L.oilMaxC, (s) => s.oilC, ["overheat-oil"])),
       new Meter(T("egt", "Abgas", 1100, egtLimitC, (s) => s.egtC, ["egt-high"])),
-      new Meter({ id: "oilp", label: "Öldruck", unit: "bar", decimals: 1, min: 0, max: () => 8, limit: () => L.oilPressureMinBar, lowLimit: true, value: (s) => s.oilPressureBar, warns: ["low-oil-pressure"] }),
-      new Meter({ id: "flow", label: "Verbrauch", unit: "l/h", decimals: 1, min: 0, max: (c) => niceCeil(Math.max(10, c.block.cylinders * c.block.boreMm * 0.25)), limit: () => Infinity, value: (s) => s.fuelFlowLh, warns: [] }),
-      new Meter({ id: "bsfc", label: "Spezifisch", unit: "g/kWh", decimals: 0, min: 150, max: () => 500, limit: () => Infinity, value: (s) => s.bsfcGkWh, warns: [] }),
+      new Meter({ id: "oilp", label: "Öldruck", unit: "bar", decimals: 1, min: 0, max: () => 8, limit: () => L.oilPressureMinBar, lowLimit: true, value: (s) => s.oilPressureBar, warns: ["low-oil-pressure"], units: UNITS.pressure(1) }),
+      new Meter({ id: "flow", label: "Verbrauch", unit: "l/h", decimals: 1, min: 0, max: (c) => niceCeil(Math.max(10, c.block.cylinders * c.block.boreMm * 0.25)), limit: () => Infinity, value: (s) => s.fuelFlowLh, warns: [], units: UNITS.fuelFlow }),
+      new Meter({ id: "bsfc", label: "Spezifisch", unit: "g/kWh", decimals: 0, min: 150, max: () => 500, limit: () => Infinity, value: (s) => s.bsfcGkWh, warns: [], units: UNITS.bsfc }),
       new Meter({ id: "lambda", label: "Lambda", unit: "", decimals: 2, min: 0.6, max: (c) => (isDiesel(c) ? 4 : 1.4), limit: lambdaLimit, lowLimit: true, value: (s) => (s.lambda > 9 ? Number.NaN : s.lambda), warns: ["smoke"] }),
       new Meter({ id: "knock", label: "Klopfen", unit: "%", decimals: 0, min: 0, max: () => 100, limit: () => L.knockMax * 100, value: (s) => s.knock * 100, warns: ["knock"], visible: (c) => !isDiesel(c) }),
       new Meter({ id: "smoke", label: "Ruß", unit: "%", decimals: 0, min: 0, max: () => 100, limit: () => L.smokeMax * 100, value: (s) => s.smoke * 100, warns: ["smoke"], visible: isDiesel }),
