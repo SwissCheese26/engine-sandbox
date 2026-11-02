@@ -4,6 +4,7 @@ import {
   compressorOutletTempC,
   steadyBoostBar,
   stepTurbo,
+  E_ASSIST_WINDOW_S,
   superchargerPowerKw,
   turboMaxRpm,
   type TurboState,
@@ -241,5 +242,52 @@ describe("turbo: charge air and supercharger drive", () => {
     expect(superchargerPowerKw(roots, 0, 0.8)).toBe(0);
     const cen = cfgWith("petrol", { aspiration: "supercharger-centrifugal" });
     expect(superchargerPowerKw(cen, 5500, 0.8)).toBeLessThan(p); // centrifugal is more efficient
+  });
+});
+
+describe("turbo: e-turbo assist window (review B2) and input guards", () => {
+  const e = () => cfgWith("petrol", { aspiration: "e-turbo" });
+  const at1200 = (c: EngineConfig) => exhaustFlow(c, 1200, 0.2);
+
+  test("assist lifts boost briefly, then decays to the steady (assist-free) value", () => {
+    const c = e();
+    const steady = steadyBoostBar(c, 1200, at1200(c), 880, AMB_KPA);
+    let s: TurboState = { shaftRpm: 30000, boostBar: 0 };
+    let peak = 0;
+    for (let t = 0; t < 2.5; t += 0.01) {
+      s = stepTurbo(s, c, 0.01, at1200(c), 880, 1, 1200, AMB_KPA);
+      peak = Math.max(peak, s.boostBar);
+    }
+    expect(peak).toBeGreaterThan(steady + 0.3);
+    for (let t = 0; t < 30; t += 0.01) s = stepTurbo(s, c, 0.01, at1200(c), 880, 1, 1200, AMB_KPA);
+    expect(s.boostBar).toBeCloseTo(steady, 1);
+    expect(s.assistEnergyJ).toBeLessThan(1);
+  });
+
+  test("energy buffer = window × assist power, recharges when the assist is not needed", () => {
+    const c = e();
+    let s: TurboState = { shaftRpm: 30000, boostBar: 0 };
+    s = stepTurbo(s, c, 0.01, at1200(c), 880, 1, 1200, AMB_KPA);
+    const full = s.assistEnergyJ!;
+    expect(full).toBeGreaterThan(7000 * E_ASSIST_WINDOW_S * 0.99);
+    for (let t = 0; t < 10; t += 0.01) s = stepTurbo(s, c, 0.01, at1200(c), 880, 1, 1200, AMB_KPA);
+    const empty = s.assistEnergyJ!;
+    for (let t = 0; t < 10; t += 0.01) s = stepTurbo(s, c, 0.01, at1200(c) * 0.5, 500, 0, 1200, AMB_KPA);
+    expect(s.assistEnergyJ!).toBeGreaterThan(empty + 0.8 * full);
+  });
+
+  test("plain turbos carry no assist field", () => {
+    expect(stepTurbo({ shaftRpm: 1e5, boostBar: 0.5 }, cfgWith("petrol"), 0.01, 0.1, 880, 1, 3000, AMB_KPA).assistEnergyJ).toBeUndefined();
+  });
+
+  test("ambientKpa = 0 / NaN inputs do not produce NaN", () => {
+    for (const c of [cfgWith("petrol"), e(), cfgWith("petrol", { aspiration: "supercharger-centrifugal" })]) {
+      let s: TurboState = { shaftRpm: Number.NaN, boostBar: Number.NaN };
+      for (let i = 0; i < 20; i++) s = stepTurbo(s, c, 0.01, 0.1, 880, 1, 3000, 0);
+      expect(Number.isFinite(s.shaftRpm) && Number.isFinite(s.boostBar)).toBe(true);
+      s = stepTurbo(s, c, 0.01, Number.NaN, Number.NaN, 1, 3000, Number.NaN);
+      expect(Number.isFinite(s.shaftRpm) && Number.isFinite(s.boostBar)).toBe(true);
+      expect(Number.isFinite(steadyBoostBar(c, 3000, 0.1, 880, 0))).toBe(true);
+    }
   });
 });

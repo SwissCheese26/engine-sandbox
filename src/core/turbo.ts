@@ -54,6 +54,22 @@ const ROOTS_DRIVE_RATIO = 2.5;
 export interface TurboState {
   shaftRpm: number;
   boostBar: number;
+  /**
+   * e-turbo only: remaining electric boost energy, J (48 V buffer). Optional so `{ shaftRpm, boostBar }` stays a
+   * valid state; undefined = full. The caller must pass back the state returned by stepTurbo, otherwise the
+   * assist window never runs out.
+   */
+  assistEnergyJ?: number;
+}
+
+/** e-turbo boost window at full assist power, s; then the assist tapers off and recharges (review B2) [S]. */
+export const E_ASSIST_WINDOW_S = 2;
+/** Recharge power as a share of the assist power while no assist is drawn (≈ 7 s to refill) [S]. */
+const E_RECHARGE_SHARE = 0.3;
+
+/** Clamps the ambient pressure to a physical range; non-finite → ISO standard atmosphere. */
+function safeAmbientKpa(kpa: number): number {
+  return Number.isFinite(kpa) ? Math.max(10, kpa) : 101.325;
 }
 
 /** Equivalent single-shaft charger used internally for all exhaust-driven variants. */
@@ -139,6 +155,7 @@ function chargerUnit(cfg: EngineConfig, exhaustMassFlowKgS: number, largeStage?:
       };
     }
     case "e-turbo": {
+      // Assist power is limited in time (E_ASSIST_WINDOW_S), see stepTurbo.
       const u = singleUnit(D, ar, ind.variableGeometry);
       return { ...u, electricW: 7000 * Math.max(1, (D / 45) ** 2) };
     }
@@ -266,10 +283,14 @@ export function turboMaxRpm(cfg: EngineConfig): number {
 }
 
 /**
- * Steady-state full-load boost (gauge bar) for dyno sweeps: power balance P_T,max (+ e-assist) = P_C + losses,
- * capped at boostTargetBar. The caller may iterate with the resulting exhaust flow (fixed point).
+ * Steady-state full-load boost (gauge bar) for dyno sweeps: power balance P_T,max = P_C + losses, capped at
+ * boostTargetBar. The e-turbo assist is time-limited (E_ASSIST_WINDOW_S), so it is not part of the steady value:
+ * steady e-turbo = plain turbo, and stepTurbo converges to this value once the assist energy is used up.
+ * The caller iterates with the resulting exhaust flow (fixed point). **Start the iteration at 0 bar**: near the
+ * spool threshold the fixed point is bistable, and 0 gives the conservative (real dyno-sweep) branch.
  */
-export function steadyBoostBar(cfg: EngineConfig, rpm: number, exhaustMassFlowKgS: number, egtC: number, ambientKpa: number): number {
+export function steadyBoostBar(cfg: EngineConfig, rpm: number, exhaustMassFlowKgS: number, egtC: number, ambientKpaIn: number): number {
+  const ambientKpa = safeAmbientKpa(ambientKpaIn);
   const a = cfg.induction.aspiration;
   const target = Math.max(0, cfg.induction.boostTargetBar);
   if (a === "naturally-aspirated" || target <= 0) return 0;
@@ -314,10 +335,16 @@ export function stepTurbo(
   egtC: number,
   pedal: number,
   rpm: number,
-  ambientKpa: number,
+  ambientKpaIn: number,
 ): TurboState {
   const a = cfg.induction.aspiration;
-  if (a === "naturally-aspirated" || !(dt > 0)) return a === "naturally-aspirated" ? { shaftRpm: 0, boostBar: 0 } : { ...s };
+  if (a === "naturally-aspirated") return { shaftRpm: 0, boostBar: 0 };
+  if (!(dt > 0)) return { ...s };
+  const ambientKpa = safeAmbientKpa(ambientKpaIn);
+  // Non-finite inputs must not poison the state (review B5).
+  s = { ...s, shaftRpm: Number.isFinite(s.shaftRpm) ? s.shaftRpm : 0, boostBar: Number.isFinite(s.boostBar) ? s.boostBar : 0 };
+  if (!Number.isFinite(exhaustMassFlowKgS)) exhaustMassFlowKgS = 0;
+  if (!Number.isFinite(egtC)) egtC = 20;
   const demand = boostDemandBar(cfg, pedal);
   const target = Math.max(0, cfg.induction.boostTargetBar);
 
@@ -338,6 +365,8 @@ export function stepTurbo(
   const n = Math.max(1, Math.ceil(dt / 0.005));
   const h = dt / n;
   let omega = Math.max(0, (s.shaftRpm * Math.PI) / 30);
+  const eMax = u.electricW * E_ASSIST_WINDOW_S;
+  let energy = u.electricW > 0 ? clamp(Number.isFinite(s.assistEnergyJ) ? s.assistEnergyJ! : eMax, 0, eMax) : 0;
   for (let i = 0; i < n; i++) {
     const pr = prFromShaft((omega * 30) / Math.PI, u.d2M, T1_STD_K);
     const pc = compressorPowerW(air, pr, etaC, T1_STD_K);
@@ -346,7 +375,10 @@ export function stepTurbo(
     const want = (pc + drag + (u.inertia * omega * (omegaTarget - omega)) / TAU_CONTROL_S) / 0.98;
     // Wastegate fully open / VTG fully open still passes a little power through the turbine [S].
     const turbine = clamp(want, 0.08 * ptMax, ptMax);
-    const electric = want > ptMax && omega < omegaTarget ? Math.min(u.electricW, want - ptMax) : 0;
+    // Assist power tapers off over the last 30 % of the energy buffer, then recharges while not needed.
+    const assistAvail = u.electricW * clamp(energy / (0.3 * Math.max(1, eMax)), 0, 1);
+    const electric = want > ptMax && omega < omegaTarget ? Math.min(assistAvail, want - ptMax) : 0;
+    if (u.electricW > 0) energy = clamp(energy + (electric > 0 ? -electric : E_RECHARGE_SHARE * u.electricW) * h, 0, eMax);
     const net = 0.98 * turbine + electric - pc - drag;
     omega = Math.max(0, omega + (net / (u.inertia * Math.max(omega, 500))) * h);
   }
@@ -354,7 +386,7 @@ export function stepTurbo(
   const compressorBoost = boostFromPr(prFromShaft(shaftRpm, u.d2M, T1_STD_K), ambientKpa);
   const tauPlenum = cfg.induction.intercooler === "none" ? TAU_PLENUM_S : TAU_PLENUM_IC_S;
   const boostBar = s.boostBar + (compressorBoost - s.boostBar) * (1 - Math.exp(-dt / tauPlenum));
-  return { shaftRpm, boostBar: Math.max(0, boostBar) };
+  return u.electricW > 0 ? { shaftRpm, boostBar: Math.max(0, boostBar), assistEnergyJ: energy } : { shaftRpm, boostBar: Math.max(0, boostBar) };
 }
 
 /**
