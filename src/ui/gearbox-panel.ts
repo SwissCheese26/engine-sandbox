@@ -9,6 +9,11 @@ const TYPE_LABEL: Record<GearboxType, string> = {
   cvt: "Stufenlos (CVT)",
 };
 
+const LIMIT_KEY = "pruefzelle.vmaxLimit";
+/** Tyre warning hysteresis around W = 270 km/h, so the note does not flicker at the rating (review PR #34). */
+const TYRE_WARN_ON_KMH = TYRE_RATING_W_KMH + 1;
+const TYRE_WARN_OFF_KMH = TYRE_RATING_W_KMH - 2;
+
 const fmt1 = (n: number) => n.toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const fmt0 = (n: number) => Math.round(n).toLocaleString("de-DE");
 
@@ -110,8 +115,22 @@ export class GearboxPanel {
       this.syncSetup();
     });
     // the governor can be recoded at any time, also while driving (issue #32)
+    // the choice is remembered per browser (review PR #34)
+    try {
+      const saved = localStorage.getItem(LIMIT_KEY);
+      if (saved !== null && [...this.limitSel.options].some((o) => o.value === saved)) {
+        this.drivetrain.setSpeedLimit(saved === "off" ? null : Number(saved));
+      }
+    } catch {
+      // storage blocked: keep the default
+    }
     this.limitSel.addEventListener("change", () => {
       this.drivetrain.setSpeedLimit(this.limitSel.value === "off" ? null : Number(this.limitSel.value));
+      try {
+        localStorage.setItem(LIMIT_KEY, this.limitSel.value);
+      } catch {
+        // storage blocked: setting lasts for this session only
+      }
       this.syncSetup();
     });
     this.downBtn.addEventListener("click", () => this.drivetrain.shift(-1));
@@ -198,7 +217,7 @@ export class GearboxPanel {
     const vmaxNote = s.maxSpeedLimited && s.maxSpeedKmh > 0.5;
     if (vmaxNote !== this.last.vmaxNote) this.vmaxNoteEl.hidden = !(this.last.vmaxNote = vmaxNote);
     if (s.limiting !== this.last.gov) this.govNoteEl.hidden = !(this.last.gov = s.limiting);
-    const tyre = s.speedKmh > TYRE_RATING_W_KMH;
+    const tyre = this.last.tyre ? s.speedKmh >= TYRE_WARN_OFF_KMH : s.speedKmh > TYRE_WARN_ON_KMH;
     if (tyre !== this.last.tyre) this.tyreNoteEl.hidden = !(this.last.tyre = tyre);
     this.gearEl.classList.toggle("is-braking", braking);
     // gearbox and final drive can only be changed at standstill (review #19)
