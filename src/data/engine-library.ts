@@ -15,6 +15,8 @@ export interface LibraryEngine extends ReferenceEngine {
   cars: string;
   /** Model years. */
   years: string;
+  /** Vehicle category for the library list (issue #25). Default "car". */
+  category?: "car" | "motorcycle";
 }
 
 const NA = {
@@ -131,6 +133,110 @@ const EXTRA: LibraryEngine[] = [
   },
 ];
 
+/**
+ * Motorcycle engines (issue #25). Bore, stroke, compression, rated power/torque: manufacturer data (sources per
+ * entry). Rev limiter, conrod length, cam profile, runner length and fin/radiator rating are estimates [S]; cam
+ * profile and runner length were tuned so that the model meets the rated figures (±15 %, engine-library.test.ts).
+ * Superbikes: individual throttle bodies, short velocity stacks, 4-2-1 headers ("tubular-long").
+ */
+const MOTO_EXHAUST = { manifold: "tubular-long", egr: false, catalyst: true, particulateFilter: false, scr: false } as const;
+const motoFuel = (fuel: "ron95" | "ron98", lambda = 0.88): EngineConfig["fuelSystem"] => ({
+  kind: "petrol", mixture: "port-injection", fuel, fullLoadLambda: lambda, ignitionAdvanceOffsetDeg: 0,
+});
+const MOTO: LibraryEngine[] = [
+  {
+    maker: "Honda", cars: "CBR1000RR Fireblade (SC59)", years: "2008–2011", category: "motorcycle",
+    config: {
+      id: "lib-honda-cbr1000rr-sc59", name: "Honda CBR1000RR SC59 (1.0 R4, 131 kW)", fuel: "petrol",
+      block: blk("inline", 4, 76, 55.1, 108, 12.3, "aluminium", { pistons: "forged-aluminium" }),
+      head: { valvetrain: "dohc", valvesPerCylinder: 4, camProfile: 0.85, variableTiming: "none", valveMaterial: "titanium" },
+      induction: { ...NA, intakeRunnerLengthMm: 90, individualThrottleBodies: true },
+      fuelSystem: motoFuel("ron98"), exhaust: MOTO_EXHAUST,
+      cooling: { radiatorCapacityKw: 110, thermostatOpenC: 82, oilCooler: true, type: "liquid" }, revLimitRpm: 13000, idleRpm: 1300,
+    },
+    expected: { peakTorqueNm: 112, peakTorqueRpm: 8500, peakPowerKw: 131, peakPowerRpm: 12000 },
+    source: "Honda Pressemappe 2008 CBR1000RR (76 × 55,1 mm, ε 12,3, Einlassventile aus Titan); 131 kW (178 PS) @ 12 000, 112 Nm @ 8500 (EU-Angabe); Begrenzer ≈ 13 000 [S]",
+  },
+  {
+    maker: "Yamaha", cars: "YZF-R1 (RN22, Crossplane)", years: "2009–2014", category: "motorcycle",
+    config: {
+      id: "lib-yamaha-r1-cp4", name: "Yamaha YZF-R1 Crossplane (1.0 R4, 134 kW)", fuel: "petrol",
+      block: blk("inline", 4, 78, 52.2, 105, 12.7, "aluminium", { pistons: "forged-aluminium", crossplaneI4: true }),
+      head: { valvetrain: "dohc", valvesPerCylinder: 4, camProfile: 0.9, variableTiming: "none", valveMaterial: "titanium" },
+      induction: { ...NA, intakeRunnerLengthMm: 80, individualThrottleBodies: true },
+      fuelSystem: motoFuel("ron98"), exhaust: MOTO_EXHAUST,
+      cooling: { radiatorCapacityKw: 110, thermostatOpenC: 82, oilCooler: true, type: "liquid" }, revLimitRpm: 13750, idleRpm: 1300,
+    },
+    expected: { peakTorqueNm: 115.5, peakTorqueRpm: 10000, peakPowerKw: 133.9, peakPowerRpm: 12500 },
+    source: "Yamaha YZF-R1 2009 (78 × 52,2 mm, ε 12,7, Crossplane-Kurbelwelle, Zündfolge 270-180-90-180, Titan-Einlassventile); 133,9 kW (182 PS) @ 12 500, 115,5 Nm @ 10 000; Begrenzer ≈ 13 750 [S]",
+  },
+  {
+    maker: "Ducati", cars: "1199 Panigale / S", years: "2012–2014", category: "motorcycle",
+    config: {
+      id: "lib-ducati-1199-superquadro", name: "Ducati 1199 Superquadro (1.2 V2 90°, 143 kW)", fuel: "petrol",
+      block: blk("v", 2, 112, 60.8, 124, 12.5, "aluminium", { bankAngleDeg: 90, pistons: "forged-aluminium" }),
+      head: { valvetrain: "dohc", valvesPerCylinder: 4, camProfile: 1, variableTiming: "none", valveMaterial: "titanium", desmodromic: true },
+      induction: { ...NA, intakeRunnerLengthMm: 110, individualThrottleBodies: true },
+      fuelSystem: motoFuel("ron98"), exhaust: MOTO_EXHAUST,
+      cooling: { radiatorCapacityKw: 120, thermostatOpenC: 82, oilCooler: true, type: "liquid" }, revLimitRpm: 11500, idleRpm: 1350,
+    },
+    expected: { peakTorqueNm: 132, peakTorqueRpm: 9000, peakPowerKw: 143.4, peakPowerRpm: 10750 },
+    source: "Ducati 1199 Panigale (Superquadro: 112 × 60,8 mm, ε 12,5, Desmodromik, 90°-V, Zündabstand 270/450); 143,4 kW (195 PS) @ 10 750, 132 Nm @ 9000; Begrenzer ≈ 11 500 [S]",
+  },
+  {
+    maker: "Harley-Davidson", cars: "Softail, Touring (Street Glide, Road King)", years: "seit 2017", category: "motorcycle",
+    config: {
+      id: "lib-harley-m8-107", name: "Harley-Davidson Milwaukee-Eight 107 (1.75 V2 45°, 64 kW)", fuel: "petrol",
+      block: blk("v", 2, 100, 111.1, 190, 10, "aluminium", { bankAngleDeg: 45, crankshaft: "forged", pistons: "cast-aluminium", conrods: "forged-steel" }),
+      head: { valvetrain: "ohv", valvesPerCylinder: 4, camProfile: 0.1, variableTiming: "none" },
+      induction: { ...NA, intakeRunnerLengthMm: 300, individualThrottleBodies: false },
+      fuelSystem: motoFuel("ron95", 0.9), exhaust: { ...MOTO_EXHAUST, manifold: "tubular-short" },
+      cooling: { radiatorCapacityKw: 25, thermostatOpenC: 90, oilCooler: true, type: "oil-air" }, revLimitRpm: 5500, idleRpm: 850,
+    },
+    expected: { peakTorqueNm: 148, peakTorqueRpm: 3000, peakPowerKw: 64, peakPowerRpm: 5000 },
+    source: "Harley-Davidson (Milwaukee-Eight 107: 100 × 111,1 mm, 1746 cm³, ε 10,0, OHV mit 4 Ventilen, Öl-Luft-Kühlung); Softail Breakout 107: 148 Nm @ 3000 (cyclechaos); Leistung ≈ 64 kW @ 5000 (EU-Angabe je nach Modell 63–68 kW) [S]",
+  },
+  {
+    maker: "BMW", cars: "R 1250 GS, RT, RS", years: "2019–2023", category: "motorcycle",
+    config: {
+      id: "lib-bmw-r1250-boxer", name: "BMW R 1250 Boxer ShiftCam (1.25 B2, 100 kW)", fuel: "petrol",
+      block: blk("boxer", 2, 102.5, 76, 125, 12.5, "aluminium", { pistons: "forged-aluminium" }),
+      head: { valvetrain: "dohc", valvesPerCylinder: 4, camProfile: 0.5, variableTiming: "cam-switching" },
+      induction: { ...NA, intakeRunnerLengthMm: 250, individualThrottleBodies: true },
+      fuelSystem: motoFuel("ron95"), exhaust: MOTO_EXHAUST,
+      cooling: { radiatorCapacityKw: 80, thermostatOpenC: 85, oilCooler: true, type: "liquid" }, revLimitRpm: 9000, idleRpm: 1000,
+    },
+    expected: { peakTorqueNm: 143, peakTorqueRpm: 6250, peakPowerKw: 100, peakPowerRpm: 7750 },
+    source: "BMW Motorrad (R 1250 GS: 102,5 × 76 mm, ε 12,5, ShiftCam, luft-/flüssigkeitsgekühlt); 100 kW (136 PS) @ 7750, 143 Nm @ 6250; Begrenzer ≈ 9000 [S]",
+  },
+  {
+    maker: "KTM", cars: "690 Duke, 690 SMC R, 690 Enduro R", years: "2016–2019", category: "motorcycle",
+    config: {
+      id: "lib-ktm-690-lc4", name: "KTM 690 LC4 (0.69 Einzylinder, 54 kW)", fuel: "petrol",
+      block: blk("inline", 1, 105, 80, 150, 12.7, "aluminium", { pistons: "forged-aluminium" }),
+      head: { valvetrain: "sohc", valvesPerCylinder: 4, camProfile: 1, variableTiming: "none" },
+      induction: { ...NA, intakeRunnerLengthMm: 200, individualThrottleBodies: true },
+      fuelSystem: motoFuel("ron95"), exhaust: MOTO_EXHAUST,
+      cooling: { radiatorCapacityKw: 50, thermostatOpenC: 85, oilCooler: false, type: "liquid" }, revLimitRpm: 8200, idleRpm: 1500,
+    },
+    expected: { peakTorqueNm: 74, peakTorqueRpm: 6500, peakPowerKw: 54.4, peakPowerRpm: 8000 },
+    source: "KTM 690 Duke 2016 (LC4: 105 × 80 mm, 693 cm³, ε 12,7, SOHC 4 Ventile) laut motorcyclespecs.co.za; 54,4 kW (74 PS) @ 8000, 74 Nm @ 6500; Begrenzer ≈ 8200 [S]",
+  },
+  {
+    maker: "Triumph", cars: "Street Triple 765 RS", years: "2020–2022", category: "motorcycle",
+    config: {
+      id: "lib-triumph-765-triple", name: "Triumph Street Triple 765 RS (0.77 R3, 90 kW)", fuel: "petrol",
+      block: blk("inline", 3, 78, 53.4, 108, 12.54, "aluminium", { pistons: "forged-aluminium" }),
+      head: { valvetrain: "dohc", valvesPerCylinder: 4, camProfile: 0.9, variableTiming: "none" },
+      induction: { ...NA, intakeRunnerLengthMm: 100, individualThrottleBodies: true },
+      fuelSystem: motoFuel("ron95"), exhaust: MOTO_EXHAUST,
+      cooling: { radiatorCapacityKw: 80, thermostatOpenC: 82, oilCooler: false, type: "liquid" }, revLimitRpm: 12500, idleRpm: 1200,
+    },
+    expected: { peakTorqueNm: 79, peakTorqueRpm: 9350, peakPowerKw: 90, peakPowerRpm: 11750 },
+    source: "Triumph Street Triple RS 2020 (78 × 53,4 mm, ε 12,54) laut motorcyclespecs.co.za; 90 kW (123 PS) @ 11 750, 79 Nm @ 9350; Begrenzer ≈ 12 500 [S]",
+  },
+];
+
 const META: Record<string, { maker: string; cars: string; years: string }> = {
   "ref-vw-19-tdi-pd-96kw": { maker: "VW", cars: "Golf 4 GTI TDI, Passat B5, Audi A4", years: "2000–2006" },
   "ref-bmw-n57d30o1": { maker: "BMW", cars: "530d F10, X5 xDrive30d", years: "2008–2015" },
@@ -147,6 +253,7 @@ const META: Record<string, { maker: string; cars: string; years: string }> = {
 export const ENGINE_LIBRARY: LibraryEngine[] = [
   ...REFERENCE_ENGINES.map((r) => ({ ...r, ...(META[r.config.id] ?? { maker: "", cars: "", years: "" }) })),
   ...EXTRA,
+  ...MOTO,
 ].sort((a, b) => (a.config.fuel === b.config.fuel ? a.config.name.localeCompare(b.config.name, "de") : a.config.fuel === "diesel" ? -1 : 1));
 
 /** Deep copy of a library engine's config, ready to edit on the bench. */
