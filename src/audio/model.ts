@@ -109,6 +109,8 @@ const INJECTION_NAIL_FACTOR: Record<DieselInjection, number> = {
   "indirect-prechamber": 0.6,
   "indirect-swirl-chamber": 0.65,
   "unit-injector": 1.0,
+  // added with the new DieselInjection value (lead decision): no pilot injection → loud nailing
+  "mechanical-pump": 0.9,
 };
 
 // ---------------------------------------------------------------------------------------------
