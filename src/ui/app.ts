@@ -4,6 +4,7 @@ import { EngineSimulator, defaultInputs, summarize } from "../core/index.ts";
 import type { EngineConfig, EngineState, EngineSummary } from "../core/index.ts";
 import { defaultConfig } from "../data/presets.ts";
 import { ControlPanel } from "./controls.ts";
+import { GearboxPanel } from "./gearbox-panel.ts";
 import { fmt } from "./format.ts";
 import { InstrumentPanel } from "./gauges.ts";
 import { Nameplate } from "./nameplate.ts";
@@ -47,6 +48,7 @@ export class App {
   /** Bench changes are collected and applied once per frame (sliders fire many input events). */
   private pendingCfg: EngineConfig | null = null;
   private disposed = false;
+  private gearbox: GearboxPanel;
 
   constructor(private root: HTMLElement) {
     this.cfg = defaultConfig("diesel");
@@ -54,6 +56,7 @@ export class App {
     this.sim = new EngineSimulator(this.cfg);
     this.bench = new Workbench(this.cfg);
     this.console = new ControlPanel(this.inputs, SOUND_AVAILABLE);
+    this.gearbox = new GearboxPanel(this.cfg, this.summary);
     this.announcer = document.createElement("p");
     this.announcer.className = "sr-only";
     this.announcer.setAttribute("aria-live", "polite");
@@ -95,7 +98,7 @@ export class App {
     const engine = document.createElement("div");
     engine.className = "stage__engine";
     engine.append(this.schematic.el, this.nameplate.el);
-    stage.append(engine, this.gauges.el, this.recorder.el);
+    stage.append(engine, this.gauges.el, this.gearbox.el, this.recorder.el);
 
     const deck = document.createElement("footer");
     deck.className = "deck";
@@ -110,6 +113,7 @@ export class App {
     this.bench.onChange((cfg) => {
       this.pendingCfg = cfg;
     });
+    this.console.onModeChange = (mode) => this.gearbox.setVisible(mode === "vehicle");
     this.console.onIgnition = (on) => {
       if (on) void this.ensureSound();
     };
@@ -118,6 +122,7 @@ export class App {
       this.sound.setVolume(muted ? 0 : vol);
     };
     this.console.onReset = () => {
+      this.gearbox.reset();
       this.sim.reset();
       this.recorder.reset();
       this.announce("Motor zurückgesetzt.");
@@ -129,14 +134,14 @@ export class App {
     document.addEventListener(
       "keydown",
       (e) => {
-        if (this.console.handleKey(e, true)) e.preventDefault();
+        if (this.gearbox.handleKey(e, true) || this.console.handleKey(e, true)) e.preventDefault();
       },
       { signal },
     );
     document.addEventListener(
       "keyup",
       (e) => {
-        if (this.console.handleKey(e, false)) e.preventDefault();
+        if (this.gearbox.handleKey(e, false) || this.console.handleKey(e, false)) e.preventDefault();
       },
       { signal },
     );
@@ -193,6 +198,7 @@ export class App {
     this.gauges.configure(cfg, this.summary);
     this.recorder.configure(cfg, this.summary);
     this.console.configure(cfg.revLimitRpm, this.summary.peakTorqueNm);
+    this.gearbox.configure(cfg, this.summary);
     if (this.soundStarted) this.sound.setConfig(cfg, this.summary);
     this.root.dataset.fuel = cfg.fuel;
   }
@@ -218,7 +224,13 @@ export class App {
       }
       let s: EngineState;
       try {
-        s = this.sim.step(dt, this.inputs);
+        if (this.inputs.dynoMode === "vehicle") {
+          const d = this.gearbox.drivetrain;
+          const vehicle = d.inputs(dt, this.sim.state, this.inputs.pedal);
+          s = this.sim.step(dt, { ...this.inputs, vehicle, pedal: d.effectivePedal(this.inputs.pedal) });
+        } else {
+          s = this.sim.step(dt, this.inputs);
+        }
       } catch (e) {
         console.warn("Simulator-Schritt fehlgeschlagen", e);
         s = this.sim.state;
@@ -228,6 +240,7 @@ export class App {
       this.schematic.update(s, dt);
       this.recorder.update(s, dt);
       this.console.update(s);
+      if (this.inputs.dynoMode === "vehicle") this.gearbox.update();
       if (this.soundStarted) this.sound.update(s, this.inputs.pedal);
       this.rafId = requestAnimationFrame(frame);
     };

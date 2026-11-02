@@ -34,6 +34,7 @@ export class ControlPanel {
   volumeLevel = 0.6;
   onIgnition: (on: boolean) => void = () => {};
   onSound: (muted: boolean, volume: number) => void = () => {};
+  onModeChange?: (mode: SimInputs["dynoMode"]) => void;
   onReset: () => void = () => {};
 
   constructor(private inputs: SimInputs, soundAvailable: boolean) {
@@ -60,6 +61,7 @@ export class ControlPanel {
             <option value="free">Frei hochdrehen</option>
             <option value="hold-rpm">Drehzahl halten</option>
             <option value="torque">Konstantes Bremsmoment</option>
+            <option value="vehicle">Rollenprüfstand mit Getriebe</option>
           </select>
         </label>
         <label class="console__field console__target" hidden>
@@ -154,6 +156,7 @@ export class ControlPanel {
     this.mode.addEventListener("change", () => {
       this.inputs.dynoMode = this.mode.value as SimInputs["dynoMode"];
       this.syncTarget();
+      this.onModeChange?.(this.inputs.dynoMode);
     });
     this.target.addEventListener("input", () => {
       const v = Number(this.target.value);
@@ -318,7 +321,7 @@ export class ControlPanel {
 
   private syncTarget() {
     const mode = this.inputs.dynoMode;
-    this.targetRow.hidden = mode === "free";
+    this.targetRow.hidden = mode === "free" || mode === "vehicle";
     const lab = this.targetRow.querySelector(".console__target-label")!;
     if (mode === "torque") {
       lab.textContent = "Bremsmoment";

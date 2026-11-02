@@ -12,7 +12,7 @@ import type { CycleOut, Model, OpPoint } from "./cycle.ts";
 import { meanPistonSpeed } from "./geometry.ts";
 import { createLimitTracker, evaluateLimits, oilPressureBar, stepThermal, stepTurbo } from "./subsystems.ts";
 import type { LimitTracker, ThermalState, TurboState } from "./subsystems.ts";
-import type { EngineConfig, EngineState, SimInputs, Warning } from "./types.ts";
+import type { EngineConfig, EngineState, SimInputs, VehicleCoupling, Warning } from "./types.ts";
 
 const clamp = (x: number, lo: number, hi: number) => (x < lo ? lo : x > hi ? hi : x);
 const fin = (x: number, fallback: number) => (Number.isFinite(x) ? x : fallback);
@@ -42,6 +42,8 @@ interface Internal {
   initialised: boolean;
   wear: number;
   destroyed: boolean;
+  /** Vehicle speed m/s (dynoMode "vehicle"). */
+  vSpeed: number;
 }
 
 /** Steady idle command (feed-forward for the idle governor) found by bisection at warm conditions. */
@@ -114,7 +116,7 @@ export class EngineSimulator {
       rpm: 0, crank: 0, pManKpa: 101.325, turbo: { shaftRpm: 0, boostBar: 0 },
       thermal: { coolantC: amb, oilC: amb, egtC: amb }, knockRetard: 0, idleI: this.idleU0, dynoI: 0,
       running: false, armed: false, stallT: 0, stalled: false, limiterCut: false, relLoad: 0, load: 0, boostCut: 0,
-      initialised: false, wear: 0, destroyed: false,
+      initialised: false, wear: 0, destroyed: false, vSpeed: 0,
     };
     this.lastOut = null;
     this.s = {
@@ -273,10 +275,15 @@ export class EngineSimulator {
         x.dynoI = 0;
         brake = 0;
       }
-      const net = out.torqueNm + tStarter - brake;
-      let omega = x.rpm / RPM_PER_RADS + (net / m.J) * h;
-      if (omega < 0) omega = 0;
-      x.rpm = omega * RPM_PER_RADS;
+      const veh = input.dynoMode === "vehicle" ? input.vehicle : undefined;
+      if (veh) {
+        stepVehicle(x, veh, out.torqueNm + tStarter, m.J, h);
+      } else {
+        const net = out.torqueNm + tStarter - brake;
+        let omega = x.rpm / RPM_PER_RADS + (net / m.J) * h;
+        if (omega < 0) omega = 0;
+        x.rpm = omega * RPM_PER_RADS;
+      }
       x.crank = (x.crank + x.rpm * 6 * h) % 720;
       tOutSum += out.torqueNm;
       fuelSum += out.fuelMassFlowGS;
@@ -323,6 +330,7 @@ export class EngineSimulator {
     s.crankAngleDeg = x.crank;
     s.running = x.running;
     s.starterEngaged = starter;
+    s.vehicleSpeedMs = input.dynoMode === "vehicle" ? x.vSpeed : 0;
     s.torqueNm = torque;
     s.powerKw = powerKw;
     s.imepBar = out.imepBar;
@@ -362,4 +370,49 @@ export class EngineSimulator {
     this.s = s;
     return s;
   }
+}
+
+const G = 9.81;
+const RHO_AIR = 1.2;
+
+/** Road load at the wheel in N (rolling + aerodynamic), opposing motion. Vehicle at rest: no force. */
+export function roadLoadN(v: VehicleCoupling["vehicle"], speedMs: number): number {
+  if (speedMs <= 0) return 0;
+  return v.rollingResistance * v.massKg * G + 0.5 * RHO_AIR * v.dragCoefficient * v.frontalAreaM2 * speedMs * speedMs;
+}
+
+/**
+ * One sub-step of engine + vehicle (dynoMode "vehicle"). Clutch closed and synchronised: rigid coupling,
+ * engine inertia reflected to the wheel. Otherwise the slipping clutch transmits a friction torque
+ * (sign of the slip, limited by engagement × capacity) and both sides integrate separately.
+ * Longitudinal dynamics: m·dv/dt = F_drive − F_roll − F_aero (no gradient, no wheel slip yet).
+ */
+function stepVehicle(x: Internal, c: VehicleCoupling, engineTorqueNm: number, J: number, h: number) {
+  const veh = c.vehicle;
+  const r = veh.wheelRadiusM;
+  const i = c.totalRatio;
+  const eta = clamp(c.efficiency, 0.5, 1);
+  const wEng = x.rpm / RPM_PER_RADS;
+  const wIn = i > 0 ? (x.vSpeed / r) * i : 0; // gearbox input shaft speed, rad/s
+  const lock = clamp(c.clutch, 0, 1);
+  const cap = lock * c.clutchCapacityNm;
+  const fRes = roadLoadN(veh, x.vSpeed);
+  const slip = wEng - wIn;
+  // rigid if the clutch is (almost) closed, synchronised and able to carry the torque
+  if (i > 0 && lock > 0.98 && Math.abs(slip) < 2) {
+    const mEff = veh.massKg + (J * i * i) / (r * r);
+    const fDrive = (engineTorqueNm * i * (engineTorqueNm >= 0 ? eta : 1 / eta)) / r;
+    if (Math.abs(engineTorqueNm) <= cap * 1.2) {
+      x.vSpeed = Math.max(0, x.vSpeed + ((fDrive - fRes) / mEff) * h);
+      x.rpm = ((x.vSpeed / r) * i) * RPM_PER_RADS;
+      return;
+    }
+  }
+  // slipping (or open) clutch: friction torque, smoothed around zero slip to avoid chatter
+  const tc = i > 0 ? cap * Math.tanh(slip / 3) : 0;
+  let wE = wEng + ((engineTorqueNm - tc) / J) * h;
+  if (wE < 0) wE = 0;
+  x.rpm = wE * RPM_PER_RADS;
+  const fDrive = i > 0 ? (tc * i * (tc >= 0 ? eta : 1 / eta)) / r : 0;
+  x.vSpeed = Math.max(0, x.vSpeed + ((fDrive - fRes) / veh.massKg) * h);
 }

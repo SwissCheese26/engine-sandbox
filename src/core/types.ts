@@ -158,13 +158,38 @@ export interface SimInputs {
   /**
    * Dyno brake. "free" = engine revs freely (only own inertia + friction),
    * "hold-rpm" = eddy-current brake holds `dynoTargetRpm` (classic dyno sweep),
-   * "torque" = constant brake torque `dynoBrakeTorqueNm`.
+   * "torque" = constant brake torque `dynoBrakeTorqueNm`,
+   * "vehicle" = chassis dyno: engine drives a vehicle through clutch and gearbox (`vehicle`, see drivetrain.ts).
    */
-  dynoMode: "free" | "hold-rpm" | "torque";
+  dynoMode: "free" | "hold-rpm" | "torque" | "vehicle";
   dynoTargetRpm: number;
   dynoBrakeTorqueNm: number;
   ambientC: number;
   ambientKpa: number;
+  /** Only for dynoMode "vehicle"; produced each frame by `Drivetrain.inputs()`. */
+  vehicle?: VehicleCoupling;
+}
+
+/** Vehicle physics parameters (fixed base vehicle for now, see DEFAULT_VEHICLE). */
+export interface VehicleParams {
+  massKg: number;
+  dragCoefficient: number;
+  frontalAreaM2: number;
+  rollingResistance: number;
+  wheelRadiusM: number;
+}
+
+/** What the drivetrain hands to the simulator for one frame. */
+export interface VehicleCoupling {
+  vehicle: VehicleParams;
+  /** Total ratio engine : wheel (gear × final drive). 0 = neutral. */
+  totalRatio: number;
+  /** Driveline efficiency 0 … 1. */
+  efficiency: number;
+  /** Clutch engagement 0 (open) … 1 (closed). */
+  clutch: number;
+  /** Max torque the closed clutch can transmit, Nm. */
+  clutchCapacityNm: number;
 }
 
 export type Severity = "info" | "warning" | "critical";
@@ -252,6 +277,8 @@ export interface EngineState {
   damage: DamageEvent[];
   /** Starter motor is powered (key in start position and engine not destroyed). */
   starterEngaged: boolean;
+  /** Vehicle speed in m/s (dynoMode "vehicle"; 0 otherwise). */
+  vehicleSpeedMs?: number;
 }
 
 /** One point of a steady-state full-load dyno sweep. */
