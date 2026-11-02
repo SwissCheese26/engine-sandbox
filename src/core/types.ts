@@ -121,7 +121,15 @@ export interface ExhaustConfig {
   particulateFilter: boolean;
   /** Selective catalytic reduction (AdBlue). */
   scr: boolean;
+  /**
+   * Overrun afterfire calibration ("pops & bangs", issue #16), petrol only: in overrun the ECU injects a little
+   * fuel with very late ignition so it burns in the hot manifold / exhaust. Optional, undefined = "off".
+   * Ignored for diesels (no spark, no injection in overrun).
+   */
+  overrunPops?: OverrunPops;
 }
+
+export type OverrunPops = "off" | "mild" | "popcorn" | "brutal";
 
 export interface CoolingConfig {
   /** Radiator heat rejection capacity in kW at full fan and 90 °C coolant / 25 °C ambient. */
@@ -145,6 +153,12 @@ export interface EngineConfig {
   revLimitRpm: number;
   /** Idle speed target. */
   idleRpm: number;
+  /**
+   * ECU torque limit at the flywheel in Nm (issue #18): the ECU reduces boost / fuel quantity / throttle so that
+   * the brake torque stays at or below this value (gearbox protection, typical for modern turbo engines).
+   * Optional, undefined = no limit.
+   */
+  ecuTorqueLimitNm?: number;
 }
 
 /** Controls coming from the player per simulation tick. */
@@ -222,6 +236,8 @@ export type WarningCode =
   | "smoke"
   | "stall"
   | "conrod-stress"
+  /** Catalyst overheated (e.g. by overrun afterfire, issue #16). */
+  | "catalyst-overheat"
   /** Implausible configuration (validateConfig only). */
   | "config";
 
@@ -283,6 +299,13 @@ export interface EngineState {
   starterEngaged: boolean;
   /** Vehicle speed in m/s (dynoMode "vehicle"; 0 otherwise). */
   vehicleSpeedMs?: number;
+  /**
+   * Overrun afterfire intensity 0 … 1 for the sound engine (pops & bangs, issue #16). 0 = no afterfire.
+   * Only petrol engines with `exhaust.overrunPops` set produce values > 0.
+   */
+  afterfire?: number;
+  /** Torque limit of the ECU currently active (brake torque held at `ecuTorqueLimitNm`, issue #18). */
+  torqueLimited?: boolean;
 }
 
 /** One point of a steady-state full-load dyno sweep. */
