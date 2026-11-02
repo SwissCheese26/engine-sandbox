@@ -10,6 +10,8 @@ import {
 } from "../../src/core/thermal.ts";
 import type { EngineConfig } from "../../src/core/types.ts";
 import { defaultConfig } from "../../src/data/presets.ts";
+import { createLimitTracker, evaluateLimits } from "../../src/core/limits.ts";
+import { REF } from "./subsystems-fixtures.ts";
 
 const cold = (t = 20): ThermalState => ({ coolantC: t, oilC: t, egtC: t });
 
@@ -152,6 +154,60 @@ describe("thermal: oil pressure", () => {
         for (const t of [-20, 20, 90, 150]) expect(oilPressureBar(cfg, rpm, t)).toBeLessThanOrEqual(5.5);
       }
       expect(oilPressureBar(cfg, 6000, -20)).toBe(fuel === "diesel" ? 5.0 : 5.5);
+    });
+  }
+});
+
+describe("thermal: sustained high rpm (review B1)", () => {
+  // Rated power of the petrol references (petrol.md §7); combustion heat into the coolant ≈ 0.6 × P_rated,
+  // consistent with radiatorCapacityKw ≈ 0.5 × P_rated (petrol.md §1 CoolingConfig).
+  const petrols: [EngineConfig, number][] = [[REF.k20a!, 162], [REF.ea888!, 162], [REF.s54!, 252], [REF.ls3!, 321], [REF.f136!, 419], [defaultConfig("petrol"), 162]];
+  for (const [cfg, pKw] of petrols) {
+    test(`${cfg.name}: 10 min full load at 0.9 × limiter → oil < 150 °C, no fatal damage`, () => {
+      const rpm = 0.9 * cfg.revLimitRpm;
+      const tr = createLimitTracker();
+      let s: ThermalState = cold(25);
+      let maxOil = 0;
+      for (let t = 0; t <= 600; t += 0.1) {
+        s = stepThermal(s, cfg, 0.1, 0.6 * pKw, 900, rpm, 25);
+        maxOil = Math.max(maxOil, s.oilC);
+        const r = evaluateLimits(cfg, {
+          t, running: true, destroyed: false, rpm, crankAngleDeg: 0, torqueNm: 0, powerKw: pKw, imepBar: 14, bmepBar: 12,
+          fmepBar: 2, load: 1, manifoldAbsKpa: 100, boostBar: 0, turboRpm: 0, airMassFlowKgS: 0, fuelMassFlowGS: 0,
+          fuelFlowLh: 0, bsfcGkWh: 280, efficiency: 0.3, lambda: 0.88, egtC: s.egtC, coolantC: s.coolantC, oilC: s.oilC,
+          oilPressureBar: oilPressureBar(cfg, rpm, s.oilC), peakPressureBar: 70,
+          meanPistonSpeedMs: (2 * (cfg.block.strokeMm / 1000) * rpm) / 60, knock: 0, smoke: 0, wear: 0, warnings: [], damage: [],
+        }, tr);
+        expect(r.fatal).toBeUndefined();
+      }
+      expect(maxOil).toBeLessThan(150);
+    });
+  }
+});
+
+describe("thermal: stiff integration (review B3)", () => {
+  const tiny: EngineConfig = (() => {
+    const c = defaultConfig("petrol");
+    c.block = { ...c.block, cylinders: 1, boreMm: 60, strokeMm: 55 };
+    c.induction = { ...c.induction, aspiration: "naturally-aspirated", boostTargetBar: 0 };
+    return c;
+  })();
+  for (const kw of [1000, 20000]) {
+    test(`1-cylinder 60×55 with ${kw} kW radiator, dt = 0.3 s: no overshoot, matches fine reference`, () => {
+      const cfg: EngineConfig = { ...tiny, cooling: { ...tiny.cooling, radiatorCapacityKw: kw } };
+      let a: ThermalState = { coolantC: 100, oilC: 100, egtC: 500 };
+      let b: ThermalState = { ...a };
+      let minA = Infinity;
+      for (let i = 0; i < 200; i++) {
+        a = stepThermal(a, cfg, 0.3, 2, 500, 3000, 20);
+        minA = Math.min(minA, a.coolantC);
+      }
+      for (let i = 0; i < 60000; i++) b = stepThermal(b, cfg, 0.001, 2, 500, 3000, 20);
+      expect(Number.isFinite(a.coolantC) && Number.isFinite(a.oilC)).toBe(true);
+      expect(minA).toBeGreaterThan(19.5);
+      expect(minA).toBeGreaterThan(b.coolantC - 1.5); // no undershoot below the equilibrium
+      expect(Math.abs(a.coolantC - b.coolantC)).toBeLessThan(1.5);
+      expect(Math.abs(a.oilC - b.oilC)).toBeLessThan(1.5);
     });
   }
 });
