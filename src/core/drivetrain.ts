@@ -50,7 +50,25 @@ export interface DrivetrainState {
   /** Stopwatch 0–100 km/h: running time and last result. */
   t0to100S: number | null;
   t0to100Running: number | null;
+  /** Electronic top-speed governor (issue #32): limit in km/h, null = off ("Aufhebung"). */
+  speedLimitKmh: number | null;
+  /** True while the governor holds the pedal back ("abgeregelt"). */
+  limiting: boolean;
+  /** True when the recorded maxSpeedKmh was reached with the governor in control. */
+  maxSpeedLimited: boolean;
 }
+
+/** Governor presets in km/h, null = off. Default 250 km/h (German manufacturers' voluntary agreement) [S]. */
+export const SPEED_LIMIT_OPTIONS: readonly (number | null)[] = [null, 180, 210, 250, 270, 300];
+export const DEFAULT_SPEED_LIMIT_KMH = 250;
+/** Tyre speed rating W (ETRTO / ECE-R 30): 270 km/h. Real tyre model follows in #22. */
+export const TYRE_RATING_W_KMH = 270;
+
+// Governor PI gains (issue #32). It takes over from (limit − 5 km/h) and trims the pedal so speed settles at the
+// limit without the hard cut of a rev limiter, like an ECU top-speed limiter acting on throttle / injection.
+const GOV_WINDOW_KMH = 5;
+const GOV_KP = 0.12; // pedal per km/h of remaining margin
+const GOV_KI = 0.06; // pedal per (km/h · s)
 
 const RAD_TO_RPM = 30 / Math.PI;
 
@@ -60,6 +78,9 @@ export class Drivetrain {
   private pendingGear = 0;
   private holdLaunch = 0;
   private lastSpeedMs = 0;
+  private govActive = false;
+  private govI = 0;
+  private govCap = 1;
 
   constructor(
     private cfg: EngineConfig,
@@ -67,15 +88,16 @@ export class Drivetrain {
     type: GearboxType = "manual",
     public vehicle: VehicleParams = DEFAULT_VEHICLE,
   ) {
-    this.st = this.fresh(type, GEARBOXES[type].finalDrive);
+    this.st = this.fresh(type, GEARBOXES[type].finalDrive, DEFAULT_SPEED_LIMIT_KMH);
   }
 
-  private fresh(type: GearboxType, finalDrive: number): DrivetrainState {
+  private fresh(type: GearboxType, finalDrive: number, speedLimitKmh: number | null): DrivetrainState {
     const g = GEARBOXES[type];
     return {
       type, gear: type === "cvt" ? 1 : 1, gearCount: type === "cvt" ? 1 : g.ratios.length,
       ratio: g.ratios[0]!, finalDrive, manualMode: type === "manual", shifting: false, clutch: 0,
       speedKmh: 0, maxSpeedKmh: 0, t0to100S: null, t0to100Running: null,
+      speedLimitKmh, limiting: false, maxSpeedLimited: false,
     };
   }
 
@@ -90,7 +112,13 @@ export class Drivetrain {
 
   setType(type: GearboxType) {
     this.clearTransient();
-    Object.assign(this.st, this.fresh(type, GEARBOXES[type].finalDrive));
+    Object.assign(this.st, this.fresh(type, GEARBOXES[type].finalDrive, this.st.speedLimitKmh));
+  }
+
+  /** Top-speed governor in km/h; null (or ≤ 0) switches it off ("Aufhebung"). */
+  setSpeedLimit(kmh: number | null) {
+    this.st.speedLimitKmh = kmh !== null && kmh > 0 ? kmh : null;
+    this.resetGovernor();
   }
 
   /** Final drive ratio ("Achsübersetzung"): shorter = more pull, lower top speed. */
@@ -100,9 +128,9 @@ export class Drivetrain {
 
   /** Vehicle back to standstill, first gear, records kept. */
   reset() {
-    const keep = { maxSpeedKmh: this.st.maxSpeedKmh, t0to100S: this.st.t0to100S };
+    const keep = { maxSpeedKmh: this.st.maxSpeedKmh, t0to100S: this.st.t0to100S, maxSpeedLimited: this.st.maxSpeedLimited };
     this.clearTransient();
-    Object.assign(this.st, this.fresh(this.st.type, this.st.finalDrive), keep);
+    Object.assign(this.st, this.fresh(this.st.type, this.st.finalDrive, this.st.speedLimitKmh), keep);
   }
 
   /** Shift timer, pending gear and launch-clutch memory back to rest (review #19). */
@@ -110,6 +138,50 @@ export class Drivetrain {
     this.shiftT = 0;
     this.pendingGear = 0;
     this.holdLaunch = 0;
+    this.resetGovernor();
+  }
+
+  private resetGovernor() {
+    this.govActive = false;
+    this.govI = 0;
+    this.govCap = 1;
+    this.st.limiting = false;
+  }
+
+  /**
+   * Top-speed governor (issue #32): PI controller on the speed margin, output is a pedal cap. Takes over at
+   * (limit − 5 km/h) with a bumpless start (cap = driver pedal), anti-windup by tracking the driver pedal so it
+   * never builds up authority the driver does not ask for. Releases with 1 km/h hysteresis below the window.
+   */
+  private governor(dt: number, speedKmh: number, pedal: number) {
+    const s = this.st;
+    const lim = s.speedLimitKmh;
+    if (lim === null) {
+      this.resetGovernor();
+      return;
+    }
+    const e = lim - speedKmh; // remaining margin, km/h
+    if (!this.govActive) {
+      if (e > GOV_WINDOW_KMH) {
+        this.govCap = 1;
+        s.limiting = false;
+        return;
+      }
+      this.govActive = true;
+      this.govI = pedal - GOV_KP * e; // bumpless: cap starts at the current pedal
+    } else if (e > GOV_WINDOW_KMH + 1 && this.govCap >= pedal) {
+      this.resetGovernor();
+      return;
+    }
+    let out = GOV_KP * e + this.govI;
+    // integrate only while not saturated (or when the error drives the output back inside)
+    if ((out < 1 || e < 0) && (out > 0 || e > 0)) this.govI += GOV_KI * e * dt;
+    out = GOV_KP * e + this.govI;
+    // anti-windup: never hold more pedal in reserve than the driver gives
+    if (out > pedal) this.govI = pedal - GOV_KP * e;
+    this.govI = Math.min(1, Math.max(-1, this.govI));
+    this.govCap = Math.min(1, Math.max(0, out));
+    s.limiting = this.govCap < pedal - 0.01;
   }
 
   /** Driver shift request: +1 up, −1 down. Ignored for CVT. */
@@ -167,7 +239,10 @@ export class Drivetrain {
 
     // --- DSG automatic shift schedule (Drive mode) [S]: upshift point rises with pedal, downshift keeps torque
     if (s.type === "dsg" && !s.shifting && s.gear > 0) {
-      const upRpm = Math.min(limit * 0.97, idle + 900 + Math.pow(pedal, 0.8) * (limit * 0.97 - idle - 900));
+      // shift on the torque request the engine really gets: with the governor holding the speed the DSG
+      // settles in a high gear instead of cruising at high rpm (issue #32)
+      const req = this.govActive ? Math.min(pedal, this.govCap) : pedal;
+      const upRpm = Math.min(limit * 0.97, idle + 900 + Math.pow(req, 0.8) * (limit * 0.97 - idle - 900));
       const downRpm = Math.max(idle * 1.35, upRpm * 0.42);
       if (!s.manualMode) {
         if (rpm > upRpm && s.gear < s.gearCount && this.rpmInGear(s.gear + 1, v) > idle * 1.25) this.beginShift(s.gear + 1);
@@ -225,7 +300,11 @@ export class Drivetrain {
 
     // --- measurements
     s.speedKmh = v * 3.6;
-    if (s.speedKmh > s.maxSpeedKmh) s.maxSpeedKmh = s.speedKmh;
+    this.governor(dt, s.speedKmh, pedal);
+    if (s.speedKmh > s.maxSpeedKmh) {
+      s.maxSpeedKmh = s.speedKmh;
+      s.maxSpeedLimited = this.govActive && s.speedLimitKmh !== null && s.speedKmh >= s.speedLimitKmh - 3;
+    }
     if (s.speedKmh < 0.5 && pedal > 0.05 && s.t0to100Running === null) s.t0to100Running = 0;
     if (s.t0to100Running !== null) {
       if ((s.speedKmh < 0.5 && pedal < 0.02) || !engine.running) s.t0to100Running = null;
@@ -251,9 +330,11 @@ export class Drivetrain {
   /**
    * Pedal actually sent to the engine: a manual shift lifts off (driver lifts, clutch open) so the engine does not
    * flare to the limiter; DSG/CVT pass the pedal through (the ECU blips/cuts torque internally).
+   * The top-speed governor (issue #32) caps the pedal; the cap is updated in inputs().
    */
   effectivePedal(pedal: number): number {
-    return this.st.type === "manual" && this.st.shifting ? 0 : pedal;
+    if (this.st.type === "manual" && this.st.shifting) return 0;
+    return this.govActive ? Math.min(pedal, this.govCap) : pedal;
   }
 
   /** Label for the gear indicator: "N", "3", "D4", "M4", "CVT". */

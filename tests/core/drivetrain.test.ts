@@ -103,3 +103,76 @@ describe("service brake", () => {
     expect(sim.state.running).toBe(true);
   });
 });
+
+describe("top-speed governor (issue #32)", () => {
+  function drive(fuel: "diesel" | "petrol", type: GearboxType, limit: number | null, seconds: number) {
+    const cfg = defaultConfig(fuel);
+    const sim = new EngineSimulator(cfg);
+    const dt = new Drivetrain(cfg, summarize(cfg), type);
+    dt.setSpeedLimit(limit);
+    const inp = { ...defaultInputs(), ignition: true, starter: true, dynoMode: "vehicle" as const };
+    const step = (pedal: number) => {
+      const vehicle = dt.inputs(1 / 60, sim.state, pedal);
+      sim.step(1 / 60, { ...inp, vehicle, pedal: dt.effectivePedal(pedal) });
+    };
+    for (let i = 0; i < 120; i++) step(0);
+    inp.starter = false;
+    for (let i = 0; i < 120; i++) step(0);
+    const tail: number[] = [];
+    let gearChanges = 0;
+    let lastGear = dt.state.gear;
+    for (let i = 0; i < seconds * 60; i++) {
+      step(1);
+      if (i >= (seconds - 20) * 60) {
+        tail.push(dt.state.speedKmh);
+        if (dt.state.gear !== lastGear) gearChanges++;
+      }
+      lastGear = dt.state.gear;
+    }
+    return { dt, tail, gearChanges };
+  }
+
+  test("default limit is 250 km/h", () => {
+    const cfg = defaultConfig("petrol");
+    expect(new Drivetrain(cfg, summarize(cfg), "dsg").state.speedLimitKmh).toBe(250);
+  });
+
+  test("petrol DSG at 210: no overshoot above 212, holds 210 ± 2 without oscillating", () => {
+    const { dt, tail, gearChanges } = drive("petrol", "dsg", 210, 90);
+    expect(dt.state.maxSpeedKmh).toBeLessThanOrEqual(212);
+    expect(Math.min(...tail)).toBeGreaterThan(208);
+    expect(Math.max(...tail)).toBeLessThan(212);
+    expect(Math.max(...tail) - Math.min(...tail)).toBeLessThan(1);
+    expect(gearChanges).toBe(0);
+    expect(dt.state.limiting).toBe(true);
+    expect(dt.state.maxSpeedLimited).toBe(true);
+    expect(dt.effectivePedal(1)).toBeLessThan(0.95); // pedal really held back
+  });
+
+  test("petrol DSG with the governor off ('Aufhebung') goes beyond 250", () => {
+    const { dt } = drive("petrol", "dsg", null, 90);
+    expect(dt.state.speedLimitKmh).toBeNull();
+    expect(dt.state.maxSpeedKmh).toBeGreaterThan(250);
+    expect(dt.state.limiting).toBe(false);
+    expect(dt.state.maxSpeedLimited).toBe(false);
+  });
+
+  test("diesel DSG stays below 250, governor never intervenes", () => {
+    const on = drive("diesel", "dsg", 250, 90);
+    const off = drive("diesel", "dsg", null, 90);
+    expect(on.dt.state.maxSpeedKmh).toBeLessThan(245);
+    expect(on.dt.state.limiting).toBe(false);
+    expect(on.dt.state.maxSpeedLimited).toBe(false);
+    expect(Math.abs(on.dt.state.maxSpeedKmh - off.dt.state.maxSpeedKmh)).toBeLessThan(0.01);
+  });
+
+  test("driver lifting below the cap gets exactly his pedal, reset keeps the setting", () => {
+    const { dt } = drive("petrol", "cvt", 180, 60);
+    expect(dt.effectivePedal(0)).toBe(0);
+    dt.reset();
+    expect(dt.state.speedLimitKmh).toBe(180);
+    expect(dt.state.limiting).toBe(false);
+    dt.setSpeedLimit(null);
+    expect(dt.effectivePedal(1)).toBe(1);
+  });
+});
