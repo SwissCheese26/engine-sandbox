@@ -134,6 +134,8 @@ export class App {
         return;
       }
       this.sim.reset();
+      this.recorder.reset();
+      this.gearbox.reset();
       this.announce(warm ? "Motor ist warm." : "Motor ist kalt.");
     };
     this.recorder.onMeasured((auto) => {
