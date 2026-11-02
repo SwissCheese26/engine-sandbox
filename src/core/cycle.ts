@@ -182,7 +182,7 @@ export function evaluateCycle(m: Model, op: OpPoint): CycleOut {
   const rho = (op.pManKpa * 1000) / (R_AIR * op.TManK);
   let mAirCyc = veEff * rho * Vh;
   const pUpKpa = op.ambientKpa + 100 * Math.max(0, op.boostBar);
-  let pExhKpa = exhaustPressureKpa(m, op, mAirCyc * cyclesPerS, m.fuel === "diesel" ? op.pManKpa : pUpKpa);
+  const pExhKpa = exhaustPressureKpa(m, op, mAirCyc * cyclesPerS, m.fuel === "diesel" ? op.pManKpa : pUpKpa);
   // diesel.md §3.1 residual gas correction: ve ·= 1 − 0.03·max(0, p_exh/p_int − 1)
   mAirCyc *= 1 - 0.03 * Math.max(0, pExhKpa / op.pManKpa - 1);
   let mFuelCyc = 0;
@@ -253,8 +253,6 @@ export function evaluateCycle(m: Model, op: OpPoint): CycleOut {
   // heat into the coolant (diesel.md §3.10: xWall·P_fuel + ½·P_fric; petrol.md §3.10: 0.25 … 0.35·P_fuel)
   const wallShare = m.fuel === "diesel" ? xWall : 0.25 + 0.1 * (1 - clamp(op.relLoad, 0, 1));
   const heatToCoolantKw = (wallShare * pFuelW + 0.5 * pFricW) / 1000;
-  void pExhKpa;
-  pExhKpa = 0;
   return {
     mAirCyc, airMassFlowKgS: mAirCyc * cyclesPerS, mFuelCyc, fuelMassFlowGS, lambda, imepBar: imep, pmepBar: pmep,
     fmepBar: fmep, bmepBar: bmep, torqueNm: torque, peakPressureBar: peak, egtC, smoke, knock, knockMargin: margin,
@@ -336,7 +334,7 @@ export function fullLoadAt(m: Model, rpm: number): { torque: number; air: number
     m.fullAir = new Float64Array(nMax);
     for (let i = 0; i < nMax; i++) {
       const sp = steadyFullLoad(m, Math.max(300, i * 100));
-      m.fullTorque[i] = Math.max(1, sp.out.torqueNm + Math.max(0, sp.out.fmepBar + sp.out.pmepBar) * 0) ;
+      m.fullTorque[i] = Math.max(1, sp.out.torqueNm);
       m.fullAir[i] = Math.max(1e-7, sp.out.mAirCyc);
     }
   }

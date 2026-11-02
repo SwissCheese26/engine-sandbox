@@ -279,6 +279,8 @@ export interface EngineLimits {
   peakPressureMaxBar: number;
   /** Max turbo shaft speed (rpm). 0 without turbocharger. */
   turboMaxRpm: number;
+  /** Mean piston speed from which "piston-speed" warns, m/s. */
+  meanPistonSpeedMaxMs: number;
 }
 
 /** Static figures derived from the config (shown on the nameplate). */
