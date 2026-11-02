@@ -401,14 +401,20 @@ function stepVehicle(x: Internal, c: VehicleCoupling, engineTorqueNm: number, J:
   const wIn = i > 0 ? (x.vSpeed / r) * i : 0; // gearbox input shaft speed, rad/s
   const lock = clamp(c.clutch, 0, 1);
   const cap = lock * c.clutchCapacityNm;
-  const fRes = roadLoadN(veh, x.vSpeed);
+  // service brake: friction brake up to μ·m·g with μ ≈ 1.0 (road tyre on dry asphalt) [S]. While moving it
+  // opposes the motion; at rest it acts as static friction and holds the car against drive force (review #20).
+  const brakeCapN = clamp(c.brake ?? 0, 0, 1) * 1.0 * veh.massKg * G;
+  const atRest = x.vSpeed <= 1e-3;
+  const fRes = roadLoadN(veh, x.vSpeed) + (atRest ? 0 : brakeCapN);
+  /** Net longitudinal force; at rest the brake absorbs drive force up to its capacity. */
+  const net = (fDrive: number) => (atRest ? Math.max(0, fDrive - brakeCapN) : fDrive - fRes);
   const slip = wEng - wIn;
   // rigid if the clutch is (almost) closed, synchronised and able to carry the torque
   if (i > 0 && lock > 0.98 && Math.abs(slip) < 2) {
     const mEff = veh.massKg + (J * i * i) / (r * r);
     const fDrive = (engineTorqueNm * i * (engineTorqueNm >= 0 ? eta : 1 / eta)) / r;
     if (Math.abs(engineTorqueNm) <= cap * 1.2) {
-      x.vSpeed = Math.max(0, x.vSpeed + ((fDrive - fRes) / mEff) * h);
+      x.vSpeed = Math.max(0, x.vSpeed + (net(fDrive) / mEff) * h);
       x.rpm = ((x.vSpeed / r) * i) * RPM_PER_RADS;
       return;
     }
@@ -419,5 +425,5 @@ function stepVehicle(x: Internal, c: VehicleCoupling, engineTorqueNm: number, J:
   if (wE < 0) wE = 0;
   x.rpm = wE * RPM_PER_RADS;
   const fDrive = i > 0 ? (tc * i * (tc >= 0 ? eta : 1 / eta)) / r : 0;
-  x.vSpeed = Math.max(0, x.vSpeed + ((fDrive - fRes) / veh.massKg) * h);
+  x.vSpeed = Math.max(0, x.vSpeed + (net(fDrive) / veh.massKg) * h);
 }

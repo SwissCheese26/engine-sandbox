@@ -65,9 +65,9 @@ async function run(name, viewport, steps) {
 async function startAndRev(page, ms = 2500) {
   await page.mouse.click(5, 5);
   await page.keyboard.press("i");
-  await page.keyboard.down("s");
+  await page.keyboard.down("a");
   await page.waitForTimeout(900);
-  await page.keyboard.up("s");
+  await page.keyboard.up("a");
   await page.waitForTimeout(400);
   await page.keyboard.down(" ");
   await page.waitForTimeout(ms);
@@ -138,9 +138,9 @@ await run("desktop-v8-petrol", { width: 1440, height: 900 }, async (page) => {
   // lock while running, unlock after ignition off and standstill
   await page.mouse.click(700, 20);
   await page.keyboard.press("i");
-  await page.keyboard.down("s");
+  await page.keyboard.down("a");
   await page.waitForTimeout(700);
-  await page.keyboard.up("s");
+  await page.keyboard.up("a");
   await page.waitForTimeout(300);
   expect(await page.isVisible(".bench__lock"), "lock hint visible while running");
   expect(await page.isDisabled(bore), "bench inputs disabled while running");

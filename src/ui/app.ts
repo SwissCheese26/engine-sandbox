@@ -227,7 +227,7 @@ export class App {
       try {
         if (this.inputs.dynoMode === "vehicle") {
           const d = this.gearbox.drivetrain;
-          const vehicle = d.inputs(dt, this.sim.state, this.inputs.pedal);
+          const vehicle = d.inputs(dt, this.sim.state, this.inputs.pedal, this.console.brakeHeld ? 1 : 0);
           s = this.sim.step(dt, { ...this.inputs, vehicle, pedal: d.effectivePedal(this.inputs.pedal) });
         } else {
           s = this.sim.step(dt, this.inputs);
@@ -241,7 +241,7 @@ export class App {
       this.schematic.update(s, dt);
       this.recorder.update(s, dt);
       this.console.update(s);
-      if (this.inputs.dynoMode === "vehicle") this.gearbox.update();
+      if (this.inputs.dynoMode === "vehicle") this.gearbox.update(this.console.brakeHeld);
       if (this.soundStarted) this.sound.update(s, this.inputs.pedal);
       this.rafId = requestAnimationFrame(frame);
     };

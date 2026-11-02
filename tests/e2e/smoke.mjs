@@ -114,9 +114,9 @@ async function run(label, viewport) {
   // focus the document (not a button) so the global key handler receives the keys
   await page.mouse.click(2, 2);
   await page.keyboard.press("i");
-  await page.keyboard.down("s");
+  await page.keyboard.down("a");
   await page.waitForTimeout(1200);
-  await page.keyboard.up("s");
+  await page.keyboard.up("a");
   await page.waitForTimeout(800);
   const rpmIdle = await readRpm(page);
 

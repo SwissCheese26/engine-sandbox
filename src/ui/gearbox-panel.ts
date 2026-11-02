@@ -62,6 +62,7 @@ export class GearboxPanel {
           <button type="button" class="btn" data-control="shift-up" aria-keyshortcuts="E">Hoch <kbd>E</kbd></button>
           <button type="button" class="btn btn--small" data-control="shift-auto" hidden>Automatik (D)</button>
         </div>
+        <p class="gearbox__keys">Gas <kbd>W</kbd>, Bremse <kbd>S</kbd></p>
       </div>
       <dl class="gearbox__readouts">
         <div><dt>Tempo</dt><dd class="num"><span data-out="speed">0</span> km/h</dd></div>
@@ -153,7 +154,7 @@ export class GearboxPanel {
   }
 
   /** Per frame: returns the pedal the engine should get (manual shifts lift off). */
-  update(): void {
+  update(braking = false): void {
     const d = this.drivetrain;
     const s = d.state;
     const gear = s.shifting && s.type === "manual" ? "–" : d.gearLabel();
@@ -165,6 +166,7 @@ export class GearboxPanel {
     if (vmax !== this.last.vmax) this.vmaxEl.textContent = this.last.vmax = vmax;
     if (t100 !== this.last.t100) this.t100El.textContent = this.last.t100 = t100;
     this.autoBtn.hidden = !(s.type === "dsg" && s.manualMode);
+    this.gearEl.classList.toggle("is-braking", braking);
     // gearbox and final drive can only be changed at standstill (review #19)
     const moving = s.speedKmh > 0.5;
     if (moving !== this.moving) {

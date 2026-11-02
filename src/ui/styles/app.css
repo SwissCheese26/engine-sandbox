@@ -1360,3 +1360,11 @@ kbd {
     grid-template-columns: 1fr;
   }
 }
+.gearbox__keys {
+  font-size: var(--fs-12);
+  color: var(--alu-shade);
+}
+/* braking: the gear plate gets a red rim like a brake light – red is the brake, not a limit (yellow) */
+.gearbox__gear.is-braking {
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.18), 0 0 0 3px var(--ink-torque);
+}
