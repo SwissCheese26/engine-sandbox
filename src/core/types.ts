@@ -166,6 +166,8 @@ export interface SimInputs {
   dynoBrakeTorqueNm: number;
   ambientC: number;
   ambientKpa: number;
+  /** Start with a warm engine (coolant at thermostat temperature, oil ≈ 90 °C). Read at the first step after reset(). */
+  startWarm?: boolean;
   /** Only for dynoMode "vehicle"; produced each frame by `Drivetrain.inputs()`. */
   vehicle?: VehicleCoupling;
 }

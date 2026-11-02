@@ -152,8 +152,11 @@ export class EngineSimulator {
     const ambientC = fin(input.ambientC, 20);
     const ambientKpa = clamp(fin(input.ambientKpa, 101.325), 30, 120);
     if (!x.initialised) {
-      // lead decision: temperatures start at the ambient of the first step after reset()
-      x.thermal = { coolantC: ambientC, oilC: ambientC, egtC: ambientC };
+      // lead decision: temperatures start at the ambient of the first step after reset();
+      // "warm start" (Arthur's wish): engine at operating temperature, exhaust manifold still warm
+      x.thermal = input.startWarm
+        ? { coolantC: Math.max(ambientC, cfg.cooling.thermostatOpenC), oilC: Math.max(ambientC, 90), egtC: Math.max(ambientC, 150) }
+        : { coolantC: ambientC, oilC: ambientC, egtC: ambientC };
       x.pManKpa = ambientKpa;
       x.initialised = true;
     }

@@ -280,3 +280,18 @@ describe("robustness", () => {
     }
   });
 });
+
+import { EngineSimulator as WarmSim, defaultInputs as warmInputs } from "../../src/core/index.ts";
+import { defaultConfig as warmCfg } from "../../src/data/presets.ts";
+test("startWarm: engine starts at operating temperature, otherwise at ambient", () => {
+  for (const warm of [true, false]) {
+    const sim = new WarmSim(warmCfg("diesel"));
+    sim.step(1 / 60, { ...warmInputs(), ambientC: 5, startWarm: warm });
+    if (warm) {
+      expect(sim.state.coolantC).toBeGreaterThan(80);
+      expect(sim.state.oilC).toBeGreaterThan(80);
+    } else {
+      expect(sim.state.coolantC).toBeCloseTo(5, 0);
+    }
+  }
+});
