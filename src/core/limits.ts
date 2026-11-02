@@ -226,7 +226,7 @@ export function estimatedFullLoad(cfg: EngineConfig): FullLoadEstimate {
     ratedRpm = 0.82 * cfg.revLimitRpm;
     const lam = Math.max(1, fs.smokeLimitLambda);
     // diesel.md §3.3 table (piK, Gütegrad) and §3.6 peak pressure.
-    const sys = { "common-rail": [0.7, 0.8], "unit-injector": [0.8, 0.78], "indirect-swirl-chamber": [0.4, 0.68], "indirect-prechamber": [0.35, 0.65] }[fs.injection];
+    const sys = { "common-rail": [0.7, 0.8], "unit-injector": [0.8, 0.78], "indirect-swirl-chamber": [0.4, 0.68], "indirect-prechamber": [0.35, 0.65], "mechanical-pump": [0.75, 0.74] }[fs.injection];
     peak = pInt * compressionRatio ** 1.33 * (1 + sys[0]! / lam) * (1 + 0.03 * fs.injectionTimingOffsetDeg);
     const rho = (pInt * 1e5) / (287 * (tIntC + 273.15));
     const etaI = 0.59 * sys[1]!; // ≈ Seiliger 0.59 at ε 16, λ 1.3 (diesel.md §3.3 check)

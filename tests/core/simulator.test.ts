@@ -1,6 +1,5 @@
 // Transient simulator behaviour (issue #7; docs/research/diesel.md §3.11, petrol.md §3.3/§4).
-// Cases the placeholder simulator on main cannot meet are `test.failing`:
-// scharf schalten nach Integration (#3/#4) – then make `spec()` always use plain `test`.
+// Since the integration of #3/#4 every case is a normal test.
 import { describe, expect, test } from "bun:test";
 import { EngineSimulator, defaultInputs, dynoSweep } from "../../src/core/index.ts";
 import type { EngineConfig, EngineState } from "../../src/core/index.ts";
@@ -8,45 +7,8 @@ import { defaultConfig } from "../../src/data/presets.ts";
 import { REFERENCE_ENGINES } from "../../src/data/reference-engines.ts";
 import { mean, nonFiniteFields, randomConfig, rng, runPhases, sample, startEngine } from "./helpers.ts";
 
-/** Cases that already hold with the placeholder simulator (normal tests, regression guards). */
-const PASS_ON_PLACEHOLDER = new Set<string>([
-  "default diesel: starts and idles within ±15 % of idleRpm",
-  "default petrol: starts and idles within ±15 % of idleRpm",
-  "VW 1.9 TDI PD (ASZ, 96 kW): starts and idles within ±15 % of idleRpm",
-  "BMW N57D30O1 (3.0d, 190 kW): starts and idles within ±15 % of idleRpm",
-  "Mercedes OM654 (220d, 143 kW): starts and idles within ±15 % of idleRpm",
-  "PSA/Ford 1.6 HDi 16V (DV6TED4, 80 kW): starts and idles within ±15 % of idleRpm",
-  "Cummins 6BT 5.9 12V (160 kW): starts and idles within ±15 % of idleRpm",
-  "Honda K20A (DC5 Type R, 162 kW): starts and idles within ±15 % of idleRpm",
-  "VW EA888 Gen3 (CHHB, Golf 7 GTI, 162 kW): starts and idles within ±15 % of idleRpm",
-  "BMW S54B32 (E46 M3, 252 kW): starts and idles within ±15 % of idleRpm",
-  "GM LS3 6.2 (C6 Corvette, 321 kW): starts and idles within ±15 % of idleRpm",
-  "Ferrari F136 FB (458 Italia, 419 kW): starts and idles within ±15 % of idleRpm",
-  "no start without ignition",
-  "starter alone cranks at 100 … 400 rpm (diesel.md §3.11)",
-  "ignition off → engine stops",
-  "idle fuel flow is small (0.3 … 2.0 l/h for 2 l engines)",
-  "diesel: pedal → rpm rises clearly within 1 s",
-  "diesel: limiter holds (rpm ≤ revLimit + 3 %) at full pedal",
-  "diesel: releasing the pedal returns to idle (±15 %)",
-  "petrol: pedal → rpm rises clearly within 1 s",
-  "petrol: limiter holds (rpm ≤ revLimit + 3 %) at full pedal",
-  "petrol: releasing the pedal returns to idle (±15 %)",
-  "crank angle advances with rpm and stays in 0 … 720°",
-  "power = torque · ω (state consistency)",
-  "steady hold-rpm full load matches dynoSweep torque within ±10 %",
-  "moderate constant brake torque is carried at part pedal without stalling",
-  "diesel: coolant and oil warm up under load, coolant settles near the thermostat",
-  "petrol: coolant and oil warm up under load, coolant settles near the thermostat",
-  "EGT rises with load",
-  "reset() returns to a cold, stopped engine",
-  "tiny and large dt (1 ms, 1/30 s) give the same idle within ±10 %",
-  "fuzz: 200 random valid configs × 30 s never produce NaN/Infinity",
-  "performance: mean step(1/60) ≤ 1 ms",
-]);
 function spec(name: string, fn: () => void, timeout = 60_000) {
-  // scharf schalten nach Integration (#3/#4)
-  (PASS_ON_PLACEHOLDER.has(name) ? test : test.failing)(name, fn, timeout);
+  test(name, fn, timeout);
 }
 
 const FUZZ_TIMEOUT_MS = 360_000 /* steps */ * 1 /* ms */ + 30_000;

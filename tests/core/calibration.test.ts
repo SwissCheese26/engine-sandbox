@@ -2,8 +2,7 @@
 // Spec: peak torque and peak power within ±10 % (lead decision; research proposed ±7 % / ±10 %),
 // rpm of the peaks within ±12 % (petrol.md §7; plateau engines are handled by peakRpmOk()).
 //
-// All cases run against the placeholder physics on main and are therefore expected to fail:
-// scharf schalten nach Integration (#3/#4) – replace `test.failing` by `test`.
+// Since the integration of #3/#4 every case is a normal test; known gaps are listed in KNOWN_GAPS below.
 import { describe, expect, test } from "bun:test";
 import { REFERENCE_DIESELS, REFERENCE_ENGINES, REFERENCE_PETROLS } from "../../src/data/reference-engines.ts";
 import type { ReferenceEngine } from "../../src/data/reference-engines.ts";
@@ -67,24 +66,16 @@ describe("reference engine data", () => {
 });
 
 /**
- * Cases that the placeholder physics on main happens to hit by chance (crude constant-bmep model).
- * They run as normal tests so that `test.failing` does not report "passed unexpectedly". Everything
- * else is `test.failing` until the real physics lands. After integration (#3/#4) delete this set and
- * use plain `test` for every case.
+ * Known calibration gaps after integration (#3). All other cases are sharp.
+ * EA888: the reference config asks for 1.3 bar; the mean value model turns that into bmep ≈ 26 bar,
+ * the data-sheet 350 Nm plateau is an ECU torque limit the config cannot express (petrol.md §3.8 / §7).
+ * The model hits 350 Nm at ≈ 0.9 bar. See PR "Mittelwertmodell Diesel & Benziner".
  */
-const PLACEHOLDER_HITS = new Set([
-  "ref-bmw-n57d30o1:torque",
-  "ref-mercedes-om654-220d:torque",
-  "ref-mercedes-om654-220d:power",
-  "ref-psa-16-hdi-dv6ted4:power",
-  "ref-gm-ls3-62:torque",
-  "ref-gm-ls3-62:power",
-]);
-const calib = (id: string, kind: "torque" | "power") => (PLACEHOLDER_HITS.has(`${id}:${kind}`) ? test : test.failing);
+const KNOWN_GAPS = new Set(["ref-vw-ea888-gen3-chhb:torque", "ref-vw-ea888-gen3-chhb:power"]);
+const calib = (id: string, kind: "torque" | "power") => (KNOWN_GAPS.has(`${id}:${kind}`) ? test.failing : test);
 
 describe("dynoSweep hits the reference engines (±10 % value, ±12 % rpm)", () => {
   for (const ref of REFERENCE_ENGINES) {
-    // scharf schalten nach Integration (#3/#4)
     calib(ref.config.id, "torque")(`${ref.config.name}: peak torque ${ref.expected.peakTorqueNm} Nm @ ${ref.expected.peakTorqueRpm}`, () => {
       const s = sweepPeaks(ref.config, { fromRpm: 1000 });
       const msg = describeMiss(ref, "peak torque", s.torque.torqueNm, ref.expected.peakTorqueNm, "Nm");
@@ -95,7 +86,6 @@ describe("dynoSweep hits the reference engines (±10 % value, ±12 % rpm)", () =
       ).toBe(true);
     });
 
-    // scharf schalten nach Integration (#3/#4)
     calib(ref.config.id, "power")(`${ref.config.name}: peak power ${ref.expected.peakPowerKw} kW @ ${ref.expected.peakPowerRpm}`, () => {
       const s = sweepPeaks(ref.config, { fromRpm: 1000 });
       const msg = describeMiss(ref, "peak power", s.power.powerKw, ref.expected.peakPowerKw, "kW");

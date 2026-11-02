@@ -43,7 +43,7 @@ export const DEFAULT_DIESEL: EngineConfig = {
     injectionTimingOffsetDeg: 0,
   },
   exhaust: { manifold: "cast-log", egr: true, catalyst: true, particulateFilter: true, scr: false },
-  cooling: { radiatorCapacityKw: 70, thermostatOpenC: 87, oilCooler: true },
+  cooling: { radiatorCapacityKw: 90, thermostatOpenC: 87, oilCooler: true },
   revLimitRpm: 4800,
   idleRpm: 800,
 };
@@ -85,7 +85,7 @@ export const DEFAULT_PETROL: EngineConfig = {
     ignitionAdvanceOffsetDeg: 0,
   },
   exhaust: { manifold: "cast-log", egr: false, catalyst: true, particulateFilter: false, scr: false },
-  cooling: { radiatorCapacityKw: 80, thermostatOpenC: 90, oilCooler: true },
+  cooling: { radiatorCapacityKw: 170, thermostatOpenC: 90, oilCooler: true },
   revLimitRpm: 6800,
   idleRpm: 750,
 };
