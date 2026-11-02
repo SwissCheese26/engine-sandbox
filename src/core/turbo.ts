@@ -122,7 +122,7 @@ function singleUnit(inducerMm: number, ar: number, vtg: boolean): ChargerUnit {
  * - twin-turbo-parallel: two chargers of D/√2 (same total flow area), J_total = 2·J(D/√2) ≈ 0.35·J(D).
  * - twin-turbo-sequential: small charger (0.75·D) alone at low exhaust flow, the large one (D) is
  *   blended in between 75 % and 100 % of the small charger's choke flow (diesel.md §3.9, N57 Tx).
- * - e-turbo: single charger plus 7 kW electric assist (diesel.md §3.9, petrol.md §3.12: 5 … 10 kW).
+ * - e-turbo: single charger plus 7 kW electric assist for E_ASSIST_WINDOW_S (diesel.md §3.9, petrol.md §3.12: 5 … 10 kW).
  */
 function chargerUnit(cfg: EngineConfig, exhaustMassFlowKgS: number, largeStage?: number): ChargerUnit {
   const ind = cfg.induction;

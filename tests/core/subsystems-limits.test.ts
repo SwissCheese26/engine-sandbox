@@ -242,6 +242,15 @@ describe("limits: warnings, hysteresis and hold times", () => {
     expect(crit).toBeGreaterThan(warn * 5);
   });
 
+  test("worn out by sustained over-revving → specific message, not the generic bearing text", () => {
+    const c = petrol();
+    const rpm = 1.03 * safeMaxRpm(c);
+    const r = evaluateLimits(c, healthy(c, { wear: 1, rpm, meanPistonSpeedMs: (2 * (c.block.strokeMm / 1000) * rpm) / 60 }), createLimitTracker());
+    expect(r.fatal?.fatal).toBe(true);
+    expect(r.fatal?.message).not.toContain("Verschleiß ist aufgebraucht");
+    expect(evaluateLimits(c, healthy(c, { wear: 1 }), createLimitTracker()).fatal?.message).toContain("Verschleiß");
+  });
+
   test("worn out (wear ≥ 1) → fatal", () => {
     const c = petrol();
     const r = evaluateLimits(c, healthy(c, { wear: 1, knock: 0.5 }), createLimitTracker());

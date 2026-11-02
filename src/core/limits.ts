@@ -14,7 +14,8 @@
  * - Petrol conrod inertia uses 0.6 × the diesel oscillating mass (no deep combustion bowl, shorter
  *   compression height), otherwise the K20A/F136 reference engines exceed the rod limit at their limiter.
  *
- * Pure functions apart from the exceedance timers, which live in an explicit `LimitTracker`. When the
+ * Pure functions apart from the exceedance timers, which live in an explicit `LimitTracker` (the adapter
+ * must pass one, see evaluateLimits). When the
  * caller does not pass one, a tracker is kept per config object (WeakMap) and reset when `s.t` goes back.
  * No DOM.
  */
@@ -300,6 +301,18 @@ function cachedThresholds(cfg: EngineConfig): LimitThresholds & { safeMaxRpm: nu
 /**
  * Evaluates all limits for the current state. Returns active warnings (German texts), the wear rate per
  * second (the simulator integrates `wear += wearRatePerS·dt`) and, if one occurred, the fatal damage event.
+ *
+ * ⚠️ **Adapter / simulator: always pass your own tracker** – create it with `createLimitTracker()` in the
+ * simulator's constructor/`reset()` and pass it on every call. The optional parameter only exists to keep the
+ * #4 signature. Without it, ONE tracker is shared per config object: two consumers with the same config
+ * (live simulation + dyno sweep, worker) would share and reset each other's exceedance timers, so damage could
+ * be suppressed or doubled.
+ *
+ * Further notes:
+ * - The tracker's `dt` is the difference of `s.t` between calls, capped at 0.5 s per call: with simulation
+ *   steps > 0.5 s, hold times stretch accordingly (acceptable for the game, ticks are ≤ 50 ms).
+ * - When `s.t` goes back (reset), the tracker is cleared.
+ * - Thresholds are cached per config object: treat configs as immutable (new object on every change).
  */
 export function evaluateLimits(
   cfg: EngineConfig,
@@ -481,13 +494,20 @@ export function evaluateLimits(
   // --- Verschleiß aufgebraucht
   if (s.wear >= 1 && !fatal) {
     const msg: Partial<Record<WarningCode, string>> = {
+      "over-rev": "Pleuellagerschaden: Dauerndes Überdrehen hat die Pleuellager zerstört.",
+      "piston-speed": "Kolbenfresser: Die dauerhaft zu hohe Kolbengeschwindigkeit hat die Laufbahn zerstört.",
+      "conrod-stress": "Pleuelabriss: Die Massenkräfte haben das Pleuel durch Ermüdung zerrissen.",
+      "valve-float": "Ventilschaden: Dauerndes Ventilflattern hat Ventilsitze und Federn zerstört.",
+      "egt-high": "Auslassventil verbrannt: Die Abgastemperatur war zu lange zu hoch.",
+      "turbo-overspeed": "Turboschaden: Die Laderwelle ist nach Dauer-Überdrehzahl gebrochen.",
       knock: "Kolbenschaden: Dauerndes Klopfen hat den Kolben zerstört.",
       "overheat-oil": "Lagerschaden: Das Öl war zu lange zu heiß.",
       "overheat-coolant": "Zylinderkopfdichtung durchgebrannt: Der Motor war zu lange zu heiß.",
       "peak-pressure": "Kolbenschaden: Der Spitzendruck hat die Kolben ermüdet.",
       "low-oil-pressure": "Lagerschaden: Zu wenig Öldruck hat die Lager zerstört.",
     };
-    kill(worstWearCode, msg[worstWearCode] ?? "Motorschaden: Der Verschleiß ist aufgebraucht, ein Lager ist gefressen.");
+    const generic = "Motorschaden: Der Verschleiß ist aufgebraucht, ein Lager ist gefressen.";
+    kill(worstWearCode, worstWear > 0 ? (msg[worstWearCode] ?? generic) : generic);
   }
 
   return fatal ? { warnings, wearRatePerS: wear, fatal } : { warnings, wearRatePerS: wear };
