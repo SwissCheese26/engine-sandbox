@@ -30,3 +30,6 @@ export {
   Drivetrain, DEFAULT_VEHICLE, GEARBOXES, theoreticalVmax, SPEED_LIMIT_OPTIONS, DEFAULT_SPEED_LIMIT_KMH, TYRE_RATING_W_KMH,
 } from "./drivetrain.ts";
 export type { DrivetrainState, GearboxType } from "./drivetrain.ts";
+// motorcycles (issue #25)
+export { VEHICLES } from "./drivetrain.ts";
+export type { VehicleKind, VehiclePreset } from "./drivetrain.ts";

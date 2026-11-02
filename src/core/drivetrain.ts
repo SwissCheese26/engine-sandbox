@@ -5,11 +5,16 @@
  *  - "dsg":    7-speed dual clutch. Drive mode shifts by itself; tapping up/down switches to manual mode (M).
  *              Shifts take ≈ 0.1 s without tractive interruption.
  *  - "cvt":    continuously variable ratio, holds an engine speed chosen by the pedal. No shifting.
+ *  - "sequential": motorcycle 6-speed (issue #25). The rider shifts like the manual, but with quickshifter: upshift
+ *              without closing the throttle (ignition cut ≈ 50 ms), downshift with auto-blipper (≈ 80 ms).
+ * Vehicles (issue #25): compact car (default), superbike and tourer motorcycle (VEHICLES). Motorcycles carry CG
+ * data, the simulator then limits the drive force at the wheelie limit (wheelieLimitN in simulator.ts).
  * Pure TypeScript, no DOM.
  */
+import { wheelieLimitN } from "./simulator.ts";
 import type { EngineConfig, EngineState, EngineSummary, VehicleCoupling, VehicleParams } from "./types.ts";
 
-export type GearboxType = "manual" | "dsg" | "cvt";
+export type GearboxType = "manual" | "dsg" | "cvt" | "sequential";
 
 export const DEFAULT_VEHICLE: VehicleParams = {
   massKg: 1450, // compact car incl. driver [S]
@@ -31,6 +36,49 @@ export const GEARBOXES: Record<GearboxType, GearboxSpec> = {
   manual: { ratios: [3.77, 2.09, 1.47, 1.1, 0.87, 0.71], finalDrive: 3.45, efficiency: 0.93, shiftTimeS: 0.35 },
   dsg: { ratios: [3.56, 2.53, 1.59, 1.02, 0.79, 0.66, 0.55], finalDrive: 3.9, efficiency: 0.92, shiftTimeS: 0.1 },
   cvt: { ratios: [2.63, 0.38], finalDrive: 4.1, efficiency: 0.87, shiftTimeS: 0 },
+  // Honda CBR1000RR SC59 (2008–2016, owner's manual): gears 2.286/1.778/1.500/1.333/1.214/1.138, primary 1.717 ×
+  // chain 42/16 = 2.625 → "final drive" 4.51 (primary and secondary combined). Primary gear + gearbox + chain ≈ 0.92.
+  // shiftTimeS = quickshifter upshift (ignition cut); downshift with blipper see SEQ_DOWNSHIFT_S.
+  sequential: { ratios: [2.286, 1.778, 1.5, 1.333, 1.214, 1.138], finalDrive: 4.51, efficiency: 0.92, shiftTimeS: 0.05 },
+};
+
+/** Auto-blipper downshift time, s [S]. */
+const SEQ_DOWNSHIFT_S = 0.08;
+
+export type VehicleKind = "car" | "superbike" | "tourer";
+
+export interface VehiclePreset {
+  label: string;
+  /** Short description for the panel. */
+  hint: string;
+  params: VehicleParams;
+  /** Gearboxes this vehicle can have; the first is the default. */
+  gearboxes: GearboxType[];
+  finalDrive: number;
+}
+
+/**
+ * Vehicles for the chassis dyno (issue #25) [S]. Motorcycles incl. rider (75 kg):
+ * - Superbike (CBR1000RR / R1 class): 195 kg wet + rider ≈ 270 kg; cW·A ≈ 0.30 m² tucked; rear tyre 190/55 ZR17
+ *   (Ø 641 mm, dynamic radius 0.31 m); wheelbase 1.40 m, CG height 0.60 m with rider, CG 0.70 m ahead of the rear
+ *   axle (50/50) → wheelie limit ≈ 1.17 g.
+ * - Tourer (BMW R 1250 RT class): 280 kg + rider ≈ 350 kg; cW·A ≈ 0.55 m² (fairing, upright rider); 180/55 ZR17
+ *   (dynamic radius 0.30 m); wheelbase 1.49 m, CG 0.65 m high, 0.72 m ahead of the rear axle. Same sequential
+ *   gearbox, longer final drive (the real RT has a shaft drive, the total 6th gear ratio is similar).
+ * Rolling resistance of motorcycle tyres ≈ 0.015.
+ */
+export const VEHICLES: Record<VehicleKind, VehiclePreset> = {
+  car: { label: "Auto (Kompaktklasse)", hint: "Fahrzeug: 1450 kg, cW 0,30.", params: DEFAULT_VEHICLE, gearboxes: ["manual", "dsg", "cvt"], finalDrive: GEARBOXES.manual.finalDrive },
+  superbike: {
+    label: "Motorrad (Superbike)", hint: "Superbike: 270 kg mit Fahrer, cW·A 0,30 m², Quickshifter. Wheelie-Grenze ≈ 1,2 g.",
+    params: { massKg: 270, dragCoefficient: 0.6, frontalAreaM2: 0.5, rollingResistance: 0.015, wheelRadiusM: 0.31, cgHeightM: 0.6, cgToRearAxleM: 0.7 },
+    gearboxes: ["sequential"], finalDrive: 4.51,
+  },
+  tourer: {
+    label: "Motorrad (Tourer)", hint: "Tourer: 350 kg mit Fahrer, cW·A 0,55 m², Quickshifter.",
+    params: { massKg: 350, dragCoefficient: 0.65, frontalAreaM2: 0.85, rollingResistance: 0.015, wheelRadiusM: 0.3, cgHeightM: 0.65, cgToRearAxleM: 0.72 },
+    gearboxes: ["sequential"], finalDrive: 3.6,
+  },
 };
 
 export interface DrivetrainState {
@@ -56,6 +104,8 @@ export interface DrivetrainState {
   limiting: boolean;
   /** True when the recorded maxSpeedKmh was reached with the governor in control. */
   maxSpeedLimited: boolean;
+  /** Motorcycle: drive force at the wheelie limit, anti-wheelie is cutting (issue #25). */
+  wheelie: boolean;
 }
 
 /** Governor presets in km/h, null = off. Default 250 km/h (German manufacturers' voluntary agreement) [S]. */
@@ -83,6 +133,10 @@ export class Drivetrain {
   private govCap = 1;
   /** Remembered integrator (hold pedal) for the current limit, null = none yet. */
   private govHold: number | null = null;
+  private shiftDir: 1 | -1 = 1;
+  private wheelieHold = 0;
+  /** Current vehicle preset (issue #25). */
+  kind: VehicleKind = "car";
 
   constructor(
     private cfg: EngineConfig,
@@ -99,7 +153,7 @@ export class Drivetrain {
       type, gear: type === "cvt" ? 1 : 1, gearCount: type === "cvt" ? 1 : g.ratios.length,
       ratio: g.ratios[0]!, finalDrive, manualMode: type === "manual", shifting: false, clutch: 0,
       speedKmh: 0, maxSpeedKmh: 0, t0to100S: null, t0to100Running: null,
-      speedLimitKmh, limiting: false, maxSpeedLimited: false,
+      speedLimitKmh, limiting: false, maxSpeedLimited: false, wheelie: false,
     };
   }
 
@@ -121,6 +175,15 @@ export class Drivetrain {
   setSpeedLimit(kmh: number | null) {
     this.st.speedLimitKmh = kmh !== null && kmh > 0 ? kmh : null;
     this.resetGovernor();
+  }
+
+  /** Vehicle preset: sets mass/aero/wheel, the default gearbox and final drive of that vehicle (issue #25). */
+  setVehicle(kind: VehicleKind) {
+    const p = VEHICLES[kind];
+    this.kind = kind;
+    this.vehicle = p.params;
+    this.clearTransient();
+    Object.assign(this.st, this.fresh(p.gearboxes[0]!, p.finalDrive, this.st.speedLimitKmh), { maxSpeedKmh: 0, t0to100S: null });
   }
 
   /** Final drive ratio ("Achsübersetzung"): shorter = more pull, lower top speed. */
@@ -189,6 +252,7 @@ export class Drivetrain {
     this.govHold = this.govI;
     this.govCap = Math.min(1, Math.max(0, GOV_KP * e + this.govI));
     s.limiting = this.govCap < pedal - 0.01;
+    this.wheelieHold = 0;
   }
 
   /** Driver shift request: +1 up, −1 down. Ignored for CVT. */
@@ -212,7 +276,8 @@ export class Drivetrain {
     const s = this.st;
     if (target === s.gear && !s.shifting) return;
     this.pendingGear = target;
-    this.shiftT = GEARBOXES[s.type].shiftTimeS;
+    this.shiftDir = target < s.gear ? -1 : 1;
+    this.shiftT = s.type === "sequential" && this.shiftDir < 0 ? SEQ_DOWNSHIFT_S : GEARBOXES[s.type].shiftTimeS;
     s.shifting = true;
   }
 
@@ -287,7 +352,8 @@ export class Drivetrain {
     if (s.gear === 0 || !engine.running) {
       clutch = 0;
     } else if (s.shifting) {
-      // manual: open; DSG: second clutch takes over, slip syncs within the shift
+      // manual: open; DSG: second clutch takes over, slip syncs within the shift; sequential: dog rings
+      // disengaged (no torque) while the quickshifter cuts the ignition
       clutch = s.type === "dsg" ? 0.85 : 0;
     } else if (brake > 0.05 && pedal < 0.02 && inputRpm < idle * 1.4) {
       // braking down to a stop: the automatic clutch opens before the engine is dragged below idle.
@@ -295,17 +361,33 @@ export class Drivetrain {
       // the brake and can stall, like a real car (review #20).
       this.holdLaunch = 0;
       clutch = 0;
-    } else if (inputRpm < idle * 1.05) {
+    } else if (inputRpm < (s.type === "sequential" ? Math.max(idle * 1.05, 0.4 * limit) : idle * 1.05)) {
       // launch: engage with engine speed above idle (anti-stall), harder with pedal
-      const launchRpm = idle + 200 + pedal * 900;
-      const want = pedal > 0.02 ? Math.min(1, Math.max(0, (rpm - idle * 0.9) / Math.max(1, launchRpm - idle * 0.9))) : 0;
+      let want: number;
+      if (s.type === "sequential") {
+        // motorcycle (#25): the rider holds the engine near 60 % of the limiter and slips the clutch until the
+        // input shaft reaches ≈ 40 % of the limiter (superbike launch technique) [S]
+        const launchRpm = idle + pedal * (0.6 * limit - idle);
+        want = pedal > 0.02 ? Math.min(1, Math.max(0, (rpm - 0.85 * launchRpm) / Math.max(1, 0.15 * launchRpm))) : 0;
+      } else {
+        const launchRpm = idle + 200 + pedal * 900;
+        want = pedal > 0.02 ? Math.min(1, Math.max(0, (rpm - idle * 0.9) / Math.max(1, launchRpm - idle * 0.9))) : 0;
+      }
       this.holdLaunch += (want - this.holdLaunch) * Math.min(1, dt * 8);
       clutch = this.holdLaunch * 0.9;
     } else {
       this.holdLaunch = 1;
-      clutch = Math.min(1, s.clutch + dt * (s.type === "manual" ? 4 : 10));
+      // sequential: dog engagement after the shift, only the slipper clutch smooths it (≈ 30 ms) [S]
+      clutch = Math.min(1, s.clutch + dt * (s.type === "manual" ? 4 : s.type === "sequential" ? 30 : 10));
     }
     s.clutch = clutch;
+
+    // --- wheelie indicator: drive force the engine would deliver vs. the limit (shown ≥ 0.3 s) (#25)
+    const fLimit = wheelieLimitN(this.vehicle);
+    const fEngine = (Math.max(0, engine.torqueNm) * ratio * s.finalDrive * g.efficiency) / this.vehicle.wheelRadiusM;
+    if (Number.isFinite(fLimit) && s.gear > 0 && clutch > 0.3 && fEngine * Math.min(1, clutch / 0.9) > fLimit) this.wheelieHold = 0.3;
+    else this.wheelieHold = Math.max(0, this.wheelieHold - dt);
+    s.wheelie = this.wheelieHold > 0;
 
     // --- measurements
     s.speedKmh = v * 3.6;
@@ -342,6 +424,10 @@ export class Drivetrain {
    * The top-speed governor (issue #32) caps the pedal; the cap is updated in inputs().
    */
   effectivePedal(pedal: number): number {
+    if (this.st.type === "sequential" && this.st.shifting) {
+      // quickshifter: ignition cut on the upshift (rider keeps the throttle open); blipper opens on the downshift
+      return this.shiftDir > 0 ? 0 : Math.max(Math.min(pedal, this.govActive ? this.govCap : 1), 0.35);
+    }
     if (this.st.type === "manual" && this.st.shifting) return 0;
     return this.govActive ? Math.min(pedal, this.govCap) : pedal;
   }

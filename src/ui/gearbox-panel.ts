@@ -1,12 +1,13 @@
 // Getriebe-Pult for the chassis dyno (issue #14 base): gearbox type, final drive, gear indicator,
 // speed, top speed and 0–100 stopwatch, shift buttons (keys Q = down, E = up).
-import { Drivetrain, theoreticalVmax, dynoSweep, SPEED_LIMIT_OPTIONS, TYRE_RATING_W_KMH } from "../core/index.ts";
-import type { EngineConfig, EngineSummary, GearboxType } from "../core/index.ts";
+import { Drivetrain, VEHICLES, theoreticalVmax, dynoSweep, SPEED_LIMIT_OPTIONS, TYRE_RATING_W_KMH } from "../core/index.ts";
+import type { EngineConfig, EngineSummary, GearboxType, VehicleKind } from "../core/index.ts";
 
 const TYPE_LABEL: Record<GearboxType, string> = {
   manual: "Handschalter, 6 Gänge",
   dsg: "Doppelkupplung (DSG), 7 Gänge",
   cvt: "Stufenlos (CVT)",
+  sequential: "Sequenziell, 6 Gänge, Quickshifter",
 };
 
 const LIMIT_KEY = "pruefzelle.vmaxLimit";
@@ -21,6 +22,9 @@ export class GearboxPanel {
   readonly el: HTMLElement;
   readonly drivetrain: Drivetrain;
   private typeSel: HTMLSelectElement;
+  private vehicleSel: HTMLSelectElement;
+  private hintEl: HTMLElement;
+  private wheelieEl: HTMLElement;
   private fdInput: HTMLInputElement;
   private fdOut: HTMLOutputElement;
   private gearEl: HTMLElement;
@@ -37,7 +41,7 @@ export class GearboxPanel {
   private autoBtn: HTMLButtonElement;
   private cfg: EngineConfig;
   private summary: EngineSummary;
-  private last = { gear: "", speed: "", vmax: "", t100: "", vmaxNote: false, gov: false, tyre: false };
+  private last = { gear: "", speed: "", vmax: "", t100: "", vmaxNote: false, gov: false, tyre: false, wheelie: false };
   private moving = false;
   /** Set by the app: puts the vehicle in the simulator back to standstill. */
   onResetVehicle: () => void = () => {};
@@ -53,6 +57,10 @@ export class GearboxPanel {
     el.innerHTML = `
       <div class="gearbox__setup">
         <h2 class="gearbox__title">Rollenprüfstand</h2>
+        <label class="gearbox__field"><span>Fahrzeug</span>
+          <select data-control="vehicle">${(Object.keys(VEHICLES) as VehicleKind[])
+            .map((k) => `<option value="${k}">${VEHICLES[k].label}</option>`).join("")}</select>
+        </label>
         <label class="gearbox__field"><span>Getriebe</span>
           <select data-control="gearbox">${(Object.keys(TYPE_LABEL) as GearboxType[])
             .map((t) => `<option value="${t}">${TYPE_LABEL[t]}</option>`).join("")}</select>
@@ -65,7 +73,7 @@ export class GearboxPanel {
           <select data-control="speed-limit">${SPEED_LIMIT_OPTIONS
             .map((v) => `<option value="${v ?? "off"}">${v === null ? "aus (aufgehoben)" : `${v} km/h`}</option>`).join("")}</select>
         </label>
-        <p class="gearbox__hint">Kürzer übersetzt zieht stärker und dreht früher in den Begrenzer, länger übersetzt bringt mehr Vmax, wenn die Leistung reicht. Fahrzeug: 1450 kg, cW 0,30.</p>
+        <p class="gearbox__hint">Kürzer übersetzt zieht stärker und dreht früher in den Begrenzer, länger übersetzt bringt mehr Vmax, wenn die Leistung reicht. <span data-out="vehicle-hint"></span></p>
         <p class="gearbox__calc num"></p>
       </div>
       <div class="gearbox__drive">
@@ -76,6 +84,7 @@ export class GearboxPanel {
           <button type="button" class="btn btn--small" data-control="shift-auto" hidden>Automatik (D)</button>
         </div>
         <p class="gearbox__keys">Gas <kbd>W</kbd>, Bremse <kbd>S</kbd></p>
+        <p class="gearbox__wheelie" data-out="wheelie" role="status" hidden>Wheelie! Anti-Wheelie regelt die Zugkraft.</p>
       </div>
       <div class="gearbox__out">
       <dl class="gearbox__readouts">
@@ -91,6 +100,9 @@ export class GearboxPanel {
     this.el = el;
     const q = <T extends Element>(s: string) => el.querySelector<T>(s)!;
     this.typeSel = q("[data-control=gearbox]");
+    this.vehicleSel = q("[data-control=vehicle]");
+    this.hintEl = q("[data-out=vehicle-hint]");
+    this.wheelieEl = q("[data-out=wheelie]");
     this.fdInput = q("[data-control=final-drive]");
     this.fdOut = q(".gearbox__field output");
     this.gearEl = q(".gearbox__gear");
@@ -106,6 +118,11 @@ export class GearboxPanel {
     this.upBtn = q("[data-control=shift-up]");
     this.autoBtn = q("[data-control=shift-auto]");
 
+    this.vehicleSel.addEventListener("change", () => {
+      this.drivetrain.setVehicle(this.vehicleSel.value as VehicleKind);
+      this.onResetVehicle();
+      this.syncSetup();
+    });
     this.typeSel.addEventListener("change", () => {
       this.drivetrain.setType(this.typeSel.value as GearboxType);
       this.syncSetup();
@@ -172,6 +189,11 @@ export class GearboxPanel {
 
   private syncSetup() {
     const s = this.drivetrain.state;
+    const preset = VEHICLES[this.drivetrain.kind];
+    this.vehicleSel.value = this.drivetrain.kind;
+    this.hintEl.textContent = preset.hint;
+    // only the gearboxes this vehicle can have (car: manual/DSG/CVT, motorcycle: sequential)
+    for (const o of this.typeSel.options) o.hidden = o.disabled = !preset.gearboxes.includes(o.value as GearboxType);
     this.typeSel.value = s.type;
     this.fdInput.value = String(s.finalDrive);
     this.limitSel.value = s.speedLimitKmh === null ? "off" : String(s.speedLimitKmh);
@@ -187,7 +209,7 @@ export class GearboxPanel {
         for (const p of sweep) if (Math.abs(p.rpm - rpm) < Math.abs(best.rpm - rpm)) best = p;
         return best.torqueNm;
       };
-      const r = theoreticalVmax(torqueAt, this.cfg.revLimitRpm, s.type, s.finalDrive);
+      const r = theoreticalVmax(torqueAt, this.cfg.revLimitRpm, s.type, s.finalDrive, this.drivetrain.vehicle);
       // physical top speed without the governor; the governor note follows when it caps below that
       const lim = s.speedLimitKmh;
       const capped = lim !== null && r.vmaxKmh > lim
@@ -219,12 +241,14 @@ export class GearboxPanel {
     if (s.limiting !== this.last.gov) this.govNoteEl.hidden = !(this.last.gov = s.limiting);
     const tyre = this.last.tyre ? s.speedKmh >= TYRE_WARN_OFF_KMH : s.speedKmh > TYRE_WARN_ON_KMH;
     if (tyre !== this.last.tyre) this.tyreNoteEl.hidden = !(this.last.tyre = tyre);
+    if (s.wheelie !== this.last.wheelie) this.wheelieEl.hidden = !(this.last.wheelie = s.wheelie);
     this.gearEl.classList.toggle("is-braking", braking);
     // gearbox and final drive can only be changed at standstill (review #19)
     const moving = s.speedKmh > 0.5;
     if (moving !== this.moving) {
       this.moving = moving;
       this.typeSel.disabled = moving;
+      this.vehicleSel.disabled = moving;
       this.fdInput.disabled = moving;
     }
   }
