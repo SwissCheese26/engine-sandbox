@@ -1,4 +1,5 @@
 // Shared helpers for the specification-based core tests. Only the public API is used.
+import { expect } from "bun:test";
 import { EngineSimulator, defaultInputs, dynoSweep } from "../../src/core/index.ts";
 import type { DynoPoint, EngineConfig, EngineState, SimInputs } from "../../src/core/index.ts";
 
@@ -114,7 +115,10 @@ export function partLoadPoint(cfg: EngineConfig, rpm: number, loadFraction: numb
       torques.push(s.torqueNm);
     }
   }
-  return { state: s, bsfc: mean(bsfcs), torque: mean(torques), target };
+  const torque = mean(torques);
+  // the comparison is only meaningful if the requested load point was actually reached
+  expect(Math.abs(torque - target), `${cfg.id}: load point ${target.toFixed(1)} Nm @ ${rpm} not reached (${torque.toFixed(1)} Nm)`).toBeLessThan(0.05 * Math.abs(target));
+  return { state: s, bsfc: mean(bsfcs), torque, target };
 }
 
 /** Time until `boostBar` reaches 90 % of its value after `seconds` of full pedal at fixed rpm. */

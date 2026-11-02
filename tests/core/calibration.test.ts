@@ -1,7 +1,6 @@
 // Calibration against the reference engines (docs/research/diesel.md §5, docs/research/petrol.md §7).
 // Spec: peak torque and peak power within ±10 % (lead decision; research proposed ±7 % / ±10 %),
-// rpm of the peaks within ±25 % (test-team tolerance: plateau engines and the cam/resonance model
-// shift the exact peak; petrol.md §3.2 itself reports ~8 % deviations of the VE peak).
+// rpm of the peaks within ±12 % (petrol.md §7; plateau engines are handled by peakRpmOk()).
 //
 // All cases run against the placeholder physics on main and are therefore expected to fail:
 // scharf schalten nach Integration (#3/#4) – replace `test.failing` by `test`.
@@ -11,7 +10,7 @@ import type { ReferenceEngine } from "../../src/data/reference-engines.ts";
 import { sweepAt, sweepPeaks } from "./helpers.ts";
 
 const VALUE_TOL = 0.1;
-const RPM_TOL = 0.25;
+const RPM_TOL = 0.12;
 /** A point counts as "on the plateau" if it reaches this fraction of the model's own peak. */
 const PLATEAU = 0.98;
 
@@ -25,7 +24,7 @@ function describeMiss(ref: ReferenceEngine, what: string, actual: number, expect
 
 /**
  * Peak rpm check that tolerates torque/power plateaus: passes when the model's peak lies within
- * ±25 % of the data-sheet rpm, or when the model is still on its own plateau at the data-sheet rpm.
+ * ±12 % of the data-sheet rpm, or when the model is still on its own plateau at the data-sheet rpm.
  */
 function peakRpmOk(points: ReturnType<typeof sweepPeaks>["points"], key: "torqueNm" | "powerKw", peakRpm: number, peakValue: number, expectedRpm: number) {
   if (within(peakRpm, expectedRpm, RPM_TOL)) return true;
@@ -74,7 +73,6 @@ describe("reference engine data", () => {
  * use plain `test` for every case.
  */
 const PLACEHOLDER_HITS = new Set([
-  "ref-vw-19-tdi-pd-96kw:torque",
   "ref-bmw-n57d30o1:torque",
   "ref-mercedes-om654-220d:torque",
   "ref-mercedes-om654-220d:power",
@@ -84,7 +82,7 @@ const PLACEHOLDER_HITS = new Set([
 ]);
 const calib = (id: string, kind: "torque" | "power") => (PLACEHOLDER_HITS.has(`${id}:${kind}`) ? test : test.failing);
 
-describe("dynoSweep hits the reference engines (±10 % value, ±25 % rpm)", () => {
+describe("dynoSweep hits the reference engines (±10 % value, ±12 % rpm)", () => {
   for (const ref of REFERENCE_ENGINES) {
     // scharf schalten nach Integration (#3/#4)
     calib(ref.config.id, "torque")(`${ref.config.name}: peak torque ${ref.expected.peakTorqueNm} Nm @ ${ref.expected.peakTorqueRpm}`, () => {

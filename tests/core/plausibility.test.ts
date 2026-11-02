@@ -59,12 +59,18 @@ const petrolNA = () =>
       c.fuelSystem.fuel = "ron95";
     }
   });
-/** Carburettor petrol: no knock control (petrol.md §3.6), so raw knock becomes visible. */
-const petrolCarb = (fuel: "ron91" | "ron95" | "ron98" | "ron102" | "e85", advance: number) =>
-  variant(petrolNA(), (c) => {
-    c.block.compressionRatio = 11;
+/**
+ * Turbo port-injection petrol, ε 10.5, 1.0 bar boost (knock control active, max 15° retard).
+ * petrol.md §3.6 at 2000 rpm full load (p ≈ 2.0 bar abs, T_Man ≈ 50 °C, λ 0.88, bore 82.5):
+ * ronReq ≈ 106 + 0.8·advance. Residual knock = (ronReq − RON − 12) / 5:
+ *   RON 91 +8° → ≈ 1.0 · RON 95 +8° → ≈ 1.0 · RON 95 0° → 0 · RON 98 0° → 0 · RON 102 +8° → 0.
+ */
+const petrolTurboKnock = (fuel: "ron91" | "ron95" | "ron98" | "ron102" | "e85", advance: number) =>
+  variant(petrol(), (c) => {
+    c.block.compressionRatio = 10.5;
+    c.induction.boostTargetBar = 1.0;
     if (c.fuelSystem.kind === "petrol") {
-      c.fuelSystem.mixture = "carburettor";
+      c.fuelSystem.mixture = "port-injection";
       c.fuelSystem.fuel = fuel;
       c.fuelSystem.ignitionAdvanceOffsetDeg = advance;
     }
@@ -339,17 +345,24 @@ describe("volumetric efficiency (petrol.md §3.2)", () => {
 
 // ───────────────────────────── fuels & knock ─────────────────────────────
 describe("fuels and knock (petrol.md §3.4/§3.6, diesel.md §2)", () => {
-  spec("more ignition advance → more knock (carburettor, no knock control)", () => {
-    const k0 = max(dynoRun(petrolCarb("ron95", 0), 2000, 1), "knock");
-    const k6 = max(dynoRun(petrolCarb("ron95", 6), 2000, 1), "knock");
-    expect(k6).toBeGreaterThan(k0 + 0.1);
+  spec("turbo petrol: RON 91 with +8° knocks, RON 98 with 0° does not", () => {
+    const bad = max(dynoRun(petrolTurboKnock("ron91", 8), 2000, 1), "knock");
+    const good = max(dynoRun(petrolTurboKnock("ron98", 0), 2000, 1), "knock");
+    expect(bad).toBeGreaterThan(0.5);
+    expect(good).toBeLessThan(0.1);
   });
 
-  spec("higher octane → less knock", () => {
-    const k91 = max(dynoRun(petrolCarb("ron91", 6), 2000, 1), "knock");
-    const k102 = max(dynoRun(petrolCarb("ron102", 6), 2000, 1), "knock");
-    expect(k91).toBeGreaterThan(0.2);
-    expect(k102).toBeLessThan(k91 - 0.2);
+  spec("more ignition advance → more knock (turbo petrol, RON 95, 0° vs +8°)", () => {
+    const k0 = max(dynoRun(petrolTurboKnock("ron95", 0), 2000, 1), "knock");
+    const k8 = max(dynoRun(petrolTurboKnock("ron95", 8), 2000, 1), "knock");
+    expect(k8).toBeGreaterThan(k0 + 0.3);
+  });
+
+  spec("higher octane → less knock (turbo petrol +8°, RON 91 vs RON 102)", () => {
+    const k91 = max(dynoRun(petrolTurboKnock("ron91", 8), 2000, 1), "knock");
+    const k102 = max(dynoRun(petrolTurboKnock("ron102", 8), 2000, 1), "knock");
+    expect(k91).toBeGreaterThan(0.5);
+    expect(k102).toBeLessThan(k91 - 0.3);
   });
 
   spec("diesel never knocks, petrol never smokes", () => {
@@ -374,12 +387,17 @@ describe("fuels and knock (petrol.md §3.4/§3.6, diesel.md §2)", () => {
     expect(e.minBsfc).toBeGreaterThan(g.minBsfc * 1.3);
   });
 
-  spec("biodiesel → less torque (−5 … −13 %) and higher BSFC than diesel", () => {
-    const bio = sweepPeaks(variant(diesel(), (c) => (dieselFuel(c).fuel = "biodiesel")));
+  // Lead decision (review PR #10): at equal λ (smoke limit) power stays within ±5 % (diesel.md §3.0:
+  // Hu/AFR 2.98 vs 2.94 MJ/kg air), but the lower heating value raises consumption:
+  // g/kWh ×42.6/37.2 ≈ 1.15, l/kWh ×(42.6·0.832)/(37.2·0.880) ≈ 1.08.
+  spec("biodiesel: same power (±5 %) at equal λ, but higher consumption in g/kWh and l/h", () => {
+    const bio = variant(diesel(), (c) => (dieselFuel(c).fuel = "biodiesel"));
+    const b = sweepPeaks(bio);
     const d = sweepPeaks(diesel());
-    expect(bio.torque.torqueNm / d.torque.torqueNm).toBeLessThan(0.95);
-    expect(bio.torque.torqueNm / d.torque.torqueNm).toBeGreaterThan(0.87);
-    expect(bio.minBsfc).toBeGreaterThan(d.minBsfc * 1.05);
+    expect(Math.abs(b.power.powerKw / d.power.powerKw - 1)).toBeLessThan(0.05);
+    expect(b.minBsfc).toBeGreaterThan(d.minBsfc * 1.08);
+    const lh = (cfg: EngineConfig) => avg(dynoRun(cfg, 2500, 1), "fuelFlowLh");
+    expect(lh(bio)).toBeGreaterThan(lh(diesel()) * 1.04);
   });
 
   spec("diesel: lower smoke limit λ → more torque and more smoke (no DPF)", () => {
@@ -445,17 +463,30 @@ describe("limits and damage (petrol.md §4, diesel.md §4)", () => {
     expect(codes.has("peak-pressure") || sim.state.damage.some((d) => d.code === "peak-pressure" || d.code === "conrod-stress")).toBe(true);
   });
 
-  spec("cold oil → higher oil pressure and higher friction than warm oil", () => {
-    const at = (ambientC: number) => dynoRun(diesel(), 2500, 0.3, 4, 1, { ambientC });
-    const cold = at(-10);
-    const warm = at(40);
-    expect(avg(cold, "oilPressureBar")).toBeGreaterThan(avg(warm, "oilPressureBar") * 1.05);
+  // Architecture decision (review PR #10): the simulator initialises coolant/oil to the ambientC of
+  // the inputs on the first step() and on reset(). Compared right after the start at idle, where the
+  // 5 bar relief valve does not limit (diesel.md §3.10: 0.0015·n·(1+(90−oilC)/80) → ×1.29 for
+  // −10 °C vs +30 °C). "Clearly higher" = ratio ≥ 1.15.
+  spec("cold oil (ambient −10 °C) → oil pressure right after start ≥ 1.15 × warm (+30 °C), more friction", () => {
+    const afterStart = (ambientC: number) => {
+      const sim = new EngineSimulator(diesel());
+      const out: EngineState[] = [];
+      runPhases(sim, [
+        { seconds: 3, input: { ignition: true, starter: true, ambientC } },
+        { seconds: 3, input: { ignition: true, ambientC }, onStep: (s, t) => t >= 2 && out.push({ ...s }) },
+      ]);
+      return out;
+    };
+    const cold = afterStart(-10);
+    const warm = afterStart(30);
+    expect(avg(cold, "oilC")).toBeLessThan(avg(warm, "oilC") - 20);
+    expect(avg(cold, "oilPressureBar")).toBeGreaterThanOrEqual(avg(warm, "oilPressureBar") * 1.15);
     expect(avg(cold, "fmepBar")).toBeGreaterThan(avg(warm, "fmepBar") * 1.05);
   });
 
-  spec("oil pressure rises with rpm (≈ 1 bar / 1000 rpm, capped)", () => {
-    const lo = avg(dynoRun(petrol(), 1500, 0.3), "oilPressureBar");
-    const hi = avg(dynoRun(petrol(), 4000, 0.3), "oilPressureBar");
+  spec("oil pressure rises with rpm (1000 vs 2500 rpm, below the relief valve)", () => {
+    const lo = avg(dynoRun(petrol(), 1000, 0.3), "oilPressureBar");
+    const hi = avg(dynoRun(petrol(), 2500, 0.3), "oilPressureBar");
     expect(lo).toBeGreaterThan(0.5);
     expect(hi).toBeGreaterThan(lo * 1.5);
     expect(hi).toBeLessThanOrEqual(6);
@@ -501,5 +532,3 @@ describe("limits and damage (petrol.md §4, diesel.md §4)", () => {
   });
 });
 
-// Keep EngineSimulator import used for type-only builds.
-void EngineSimulator;

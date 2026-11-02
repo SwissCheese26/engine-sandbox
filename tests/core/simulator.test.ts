@@ -49,6 +49,8 @@ function spec(name: string, fn: () => void, timeout = 60_000) {
   (PASS_ON_PLACEHOLDER.has(name) ? test : test.failing)(name, fn, timeout);
 }
 
+const FUZZ_TIMEOUT_MS = 360_000 /* steps */ * 1 /* ms */ + 30_000;
+
 const ENGINES: [string, EngineConfig][] = [
   ["default diesel", defaultConfig("diesel")],
   ["default petrol", defaultConfig("petrol")],
@@ -266,6 +268,8 @@ describe("robustness", () => {
     expect(Math.abs(a - b)).toBeLessThan(cfg.idleRpm * 0.1);
   });
 
+  // 200 × 30 s at dt 1/60 = 360 000 steps. Timeout derived from the performance budget (≤ 1 ms per
+  // step) so a slower but compliant physics never times out here before the performance test fails.
   spec("fuzz: 200 random valid configs × 30 s never produce NaN/Infinity", () => {
     const r = rng(0xc0ffee);
     const failures: string[] = [];
@@ -299,7 +303,7 @@ describe("robustness", () => {
       if (bad.length) failures.push(`#${i} (${cfg.fuel} ${cfg.block.layout}${cfg.block.cylinders} ${cfg.induction.aspiration}) t=${at.toFixed(2)}: ${bad.slice(0, 4).join(", ")}`);
     }
     expect(failures).toEqual([]);
-  });
+  }, FUZZ_TIMEOUT_MS);
 
   spec("performance: mean step(1/60) ≤ 1 ms", () => {
     for (const cfg of [defaultConfig("diesel"), defaultConfig("petrol"), REFERENCE_ENGINES[REFERENCE_ENGINES.length - 1]!.config]) {
