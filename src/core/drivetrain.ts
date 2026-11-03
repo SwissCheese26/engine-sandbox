@@ -226,6 +226,8 @@ export class Drivetrain {
   private asrHold = 0;
   private espHold = 0;
   private roadKmh = 0;
+  private lastEffPedal = 0;
+  private tcCutting = false;
 
   constructor(
     private cfg: EngineConfig,
@@ -562,7 +564,10 @@ export class Drivetrain {
       const maxStep = 1.5 * dt;
       ratio = s.ratio + Math.max(-maxStep, Math.min(maxStep, want - s.ratio));
     } else {
-      ratio = s.gear > 0 ? g.ratios[s.gear - 1]! : 0;
+      // DSG with ASR (issue #23): during the shift the on-coming clutch already carries the new gear (inertia phase,
+      // the engine is pulled down to the new synchronous speed instead of being dumped onto the wheels at the end)
+      const gNow = s.type === "dsg" && s.shifting && this.assistSet.asr && this.pendingGear > 0 ? this.pendingGear : s.gear;
+      ratio = gNow > 0 ? g.ratios[gNow - 1]! : 0;
     }
     s.ratio = ratio;
 
@@ -626,7 +631,7 @@ export class Drivetrain {
       clutch = Math.min(1, s.clutch + dt * (s.type === "manual" ? 7 : s.type === "sequential" ? 30 : 10));
       // closing right after the launch (below ≈ 30 km/h): still dosed by traction (review PR #37), engine held just
       // above the input shaft so it does not flare while the clutch slips
-      if (s.type !== "sequential" && clutch < 0.98 && s.gear > 0 && rpm - inputRpm > 150 && vRoad < 8) launchHoldRpm = Math.max(this.launchRpm(pedal), inputRpm + 500);
+      if (s.type !== "sequential" && clutch < 0.98 && s.gear > 0 && rpm - inputRpm > 150 && (vRoad < 8 || this.assistSet.asr)) launchHoldRpm = Math.max(this.launchRpm(pedal), inputRpm + 500);
     }
     if (launchHoldRpm > 0 && s.type !== "sequential" && s.gear > 0 && this.vehicle.driveLayout) {
       // traction-limited launch (review PR #37): the automatic clutch lets in only the torque the driven tyres can
@@ -637,9 +642,18 @@ export class Drivetrain {
       const n = drivenAxleLoadN(this.vehicle, Math.max(0, engine.accelMs2 ?? 0));
       const capNm = Math.max(250, this.summary.peakTorqueNm * 1.6);
       if (Number.isFinite(n) && total > 0) {
-        const tcMax = (s.grip * n * this.vehicle.wheelRadiusM) / (total * g.efficiency * torqueRatio);
+        // with ASR (issue #23) the clutch is dosed just below the peak (× 0.97) and follows the ASR torque cap, so a
+        // slipping launch clutch cannot overpower the tyre while the engine torque is being cut
+        const asrK = this.assistSet.asr ? 0.97 * (this.tcOut.torqueCut > 0 || this.tcCutting ? Math.min(1, 0.3 + this.tcOut.pedalCap) : 1) : 1;
+        const tcMax = (asrK * s.grip * n * this.vehicle.wheelRadiusM) / (total * g.efficiency * torqueRatio);
         clutch = Math.min(clutch, tcMax / capNm);
       }
+    }
+    if (s.type === "dsg" && s.shifting && this.assistSet.asr && this.vehicle.driveLayout && ratio > 0) {
+      // the on-coming clutch is dosed by traction too (issue #23), the engine syncs through the slipping clutch
+      const n = drivenAxleLoadN(this.vehicle, Math.max(0, engine.accelMs2 ?? 0));
+      const capNm = Math.max(250, this.summary.peakTorqueNm * 1.6);
+      if (Number.isFinite(n)) clutch = Math.min(clutch, (0.97 * s.grip * n * this.vehicle.wheelRadiusM) / (ratio * s.finalDrive * g.efficiency) / capNm);
     }
     s.clutch = clutch;
     // launch speed hold: above the launch speed the pedal is taken back (clutch dosed by traction)
@@ -666,14 +680,18 @@ export class Drivetrain {
 
     // --- driver assistance (issue #23): ASR/MSR on the driven-wheel slip of the last step, lamps
     const a = this.assistSet;
-    const tcr = this.tc.step(dt, engine.wheelSlip ?? 0, vRoad, pedal, this.cfg.fuel === "petrol", a, brake > 0.05);
+    const tcr = this.tc.step(dt, engine.wheelSlip ?? 0, vRoad, pedal, this.cfg.fuel === "petrol", a, brake > 0.05, this.lastEffPedal);
     this.tcOut = { pedalCap: tcr.pedalCap, torqueCut: tcr.torqueCut, pedalFloor: tcr.pedalFloor };
+    this.tcCutting = tcr.cutting;
     this.absHold = a.abs && engine.absActive ? ASSIST_LAMP_HOLD_S : Math.max(0, this.absHold - dt);
     this.asrHold = tcr.asrActive ? ASSIST_LAMP_HOLD_S : Math.max(0, this.asrHold - dt);
     this.espHold = tcr.msrActive || (a.esp && (tcr.asrActive || !!engine.absActive)) ? ASSIST_LAMP_HOLD_S : Math.max(0, this.espHold - dt);
     s.absActive = this.absHold > 0;
     s.asrActive = this.asrHold > 0;
     s.espActive = this.espHold > 0;
+    // shift torque intervention of the DSG with ASR (ignition retard in the inertia phase, ≈ 40 %) [S: Naunheimer et
+    // al., Automotive Transmissions, "Schaltablauf Doppelkupplungsgetriebe": engine torque reduction during the shift]
+    const cut = Math.max(tcr.torqueCut, s.type === "dsg" && s.shifting && a.asr ? 0.4 : 0);
 
     // --- measurements
     s.speedKmh = vRoad * 3.6;
@@ -706,7 +724,7 @@ export class Drivetrain {
       abs: a.abs,
       gradePct: this.env.gradePct,
       airDensityKgM3: airDensity(altitudeToKpa(this.env.altitudeM), this.env.ambientC),
-      ...(tcr.torqueCut > 0 ? { torqueCut: tcr.torqueCut } : {}),
+      ...(cut > 0 ? { torqueCut: cut } : {}),
     };
   }
 
@@ -723,7 +741,8 @@ export class Drivetrain {
     if (this.st.type === "manual" && this.st.shifting) return 0;
     // ASR pedal cap and MSR pedal floor (issue #23)
     const p = Math.max(Math.min(pedal, this.launchCap, this.tcOut.pedalCap), this.tcOut.pedalFloor);
-    return this.govActive ? Math.min(p, this.govCap) : p;
+    this.lastEffPedal = this.govActive ? Math.min(p, this.govCap) : p;
+    return this.lastEffPedal;
   }
 
   /** Label for the gear indicator: "N", "3", "D4", "M4", "CVT". */

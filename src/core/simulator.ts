@@ -506,15 +506,16 @@ const BRAKED_INERTIA = 4;
  * ABS hydraulic unit (issue #23) [S]: Bosch ABS control cycle (Bosch, Kraftfahrtechnisches Taschenbuch, "ABS
  * Regelzyklus"; Burckhardt, Fahrwerktechnik: Radschlupf-Regelsysteme): pressure release when the wheel slip passes
  * the μ peak (here PEAK_SLIP + 5 %), re-apply once the wheel has re-accelerated (slip back to half the peak slip).
- * Release is fast (outlet valve to the low-pressure accumulator, ≈ 50 ms full → 0), build-up slower (pump, inlet
- * valve pulsed, ≈ 200 ms); relative to the pressure at the last release, so the cycle rate is μ-independent and lands
+ * Release is fast (outlet valve to the low-pressure accumulator, ≈ 50 ms full → 0); re-apply in a steep first step
+ * to ≈ 90 % of the last lock pressure, then a slow pulsed ramp (inlet valve) that finds the peak again; relative to the pressure at the last release, so the cycle rate is μ-independent and lands
  * at ≈ 8–15 Hz like real systems. Below ≈ 7 km/h ABS is passive (wheels may lock just before standstill).
  */
 const ABS_MIN_SPEED_MS = 2;
-const ABS_RELEASE_SLIP = -(PEAK_SLIP + 0.05);
-const ABS_REAPPLY_SLIP = -0.5 * PEAK_SLIP;
+const ABS_RELEASE_SLIP = -(PEAK_SLIP + 0.04);
+const ABS_REAPPLY_SLIP = -0.7 * PEAK_SLIP;
 const ABS_RELEASE_RATE = 20;
-const ABS_BUILD_RATE = 5;
+const ABS_BUILD_RATE = 2;
+const ABS_STEP_RATE = 25;
 /** Rotating inertia of one wheel incl. tyre, brake disc and half shaft, kg·m² (17–18" car wheel ≈ 0.8–1.2) [S]. */
 const WHEEL_INERTIA = 1.0;
 /** Driven-wheel slip below which the wheels count as "gripping" for the flags (beyond the μ peak) [S]. */
@@ -644,13 +645,23 @@ function stepBrakes(x: Internal, c: VehicleCoupling, pedalB: number, mu: number,
     const sB = slipRatio(x.vBrk, v);
     if (!x.absRelease && sB < ABS_RELEASE_SLIP) {
       x.absRelease = true;
-      x.absRef = Math.max(1, Math.min(x.absF > 0 ? x.absF : demand, demand));
+      // lock pressure: the pressure at which the wheel just passed the μ peak (adapts every cycle)
+      x.absRef = clamp(x.absF > 0 ? x.absF : demand, 1, demand);
       x.absCycles++;
       x.absT = 0;
     } else if (x.absRelease && sB > ABS_REAPPLY_SLIP) x.absRelease = false;
-    if (x.absRelease) x.absF = Math.max(0, x.absF - ABS_RELEASE_RATE * x.absRef * h);
+    if (x.absRelease) {
+      // outlet valve: the pressure falls ≈ exponentially (τ = 1/ABS_RELEASE_RATE), never slower than towards the
+      // estimated lock pressure
+      x.absF = Math.max(0, x.absF - ABS_RELEASE_RATE * Math.max(x.absF, x.absRef) * h);
+      x.absT = 0;
+    }
     else if (x.absT > 0.5) x.absF = demand; // not regulating: driver pressure passes straight through
-    else x.absF = Math.min(demand, x.absF + ABS_BUILD_RATE * x.absRef * h);
+    else {
+      // re-apply: a steep first step up to ≈ 90 % of the last lock pressure, then a slow ramp that finds the peak
+      const rate = x.absF < 0.9 * x.absRef ? ABS_STEP_RATE : ABS_BUILD_RATE;
+      x.absF = Math.min(demand, x.absF + rate * x.absRef * h);
+    }
     fb = x.absF;
   } else {
     x.absF = demand;

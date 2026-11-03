@@ -37,6 +37,8 @@ export interface TractionOutput {
   pedalFloor: number;
   asrActive: boolean;
   msrActive: boolean;
+  /** Slip above the target this frame (the cap is falling). */
+  cutting: boolean;
 }
 
 /**
@@ -46,36 +48,47 @@ export interface TractionOutput {
  */
 export class TractionControl {
   private cap = 1;
-  private lastPedal = 0;
+  private lastSlip = 0;
 
   reset() {
     this.cap = 1;
-    this.lastPedal = 0;
+    this.lastSlip = 0;
   }
 
-  step(dt: number, slip: number, speedMs: number, pedal: number, petrol: boolean, s: AssistSettings, braking: boolean): TractionOutput {
-    const out: TractionOutput = { pedalCap: 1, torqueCut: 0, pedalFloor: 0, asrActive: false, msrActive: false };
+  /**
+   * pedalEff: pedal the engine really got in the last frame (after launch, governor and ASR caps). Near the target
+   * the cap only lets the torque rise gradually from there (no torque step when e.g. the launch clutch closes).
+   */
+  step(dt: number, slip: number, speedMs: number, pedal: number, petrol: boolean, s: AssistSettings, braking: boolean, pedalEff = pedal): TractionOutput {
+    const out: TractionOutput = { pedalCap: 1, torqueCut: 0, pedalFloor: 0, asrActive: false, msrActive: false, cutting: false };
     const sl = Number.isFinite(slip) ? slip : 0;
+    const dSlip = (sl - this.lastSlip) / Math.max(1e-3, dt);
+    this.lastSlip = sl;
     if (s.asr && !braking) {
       const target = s.esp ? PEAK_SLIP : 2 * PEAK_SLIP;
       const e = sl - target;
+      out.cutting = e > 0;
       if (e > 0) {
         // start the cut from where the pedal really is, so a half-pressed pedal is not "cut" from 1
-        if (this.cap >= 0.999) this.cap = Math.max(0.05, Math.min(1, this.lastPedal));
+        if (this.cap >= 0.999) this.cap = Math.max(0.05, Math.min(1, pedalEff));
         this.cap = Math.max(0.05, this.cap - dt * 6 * (e / target));
-        if (petrol) out.torqueCut = Math.min(0.6, (6 * e) / 1);
+        // ignition path: proportional to the excess plus a derivative share on fast rising slip [S, tuned]
+        if (petrol) out.torqueCut = Math.min(0.6, 6 * e + Math.max(0, 0.03 * dSlip));
+      } else if (sl > 0.6 * target) {
+        // close to the peak: let the torque rise only gradually
+        this.cap = Math.min(1, Math.max(this.cap, pedalEff) + dt * 1.5);
+        if (this.cap > pedalEff + 0.15) this.cap = Math.min(1, pedalEff + 0.15);
       } else {
-        this.cap = Math.min(1, this.cap + dt * (sl < 0.5 * target ? 3 : 1.5));
+        this.cap = Math.min(1, this.cap + dt * 3);
       }
       out.pedalCap = this.cap;
-      out.asrActive = e > 0.02 || (this.cap < 0.98 && pedal > this.cap + 0.02);
+      out.asrActive = e > 0.02 || (this.cap < 0.98 && pedal > this.cap + 0.05 && sl > 0.6 * target);
     } else this.cap = 1;
     // MSR (ESP): driven wheels dragged into lock by the engine brake (slip < −0.1) while moving and off the brake
     if (s.esp && !braking && speedMs > 2 && sl < -0.1 && pedal < 0.3) {
       out.pedalFloor = Math.min(0.35, ((-sl - 0.1) / 0.2) * 0.35);
       out.msrActive = true;
     }
-    this.lastPedal = Math.min(pedal, out.pedalCap);
     return out;
   }
 }
