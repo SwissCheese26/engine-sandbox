@@ -213,6 +213,8 @@ interface MeterDef {
   visible?: (cfg: EngineConfig) => boolean;
   /** Switchable display units (first = base). */
   units?: readonly UnitOpt[];
+  /** Config-dependent label (e.g. "Zylinderkopf" for air cooling, issue #25). */
+  labelFor?: (cfg: EngineConfig) => string;
 }
 
 class Meter {
@@ -252,6 +254,7 @@ class Meter {
   }
 
   configure(cfg: EngineConfig) {
+    if (this.def.labelFor) setText(this.el.querySelector<HTMLElement>(".meter__label")!, this.def.labelFor(cfg));
     this.max = this.def.max(cfg);
     this.limit = this.def.limit(cfg);
     const p = clamp((this.limit - this.def.min) / (this.max - this.def.min), 0, 1);
@@ -288,6 +291,7 @@ class Meter {
 }
 
 const isDiesel = (c: EngineConfig) => c.fuel === "diesel";
+const airCooled = (c: EngineConfig) => c.cooling.type === "air" || c.cooling.type === "oil-air";
 
 export class InstrumentPanel {
   readonly el: HTMLElement;
@@ -309,11 +313,12 @@ export class InstrumentPanel {
       new RoundGauge({ id: "power", label: "Leistung", unit: "kW", decimals: 0, value: (s) => Math.max(0, s.powerKw), warns: [], units: UNITS.power }),
       new RoundGauge({ id: "boost", label: "Ladedruck", unit: "bar", decimals: 2, value: (s) => s.boostBar, warns: ["overboost", "turbo-overspeed"], units: UNITS.pressure(2) }),
     ];
-    const T = (id: string, label: string, max: number, limit: (c: EngineConfig) => number, value: (s: EngineState) => number, warns: WarningCode[]): MeterDef => ({
-      id, label, unit: "°C", decimals: 0, min: 0, max: () => max, limit, value, warns, thermal: true, units: UNITS.temp,
+    const T = (id: string, label: string, max: number | ((c: EngineConfig) => number), limit: (c: EngineConfig) => number, value: (s: EngineState) => number, warns: WarningCode[]): MeterDef => ({
+      id, label, unit: "°C", decimals: 0, min: 0, max: typeof max === "number" ? () => max : max, limit, value, warns, thermal: true, units: UNITS.temp,
     });
     this.meters = [
-      new Meter(T("coolant", "Kühlmittel", 130, () => L.coolantMaxC, (s) => s.coolantC, ["overheat-coolant"])),
+      // air / oil-air cooling (#25): no coolant, the meter shows the cylinder-head temperature
+      new Meter({ ...T("coolant", "Kühlmittel", (c) => (airCooled(c) ? 300 : 130), (c) => (airCooled(c) ? 220 : L.coolantMaxC), (s) => s.coolantC, ["overheat-coolant"]), labelFor: (c: EngineConfig) => (airCooled(c) ? "Zylinderkopf" : "Kühlmittel") }),
       new Meter(T("oil", "Öl", 160, () => L.oilMaxC, (s) => s.oilC, ["overheat-oil"])),
       new Meter(T("egt", "Abgas", 1100, egtLimitC, (s) => s.egtC, ["egt-high"])),
       new Meter({ id: "oilp", label: "Öldruck", unit: "bar", decimals: 1, min: 0, max: () => 8, limit: () => L.oilPressureMinBar, lowLimit: true, value: (s) => s.oilPressureBar, warns: ["low-oil-pressure"], units: UNITS.pressure(1) }),

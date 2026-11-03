@@ -45,7 +45,8 @@ function firingOrder(cfg: EngineConfig): number[] {
  */
 export function firingOffsets(cfg: EngineConfig, summary: EngineSummary): number[] {
   const n = cfg.block.cylinders;
-  const order = firingOrder(cfg);
+  // the core's firing order (summary) knows crossplane I4 etc. (#25); the local table is the fallback
+  const order = summary.firingOrder?.length === n ? summary.firingOrder : firingOrder(cfg);
   const iv = summary.firingIntervalsDeg.length === n ? summary.firingIntervalsDeg : Array.from({ length: n }, () => 720 / n);
   const out = new Array<number>(n).fill(0);
   let acc = 0;

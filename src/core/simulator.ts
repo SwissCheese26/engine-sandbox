@@ -12,6 +12,8 @@ import type { CycleOut, Model, OpPoint } from "./cycle.ts";
 import { meanPistonSpeed } from "./geometry.ts";
 import { createLimitTracker, evaluateLimits, oilPressureBar, stepThermal, stepTurbo } from "./subsystems.ts";
 import type { LimitTracker, ThermalState, TurboState } from "./subsystems.ts";
+import { isAirCooled } from "./thermal.ts";
+import { wheelieLimitN } from "./vehicle.ts";
 import type { EngineConfig, EngineState, SimInputs, VehicleCoupling, Warning } from "./types.ts";
 
 const clamp = (x: number, lo: number, hi: number) => (x < lo ? lo : x > hi ? hi : x);
@@ -173,7 +175,7 @@ export class EngineSimulator {
       // lead decision: temperatures start at the ambient of the first step after reset();
       // "warm start" (Arthur's wish): engine at operating temperature, exhaust manifold still warm
       x.thermal = input.startWarm
-        ? { coolantC: Math.max(ambientC, cfg.cooling.thermostatOpenC), oilC: Math.max(ambientC, 90), egtC: Math.max(ambientC, 150) }
+        ? { coolantC: Math.max(ambientC, isAirCooled(cfg) ? 140 : cfg.cooling.thermostatOpenC), oilC: Math.max(ambientC, 90), egtC: Math.max(ambientC, 150) }
         : { coolantC: ambientC, oilC: ambientC, egtC: ambientC };
       x.pManKpa = ambientKpa;
       x.catC = x.thermal.egtC;
@@ -196,7 +198,9 @@ export class EngineSimulator {
     const op = this.op;
     op.ambientKpa = ambientKpa;
     op.TambK = ambientC + 273.15;
-    op.coolantC = x.thermal.coolantC;
+    // air cooling (#25): the state holds the head temperature, which runs ≈ 90 K above a coolant jacket; the
+    // combustion model (warm-up enrichment, knock) expects a coolant-equivalent temperature [S]
+    op.coolantC = isAirCooled(cfg) ? Math.max(Math.min(x.thermal.coolantC, ambientC), x.thermal.coolantC - 90) : x.thermal.coolantC;
     op.oilC = x.thermal.oilC;
     op.boostBar = x.turbo.boostBar;
     const TManK = manifoldTempK(m, x.turbo.boostBar, ambientC);
@@ -371,7 +375,7 @@ export class EngineSimulator {
     x.turbo = stepTurbo(x.turbo, cfg, dt, out.exhaustMassFlowKgS, x.thermal.egtC, boostReq, rpm, ambientKpa);
     if (!Number.isFinite(x.turbo.boostBar) || !Number.isFinite(x.turbo.shaftRpm)) x.turbo = { shaftRpm: 0, boostBar: 0 };
     // --- thermal (PR #12 stepThermal)
-    x.thermal = stepThermal(x.thermal, cfg, dt, out.heatToCoolantKw, out.egtC, rpm, ambientC);
+    x.thermal = stepThermal(x.thermal, cfg, dt, out.heatToCoolantKw, out.egtC, rpm, ambientC, input.dynoMode === "vehicle" ? x.vSpeed : 0);
     if (!Number.isFinite(x.thermal.coolantC + x.thermal.oilC + x.thermal.egtC)) x.thermal = { coolantC: ambientC, oilC: ambientC, egtC: ambientC };
     // --- catalyst temperature (issue #16) [S]: substrate follows the exhaust gas with τ ≈ 6 s; afterfire fuel that
     // did not burn in the manifold (≈ 15 %, cycle.ts) oxidises in the catalyst: ΔT = 0.15·ṁF·Hu/(ṁ·cp)
@@ -470,10 +474,13 @@ function stepVehicle(x: Internal, c: VehicleCoupling, engineTorqueNm: number, J:
   /** Net longitudinal force; at rest the brake absorbs drive force up to its capacity. */
   const net = (fDrive: number) => (atRest ? Math.max(0, fDrive - brakeCapN) : fDrive - fRes);
   const slip = wEng - wIn;
+  // anti-wheelie (simplified): drive force above the wheelie limit is cut by the ECU (#25)
+  const fWheelie = wheelieLimitN(veh);
+  const cut = (f: number) => (f > fWheelie ? fWheelie : f);
   // rigid if the clutch is (almost) closed, synchronised and able to carry the torque
   if (i > 0 && lock > 0.98 && Math.abs(slip) < 2) {
     const mEff = veh.massKg + (J * i * i) / (r * r);
-    const fDrive = (engineTorqueNm * i * (engineTorqueNm >= 0 ? eta : 1 / eta)) / r;
+    const fDrive = cut((engineTorqueNm * i * (engineTorqueNm >= 0 ? eta : 1 / eta)) / r);
     if (Math.abs(engineTorqueNm) <= cap * 1.2) {
       x.vSpeed = Math.max(0, x.vSpeed + (net(fDrive) / mEff) * h);
       x.rpm = ((x.vSpeed / r) * i) * RPM_PER_RADS;
@@ -485,6 +492,6 @@ function stepVehicle(x: Internal, c: VehicleCoupling, engineTorqueNm: number, J:
   let wE = wEng + ((engineTorqueNm - tc) / J) * h;
   if (wE < 0) wE = 0;
   x.rpm = wE * RPM_PER_RADS;
-  const fDrive = i > 0 ? (tc * i * (tc >= 0 ? eta : 1 / eta)) / r : 0;
+  const fDrive = i > 0 ? cut((tc * i * (tc >= 0 ? eta : 1 / eta)) / r) : 0;
   x.vSpeed = Math.max(0, x.vSpeed + (net(fDrive) / veh.massKg) * h);
 }

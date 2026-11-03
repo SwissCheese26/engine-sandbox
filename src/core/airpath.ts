@@ -3,7 +3,7 @@
  * Pure functions, no DOM.
  */
 import { CP_AIR, KAPPA_AIR, R_AIR } from "./fuels.ts";
-import { rpmAtPistonSpeed } from "./geometry.ts";
+import { rpmAtPistonSpeed, valveFloatFactor } from "./geometry.ts";
 import type { EngineConfig } from "./types.ts";
 
 const clamp = (x: number, lo: number, hi: number) => (x < lo ? lo : x > hi ? hi : x);
@@ -44,7 +44,7 @@ export function valveFloatRpm(cfg: EngineConfig): number {
     return 5600 * (h.valvetrain === "ohv" ? 0.85 : 1) * (1 + 0.1 * h.camProfile);
   }
   const base = { ohv: 6600, sohc: 7400, dohc: 8200 }[h.valvetrain];
-  return base * (h.valvesPerCylinder >= 4 ? 1.08 : 1.0) * (1 + 0.1 * h.camProfile) * Math.sqrt(86 / cfg.block.boreMm);
+  return base * (h.valvesPerCylinder >= 4 ? 1.08 : 1.0) * (1 + 0.1 * h.camProfile) * valveFloatFactor(cfg);
 }
 
 export function veParams(cfg: EngineConfig): VeParams {

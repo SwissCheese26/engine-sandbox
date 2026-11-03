@@ -32,6 +32,19 @@ export interface BlockConfig {
   crankshaft: CrankshaftType;
   pistons: PistonType;
   conrods: ConrodType;
+  /**
+   * Inline twin only (issue #25): crankpin offset. 360° = both pistons together, even 360/360 firing (old British
+   * twins, BMW F 800); 180° = 180/540 (Honda CB450); 270° = 270/450, V-twin-like (Yamaha MT-07, Triumph Bonneville
+   * 1200). Default 360.
+   */
+  twinCrankDeg?: 180 | 270 | 360;
+  /** Inline four only (issue #25): crossplane crank (Yamaha R1 since 2009), firing 270-180-90-180. Default false. */
+  crossplaneI4?: boolean;
+  /**
+   * Light flywheel (issue #25): crank + clutch only, as on motorcycles (inertia ×0.4). Default: true when
+   * revLimitRpm > 9500, otherwise false.
+   */
+  lightFlywheel?: boolean;
 }
 
 export type Valvetrain = "ohv" | "sohc" | "dohc";
@@ -43,6 +56,12 @@ export interface HeadConfig {
   /** 0 = very mild/economy cam (torque low down), 1 = race cam (power high up, poor idle). */
   camProfile: number;
   variableTiming: VariableValveTiming;
+  /** Valve material (issue #25). Titanium valves are ≈ 40 % lighter → higher valve-float speed. Default steel. */
+  valveMaterial?: "steel" | "titanium";
+  /** Valve springs (issue #25): "high-rate" = dual / beehive springs of high-revving heads (rate ≈ +55 %). Default standard. */
+  valveSprings?: "standard" | "high-rate";
+  /** Desmodromic valve actuation (Ducati): valves closed by a cam, no spring → hardly any valve float. Default false. */
+  desmodromic?: boolean;
 }
 
 export type Aspiration =
@@ -129,9 +148,18 @@ export interface ExhaustConfig {
   overrunPops?: OverrunPops;
 }
 
+/**
+ * Cooling type (issue #25). "liquid" = coolant circuit with radiator and thermostat (default).
+ * "air" = finned cylinders/heads, no coolant: the "coolant" temperature in EngineState is then the cylinder head
+ * temperature, cooled by ram air (vehicle speed). "oil-air" = like air plus oil jets on the head and a large oil cooler.
+ */
+export type CoolingType = "liquid" | "air" | "oil-air";
+
 export type OverrunPops = "off" | "mild" | "popcorn" | "brutal";
 
 export interface CoolingConfig {
+  /** Default "liquid". For air / oil-air, radiatorCapacityKw is the fin heat rejection at 90 km/h ram air and 150 K head-to-ambient. */
+  type?: CoolingType;
   /** Radiator heat rejection capacity in kW at full fan and 90 °C coolant / 25 °C ambient. */
   radiatorCapacityKw: number;
   thermostatOpenC: number;
@@ -193,6 +221,13 @@ export interface VehicleParams {
   frontalAreaM2: number;
   rollingResistance: number;
   wheelRadiusM: number;
+  /**
+   * Optional wheelie limit (motorcycles, issue #25): centre-of-gravity height and horizontal distance from the
+   * rear axle to the centre of gravity, m. When both are set, the drive force is limited to
+   * m·g·cgToRearAxleM / cgHeightM (front wheel unloaded; simplified anti-wheelie control).
+   */
+  cgHeightM?: number;
+  cgToRearAxleM?: number;
 }
 
 /** What the drivetrain hands to the simulator for one frame. */

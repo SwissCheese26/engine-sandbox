@@ -92,7 +92,8 @@ export function cylinderOptions(layout: CylinderLayout): number[] {
     case "boxer":
       return [2, 4, 6, 8, 10, 12, 16];
     case "v":
-      return [4, 6, 8, 10, 12, 16];
+      // V2: motorcycle twins (issue #25)
+      return [2, 4, 6, 8, 10, 12, 16];
     case "w":
       return [8, 12, 16];
     case "vr":
@@ -131,7 +132,8 @@ export function defaultBankAngle(layout: CylinderLayout, cylinders: number): num
 }
 
 export function valveOptions(valvetrain: EngineConfig["head"]["valvetrain"]): number[] {
-  if (valvetrain === "ohv") return [2];
+  // OHV with 4 valves: Harley-Davidson Milwaukee-Eight (issue #25)
+  if (valvetrain === "ohv") return [2, 4];
   if (valvetrain === "sohc") return [2, 3, 4];
   return [2, 4, 5];
 }
@@ -188,21 +190,32 @@ export const FIELDS: Field[] = [
     ],
   },
   {
+    kind: "choice-number", path: "block.twinCrankDeg", group: "block", label: "Hubzapfenversatz", unit: "°",
+    effect: "360° → gleichmäßig wie ein Einzylinder, 270° → V2-Klang, 180° → ungleichmäßig, wenig Vibration.",
+    visible: (c) => c.block.layout === "inline" && c.block.cylinders === 2,
+    values: () => [180, 270, 360],
+  },
+  {
+    kind: "toggle", path: "block.crossplaneI4", group: "block", label: "Crossplane-Kurbelwelle",
+    effect: "Zündabstände 270-180-90-180 wie die Yamaha R1: grollender Klang, gleichmäßigeres Drehmoment.",
+    visible: (c) => c.block.layout === "inline" && c.block.cylinders === 4,
+  },
+  {
     kind: "number", path: "block.boreMm", group: "block", label: "Bohrung", unit: "mm", decimals: 1,
     effect: "+ Bohrung → mehr Hubraum, Platz für größere Ventile.",
-    range: () => ({ min: 50, max: 140, step: 0.5 }),
+    range: () => ({ min: 40, max: 140, step: 0.5 }),
   },
   {
     kind: "number", path: "block.strokeMm", group: "block", label: "Hub", unit: "mm", decimals: 1,
     effect: "+ Hub → mehr Drehmoment, höhere Kolbengeschwindigkeit.",
     warns: ["piston-speed"],
-    range: () => ({ min: 50, max: 160, step: 0.5 }),
+    range: () => ({ min: 40, max: 160, step: 0.5 }),
   },
   {
     kind: "number", path: "block.conrodLengthMm", group: "block", label: "Pleuellänge", unit: "mm", decimals: 0,
     effect: "+ Pleuel → weniger Seitenkraft am Kolben, höherer Block.",
     warns: ["conrod-stress"],
-    range: () => ({ min: 90, max: 300, step: 1 }),
+    range: () => ({ min: 70, max: 300, step: 1 }),
   },
   {
     kind: "number", path: "block.compressionRatio", group: "block", label: "Verdichtung", unit: ": 1", decimals: 1,
@@ -264,6 +277,31 @@ export const FIELDS: Field[] = [
     kind: "choice-number", path: "head.valvesPerCylinder", group: "head", label: "Ventile je Zylinder", unit: "",
     effect: "+ Ventile → besserer Gaswechsel bei hoher Drehzahl.",
     values: (c) => valveOptions(c.head.valvetrain),
+  },
+  {
+    kind: "select", path: "head.valveMaterial", group: "head", label: "Ventilwerkstoff",
+    effect: "Titan ist leichter: Ventile flattern erst bei höherer Drehzahl.",
+    warns: ["valve-float"],
+    options: () => [
+      { value: "steel", label: "Stahl" },
+      { value: "titanium", label: "Titan" },
+    ],
+  },
+  {
+    kind: "select", path: "head.valveSprings", group: "head", label: "Ventilfedern",
+    effect: "Doppelfedern mit hoher Federrate halten die Ventile auch bei Motorrad-Drehzahlen am Nocken.",
+    warns: ["valve-float"],
+    visible: (c) => !c.head.desmodromic,
+    options: () => [
+      { value: "standard", label: "Standard" },
+      { value: "high-rate", label: "Hohe Federrate (Doppelfedern)" },
+    ],
+  },
+  {
+    kind: "toggle", path: "head.desmodromic", group: "head", label: "Desmodromik",
+    effect: "Ventile werden zwangsweise geschlossen statt per Feder (Ducati): kaum Ventilflattern.",
+    warns: ["valve-float"],
+    visible: (c) => isPetrol(c) && c.head.valvetrain !== "ohv",
   },
   {
     kind: "number", path: "head.camProfile", group: "head", label: "Nockenprofil", unit: "%", decimals: 0, scale: 100,
@@ -439,8 +477,18 @@ export const FIELDS: Field[] = [
   },
   // ── Kühlung ──────────────────────────────────────────────────────────────
   {
+    kind: "select", path: "cooling.type", group: "cooling", label: "Kühlungsart",
+    effect: "Luftkühlung braucht Fahrtwind: Im Stand auf dem Prüfstand wird der Zylinderkopf schnell heiß.",
+    warns: ["overheat-coolant", "overheat-oil"],
+    options: () => [
+      { value: "liquid", label: "Flüssigkeit (Kühler)" },
+      { value: "air", label: "Luft (Kühlrippen)" },
+      { value: "oil-air", label: "Öl-Luft" },
+    ],
+  },
+  {
     kind: "number", path: "cooling.radiatorCapacityKw", group: "cooling", label: "Kühlerleistung", unit: "kW", decimals: 0,
-    effect: "+ Kühler → mehr Dauerleistung ohne Überhitzen.",
+    effect: "+ Kühler → mehr Dauerleistung ohne Überhitzen. Luftkühlung: Rippenleistung bei 90 km/h Fahrtwind.",
     warns: ["overheat-coolant"],
     // up to 2000 kW: hypercar / race radiators (Arthur's wish), constant 5 kW steps
     range: () => ({ min: 20, max: 2000, step: 5 }),
@@ -449,6 +497,7 @@ export const FIELDS: Field[] = [
     kind: "number", path: "cooling.thermostatOpenC", group: "cooling", label: "Thermostat öffnet", unit: "°C", decimals: 0,
     effect: "Wärmer → weniger Reibung, näher an der Siedegrenze.",
     warns: ["overheat-coolant"],
+    visible: (c) => (c.cooling.type ?? "liquid") === "liquid",
     range: () => ({ min: 70, max: 105, step: 1 }),
   },
   { kind: "toggle", path: "cooling.oilCooler", group: "cooling", label: "Ölkühler", effect: "Hält das Öl bei Volllast unter der Grenze.", warns: ["overheat-oil"] },
@@ -457,7 +506,7 @@ export const FIELDS: Field[] = [
     kind: "number", path: "revLimitRpm", group: "limits", label: "Drehzahlbegrenzer", unit: "1/min", decimals: 0,
     effect: "+ Begrenzer → mehr Spitzenleistung, wenn die Mechanik mitmacht.",
     warns: ["over-rev", "valve-float", "piston-speed", "conrod-stress"],
-    range: (c) => (isDiesel(c) ? { min: 2500, max: 6000, step: 100 } : { min: 4000, max: 12000, step: 100 }),
+    range: (c) => (isDiesel(c) ? { min: 2500, max: 6000, step: 100 } : { min: 4000, max: 16000, step: 100 }),
   },
   {
     kind: "number", path: "idleRpm", group: "limits", label: "Leerlaufdrehzahl", unit: "1/min", decimals: 0,
@@ -520,6 +569,13 @@ export function normalizeConfig(cfg: EngineConfig, changedPath?: string): Engine
   if (!vt.includes(cfg.head.variableTiming)) cfg.head.variableTiming = "none";
   if (cfg.fuel === "diesel") cfg.induction.individualThrottleBodies = false;
   if (cfg.fuel === "petrol") cfg.exhaust.scr = false;
+  // optional motorcycle fields (issue #25): show defaults where they apply, drop them where they do not
+  if (b.layout === "inline" && b.cylinders === 2) b.twinCrankDeg ??= 360;
+  else delete b.twinCrankDeg;
+  if (!(b.layout === "inline" && b.cylinders === 4)) delete b.crossplaneI4;
+  cfg.cooling.type ??= "liquid";
+  cfg.head.valveMaterial ??= "steel";
+  cfg.head.valveSprings ??= "standard";
   for (const f of FIELDS) {
     if ((f.kind !== "number" && f.kind !== "optional-number") || !isVisible(f, cfg)) continue;
     if (f.kind === "optional-number" && getPath(cfg, f.path) === undefined) continue;

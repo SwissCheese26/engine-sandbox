@@ -21,6 +21,7 @@
  */
 import type { DamageEvent, EngineConfig, EngineState, Severity, Warning, WarningCode } from "./types.ts";
 import { chargeAirTempC, turboMaxRpm } from "./turbo.ts";
+import { valveFloatFactor } from "./geometry.ts";
 
 // ------------------------------------------------------------------------------------------- thresholds
 
@@ -64,7 +65,7 @@ export function valveFloatRpm(cfg: EngineConfig): number {
   const cam = Math.min(1, Math.max(0, camProfile));
   if (cfg.fuel === "diesel") return 5600 * (valvetrain === "ohv" ? 0.85 : 1) * (1 + 0.1 * cam);
   const base = { ohv: 6600, sohc: 7400, dohc: 8200 }[valvetrain];
-  return base * (valvesPerCylinder >= 4 ? 1.08 : 1) * (1 + 0.1 * cam) * Math.sqrt(86 / Math.max(40, cfg.block.boreMm));
+  return base * (valvesPerCylinder >= 4 ? 1.08 : 1) * (1 + 0.1 * cam) * valveFloatFactor(cfg);
 }
 
 function pistonSpeedBand(cfg: EngineConfig): Band {
@@ -140,7 +141,10 @@ export function limitThresholds(cfg: EngineConfig): LimitThresholds {
     conrodLimitN: conrodLimitN(cfg),
     egtC: egtBand(cfg),
     // diesel.md §4.5 / petrol.md §4 "Überhitzung"
-    coolantC: diesel ? { warning: 108, critical: 118, fatal: 130 } : { warning: 110, critical: 120, fatal: 130 },
+    // air / oil-air cooling: cylinder-head temperature (issue #25 [S]: normal 150 … 200 °C, aluminium heads lose
+    // strength above ≈ 250 °C, valve seats loosen / pistons seize ≈ 280 °C)
+    coolantC: cfg.cooling.type === "air" || cfg.cooling.type === "oil-air" ? { warning: 220, critical: 250, fatal: 280 }
+      : diesel ? { warning: 108, critical: 118, fatal: 130 } : { warning: 110, critical: 120, fatal: 130 },
     oilC: diesel ? { warning: 135, critical: 150, fatal: 165 } : { warning: 130, critical: 145, fatal: 155 },
     coolantHoldS: diesel ? 20 : 10,
     oilHoldS: 20,
@@ -431,7 +435,7 @@ export function evaluateLimits(
 
   // --- Kühlmittel (diesel.md §4.5, petrol.md §4)
   const cb = th.coolantC;
-  warn("overheat-coolant", level("overheat-coolant", s.coolantC, cb.warning, cb.critical, 2), `Kühlmittel ${f0(s.coolantC)} °C – Motor überhitzt`);
+  warn("overheat-coolant", level("overheat-coolant", s.coolantC, cb.warning, cb.critical, 2), `${cfg.cooling.type === "air" || cfg.cooling.type === "oil-air" ? "Zylinderkopf" : "Kühlmittel"} ${f0(s.coolantC)} °C – Motor überhitzt`);
   if (timer("coolant-fatal", s.coolantC > cb.fatal) > th.coolantHoldS) {
     kill("overheat-coolant", "Zylinderkopfdichtung durchgebrannt: Durch Überhitzung hat sich der Zylinderkopf verzogen.");
   }
