@@ -1,7 +1,10 @@
 // Getriebe-Pult for the chassis dyno (issue #14 base): gearbox type, final drive, gear indicator,
 // speed, top speed and 0–100 stopwatch, shift buttons (keys Q = down, E = up).
-import { Drivetrain, VEHICLES, theoreticalVmax, dynoSweep, SPEED_LIMIT_OPTIONS, TYRE_RATING_W_KMH } from "../core/index.ts";
+// Issue #22: Fahrzeug-Platte (vehicle-panel.ts), wheel-spin / locked-wheel indicator, tyre warning from the
+// fitted tyre's speed index.
+import { Drivetrain, GEARBOXES, VEHICLES, theoreticalVmax, dynoSweep, SPEED_LIMIT_OPTIONS } from "../core/index.ts";
 import type { EngineConfig, EngineSummary, GearboxType, VehicleKind } from "../core/index.ts";
+import { VehiclePanel } from "./vehicle-panel.ts";
 
 const TYPE_LABEL: Record<GearboxType, string> = {
   manual: "Handschalter, 6 Gänge",
@@ -11,9 +14,10 @@ const TYPE_LABEL: Record<GearboxType, string> = {
 };
 
 const LIMIT_KEY = "pruefzelle.vmaxLimit";
-/** Tyre warning hysteresis around W = 270 km/h, so the note does not flicker at the rating (review PR #34). */
-const TYRE_WARN_ON_KMH = TYRE_RATING_W_KMH + 1;
-const TYRE_WARN_OFF_KMH = TYRE_RATING_W_KMH - 2;
+/** Tyre warning hysteresis around the speed rating, so the note does not flicker at the rating (review PR #34). */
+const TYRE_WARN_ON_KMH = 1;
+const TYRE_WARN_OFF_KMH = 2;
+const LAYOUT_SHORT = { fwd: "Frontantrieb", rwd: "Heckantrieb", awd: "Allrad" } as const;
 
 const fmt1 = (n: number) => n.toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const fmt0 = (n: number) => Math.round(n).toLocaleString("de-DE");
@@ -39,9 +43,12 @@ export class GearboxPanel {
   private downBtn: HTMLButtonElement;
   private upBtn: HTMLButtonElement;
   private autoBtn: HTMLButtonElement;
+  private spinEl: HTMLElement;
+  private lockEl: HTMLElement;
+  readonly vehiclePanel: VehiclePanel;
   private cfg: EngineConfig;
   private summary: EngineSummary;
-  private last = { gear: "", speed: "", vmax: "", t100: "", vmaxNote: false, gov: false, tyre: false, wheelie: false };
+  private last = { gear: "", speed: "", vmax: "", t100: "", vmaxNote: false, gov: false, tyre: false, wheelie: false, spin: false, locked: false, tyreRating: 0 };
   private moving = false;
   /** Set by the app: puts the vehicle in the simulator back to standstill. */
   onResetVehicle: () => void = () => {};
@@ -57,7 +64,7 @@ export class GearboxPanel {
     el.innerHTML = `
       <div class="gearbox__setup">
         <h2 class="gearbox__title">Rollenprüfstand</h2>
-        <label class="gearbox__field"><span>Fahrzeug</span>
+        <label class="gearbox__field"><span>Fahrzeugtyp</span>
           <select data-control="vehicle">${(Object.keys(VEHICLES) as VehicleKind[])
             .map((k) => `<option value="${k}">${VEHICLES[k].label}</option>`).join("")}</select>
         </label>
@@ -85,6 +92,8 @@ export class GearboxPanel {
         </div>
         <p class="gearbox__keys">Gas <kbd>W</kbd>, Bremse <kbd>S</kbd></p>
         <p class="gearbox__wheelie" data-out="wheelie" role="status" hidden>Wheelie! Anti-Wheelie regelt die Zugkraft.</p>
+        <p class="gearbox__wheelie" data-out="wheelspin" role="status" hidden>Räder drehen durch</p>
+        <p class="gearbox__wheelie" data-out="wheels-locked" role="status" hidden>Räder blockieren</p>
       </div>
       <div class="gearbox__out">
       <dl class="gearbox__readouts">
@@ -94,7 +103,7 @@ export class GearboxPanel {
       </dl>
       <div class="gearbox__notes" aria-live="polite">
         <p class="note note--info" data-out="governor" hidden>Abgeregelt: Der Vmax-Begrenzer nimmt das Gas zurück.</p>
-        <p class="note note--warning" data-out="tyre" hidden>Reifenfreigabe W = ${TYRE_RATING_W_KMH} km/h überschritten</p>
+        <p class="note note--warning" data-out="tyre" hidden></p>
       </div>
       </div>`;
     this.el = el;
@@ -117,10 +126,19 @@ export class GearboxPanel {
     this.downBtn = q("[data-control=shift-down]");
     this.upBtn = q("[data-control=shift-up]");
     this.autoBtn = q("[data-control=shift-auto]");
+    this.spinEl = q("[data-out=wheelspin]");
+    this.lockEl = q("[data-out=wheels-locked]");
+    this.vehiclePanel = new VehiclePanel(this.drivetrain);
+    this.vehiclePanel.onChange = () => {
+      this.onResetVehicle();
+      this.syncSetup();
+    };
+    el.append(this.vehiclePanel.el);
 
     this.vehicleSel.addEventListener("change", () => {
       this.drivetrain.setVehicle(this.vehicleSel.value as VehicleKind);
       this.onResetVehicle();
+      this.vehiclePanel.sync();
       this.syncSetup();
     });
     this.typeSel.addEventListener("change", () => {
@@ -191,7 +209,18 @@ export class GearboxPanel {
     const s = this.drivetrain.state;
     const preset = VEHICLES[this.drivetrain.kind];
     this.vehicleSel.value = this.drivetrain.kind;
-    this.hintEl.textContent = preset.hint;
+    const v = this.drivetrain.vehicle;
+    const spec = this.drivetrain.gearbox;
+    this.hintEl.textContent = this.drivetrain.kind === "car"
+      ? `Fahrzeug: ${fmt0(v.massKg)} kg, cW ${v.dragCoefficient.toFixed(2).replace(".", ",")}, ${LAYOUT_SHORT[v.driveLayout ?? "fwd"]}.`
+      : preset.hint;
+    // gear count and kind of automatic follow the loaded car's gearbox (issue #22)
+    for (const o of this.typeSel.options) {
+      const t = o.value as GearboxType;
+      const n = t === s.type ? spec.ratios.length : GEARBOXES[t].ratios.length;
+      o.textContent = t === "dsg" && t === s.type && spec.converterLockRpm ? `Automatik (Wandler), ${n} Gänge`
+        : t === "manual" ? `Handschalter, ${n} Gänge` : t === "dsg" ? `Doppelkupplung (DSG), ${n} Gänge` : TYPE_LABEL[t];
+    }
     // only the gearboxes this vehicle can have (car: manual/DSG/CVT, motorcycle: sequential)
     for (const o of this.typeSel.options) o.hidden = o.disabled = !preset.gearboxes.includes(o.value as GearboxType);
     this.typeSel.value = s.type;
@@ -209,7 +238,7 @@ export class GearboxPanel {
         for (const p of sweep) if (Math.abs(p.rpm - rpm) < Math.abs(best.rpm - rpm)) best = p;
         return best.torqueNm;
       };
-      const r = theoreticalVmax(torqueAt, this.cfg.revLimitRpm, s.type, s.finalDrive, this.drivetrain.vehicle);
+      const r = theoreticalVmax(torqueAt, this.cfg.revLimitRpm, s.type, s.finalDrive, this.drivetrain.vehicle, spec);
       // physical top speed without the governor; the governor note follows when it caps below that
       const lim = s.speedLimitKmh;
       const capped = lim !== null && r.vmaxKmh > lim
@@ -239,9 +268,17 @@ export class GearboxPanel {
     const vmaxNote = s.maxSpeedLimited && s.maxSpeedKmh > 0.5;
     if (vmaxNote !== this.last.vmaxNote) this.vmaxNoteEl.hidden = !(this.last.vmaxNote = vmaxNote);
     if (s.limiting !== this.last.gov) this.govNoteEl.hidden = !(this.last.gov = s.limiting);
-    const tyre = this.last.tyre ? s.speedKmh >= TYRE_WARN_OFF_KMH : s.speedKmh > TYRE_WARN_ON_KMH;
+    if (s.tyreRatingKmh !== this.last.tyreRating) {
+      this.last.tyreRating = s.tyreRatingKmh;
+      const idx = this.drivetrain.tyre.speedIndex;
+      this.tyreNoteEl.textContent = `Reifenfreigabe ${idx} = ${idx === "(Y)" ? "über 300" : s.tyreRatingKmh} km/h überschritten`;
+    }
+    const tyre = this.last.tyre ? s.speedKmh >= s.tyreRatingKmh - TYRE_WARN_OFF_KMH : s.speedKmh > s.tyreRatingKmh + TYRE_WARN_ON_KMH;
     if (tyre !== this.last.tyre) this.tyreNoteEl.hidden = !(this.last.tyre = tyre);
     if (s.wheelie !== this.last.wheelie) this.wheelieEl.hidden = !(this.last.wheelie = s.wheelie);
+    if (s.wheelSpin !== this.last.spin) this.spinEl.hidden = !(this.last.spin = s.wheelSpin);
+    if (s.wheelsLocked !== this.last.locked) this.lockEl.hidden = !(this.last.locked = s.wheelsLocked);
+    this.vehiclePanel.update();
     this.gearEl.classList.toggle("is-braking", braking);
     // gearbox and final drive can only be changed at standstill (review #19)
     const moving = s.speedKmh > 0.5;
