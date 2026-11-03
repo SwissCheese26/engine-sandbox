@@ -13,7 +13,8 @@ import { meanPistonSpeed } from "./geometry.ts";
 import { createLimitTracker, evaluateLimits, oilPressureBar, stepThermal, stepTurbo } from "./subsystems.ts";
 import type { LimitTracker, ThermalState, TurboState } from "./subsystems.ts";
 import { isAirCooled } from "./thermal.ts";
-import { wheelieLimitN } from "./vehicle.ts";
+import { SLIDE_FACTOR } from "./tyres.ts";
+import { drivenAxleLoadN, wheelieLimitN } from "./vehicle.ts";
 import type { EngineConfig, EngineState, SimInputs, VehicleCoupling, Warning } from "./types.ts";
 
 const clamp = (x: number, lo: number, hi: number) => (x < lo ? lo : x > hi ? hi : x);
@@ -64,6 +65,12 @@ interface Internal {
   vSpeed: number;
   /** Catalyst substrate temperature °C (issue #16, only tracked with exhaust.catalyst). */
   catC: number;
+  /** Issue #22: driven-wheel circumferential speed m/s, wheel spin / locked flags, last tyre force and acceleration. */
+  vWheel: number;
+  spin: boolean;
+  locked: boolean;
+  tyreF: number;
+  aLong: number;
 }
 
 /** Steady idle command (feed-forward for the idle governor) found by bisection at warm conditions. */
@@ -131,7 +138,7 @@ export class EngineSimulator {
 
   /** Vehicle back to standstill (chassis dyno), engine state untouched. */
   resetVehicle() {
-    this.x.vSpeed = 0;
+    Object.assign(this.x, { vSpeed: 0, vWheel: 0, spin: false, locked: false, tyreF: 0, aLong: 0 });
   }
 
   reset() {
@@ -141,7 +148,7 @@ export class EngineSimulator {
       rpm: 0, crank: 0, pManKpa: 101.325, turbo: { shaftRpm: 0, boostBar: 0 },
       thermal: { coolantC: amb, oilC: amb, egtC: amb }, knockRetard: 0, idleI: this.idleU0, dynoI: 0,
       running: false, armed: false, stallT: 0, stalled: false, limiterCut: false, relLoad: 0, load: 0, boostCut: 0,
-      initialised: false, wear: 0, destroyed: false, vSpeed: 0, catC: amb,
+      initialised: false, wear: 0, destroyed: false, vSpeed: 0, catC: amb, vWheel: 0, spin: false, locked: false, tyreF: 0, aLong: 0,
     };
     this.lastOut = null;
     this.s = {
@@ -396,6 +403,14 @@ export class EngineSimulator {
     s.running = x.running;
     s.starterEngaged = starter;
     s.vehicleSpeedMs = input.dynoMode === "vehicle" ? x.vSpeed : 0;
+    if (input.dynoMode === "vehicle" && input.vehicle?.grip !== undefined) {
+      s.wheelSpeedMs = x.vWheel;
+      s.wheelSlip = (x.vWheel - x.vSpeed) / Math.max(1, x.vSpeed);
+      s.wheelSpin = x.spin;
+      s.wheelsLocked = x.locked;
+      s.tyreForceN = x.tyreF;
+      s.accelMs2 = x.aLong;
+    }
     s.torqueNm = torque;
     s.powerKw = powerKw;
     s.imepBar = out.imepBar;
@@ -451,39 +466,122 @@ export function roadLoadN(v: VehicleCoupling["vehicle"], speedMs: number): numbe
   return v.rollingResistance * v.massKg * G + 0.5 * RHO_AIR * v.dragCoefficient * v.frontalAreaM2 * speedMs * speedMs;
 }
 
+/** Brake system force capacity at full pedal, in g: enough to lock any tyre (no ABS yet, issue #23) [S]. */
+const BRAKE_MAX_G = 1.6;
+/** Rotating inertia of one wheel incl. tyre, brake disc and half shaft, kg·m² (17–18" car wheel ≈ 0.8–1.2) [S]. */
+const WHEEL_INERTIA = 1.0;
+
 /**
  * One sub-step of engine + vehicle (dynoMode "vehicle"). Clutch closed and synchronised: rigid coupling,
  * engine inertia reflected to the wheel. Otherwise the slipping clutch transmits a friction torque
  * (sign of the slip, limited by engagement × capacity) and both sides integrate separately.
- * Longitudinal dynamics: m·dv/dt = F_drive − F_roll − F_aero (no gradient, no wheel slip yet).
+ * Longitudinal dynamics: m·dv/dt = F_tyre − F_roll − F_aero (no gradient).
+ *
+ * Traction (issue #22, only with c.grip): the tyre force is limited to μ·N_driven (tyres.ts drivenAxleLoadN, with
+ * load transfer from the last acceleration). Above it the driven wheels spin: stick–slip model like the clutch –
+ * the tyre then transmits the sliding friction 0.9·μ·N and the driven side (engine, gearbox, wheels) accelerates
+ * on its own, so the engine speed rises above the road speed. The wheels grip again when their speed has fallen
+ * back to the vehicle speed. The service brake is limited to μ·m·g; above it the wheels lock (sliding 0.9·μ·m·g).
+ * Simplification: a locked brake does not stop the gearbox input (the driver/automatic opens the clutch).
  */
 function stepVehicle(x: Internal, c: VehicleCoupling, engineTorqueNm: number, J: number, h: number) {
   const veh = c.vehicle;
   const r = veh.wheelRadiusM;
   const i = c.totalRatio;
   const eta = clamp(c.efficiency, 0.5, 1);
+  const traction = c.grip !== undefined && Number.isFinite(c.grip);
+  const mu = traction ? Math.max(0.01, c.grip!) : Infinity;
+  if (!traction || !x.spin) x.vWheel = x.vSpeed;
   const wEng = x.rpm / RPM_PER_RADS;
-  const wIn = i > 0 ? (x.vSpeed / r) * i : 0; // gearbox input shaft speed, rad/s
+  const wIn = i > 0 ? (x.vWheel / r) * i : 0; // gearbox input shaft speed, rad/s
   const lock = clamp(c.clutch, 0, 1);
   const cap = lock * c.clutchCapacityNm;
-  // service brake: friction brake up to μ·m·g with μ ≈ 1.0 (road tyre on dry asphalt) [S]. While moving it
-  // opposes the motion; at rest it acts as static friction and holds the car against drive force (review #20).
-  const brakeCapN = clamp(c.brake ?? 0, 0, 1) * 1.0 * veh.massKg * G;
+  // service brake: friction brake up to μ·m·g (without tyre data μ ≈ 1.0, road tyre on dry asphalt) [S]. While
+  // moving it opposes the motion; at rest it acts as static friction and holds the car against drive force (review #20).
+  const pedalB = clamp(c.brake ?? 0, 0, 1);
+  let brakeCapN: number;
+  x.locked = false;
+  if (traction) {
+    const demand = pedalB * BRAKE_MAX_G * veh.massKg * G;
+    const peak = mu * veh.massKg * G;
+    x.locked = demand > peak && x.vSpeed > 0.5;
+    brakeCapN = x.locked ? SLIDE_FACTOR * peak : Math.min(demand, peak);
+  } else brakeCapN = pedalB * 1.0 * veh.massKg * G;
   const atRest = x.vSpeed <= 1e-3;
   const fRes = roadLoadN(veh, x.vSpeed) + (atRest ? 0 : brakeCapN);
   /** Net longitudinal force; at rest the brake absorbs drive force up to its capacity. */
   const net = (fDrive: number) => (atRest ? Math.max(0, fDrive - brakeCapN) : fDrive - fRes);
+  const nDrive = traction ? drivenAxleLoadN(veh, x.aLong) : Infinity;
+  const fGrip = mu * nDrive;
+  const fSlide = SLIDE_FACTOR * fGrip;
+  // brakes held at standstill keep the wheels from turning
+  const canSpin = traction && Number.isFinite(fGrip) && !(atRest && pedalB > 0.05);
+  const driven = veh.driveLayout === "awd" ? 4 : 2;
+  /** Driven-side inertia at the wheel as an equivalent mass, kg. */
+  const mWheels = (driven * WHEEL_INERTIA) / (r * r);
+  const finish = (fTyre: number, v0: number) => {
+    x.tyreF = fTyre;
+    x.aLong = (x.vSpeed - v0) / h;
+  };
+  const v0 = x.vSpeed;
   const slip = wEng - wIn;
   // anti-wheelie (simplified): drive force above the wheelie limit is cut by the ECU (#25)
   const fWheelie = wheelieLimitN(veh);
   const cut = (f: number) => (f > fWheelie ? fWheelie : f);
+  const rigidClutch = i > 0 && lock > 0.98 && Math.abs(slip) < 2;
+
+  if (x.spin && canSpin) {
+    // --- wheels spinning: tyre transmits the sliding friction, both sides integrate separately
+    x.vSpeed = Math.max(0, x.vSpeed + (net(fSlide) / veh.massKg) * h);
+    if (rigidClutch && Math.abs(engineTorqueNm) <= cap * 1.2) {
+      const mD = (J * i * i) / (r * r) + mWheels;
+      const fDrive = cut((engineTorqueNm * i * (engineTorqueNm >= 0 ? eta : 1 / eta)) / r);
+      x.vWheel += ((fDrive - fSlide) / mD) * h;
+    } else {
+      // slipping clutch and spinning wheels: small driven-side inertia, so the clutch torque is taken from an
+      // implicit (backward Euler) estimate of the clutch slip to stay stable at h = 1 ms
+      const A = engineTorqueNm / J + ((i / r) * fSlide) / mWheels;
+      const B = 1 / J + (i * i * eta) / (r * r * mWheels);
+      const k = Math.abs(slip) > 1e-6 ? (cap * Math.tanh(slip / 3)) / slip : cap / 3;
+      const relNew = i > 0 ? (slip + h * A) / (1 + h * B * k) : 0;
+      const tc = i > 0 ? k * relNew : 0;
+      let wE = wEng + ((engineTorqueNm - tc) / J) * h;
+      if (wE < 0) wE = 0;
+      x.rpm = wE * RPM_PER_RADS;
+      x.vWheel += (((i > 0 ? (tc * i * eta) / r : 0) - fSlide) / mWheels) * h;
+    }
+    if (x.vWheel <= x.vSpeed) {
+      x.vWheel = x.vSpeed;
+      x.spin = false;
+    }
+    if (rigidClutch && x.spin) x.rpm = ((x.vWheel / r) * i) * RPM_PER_RADS;
+    finish(fSlide, v0);
+    return;
+  }
+  x.spin = false;
+
   // rigid if the clutch is (almost) closed, synchronised and able to carry the torque
-  if (i > 0 && lock > 0.98 && Math.abs(slip) < 2) {
+  if (rigidClutch) {
     const mEff = veh.massKg + (J * i * i) / (r * r);
     const fDrive = cut((engineTorqueNm * i * (engineTorqueNm >= 0 ? eta : 1 / eta)) / r);
     if (Math.abs(engineTorqueNm) <= cap * 1.2) {
-      x.vSpeed = Math.max(0, x.vSpeed + (net(fDrive) / mEff) * h);
+      const a = net(fDrive) / mEff;
+      // force the tyre has to transmit: drive force minus what accelerates the reflected engine inertia
+      const fTyre = fDrive - (mEff - veh.massKg) * a;
+      if (canSpin && fTyre > fGrip) {
+        x.spin = true;
+        x.vSpeed = Math.max(0, x.vSpeed + (net(fSlide) / veh.massKg) * h);
+        const mD = (J * i * i) / (r * r) + mWheels;
+        x.vWheel = v0 + ((fDrive - fSlide) / mD) * h;
+        if (x.vWheel <= x.vSpeed) { x.vWheel = x.vSpeed; x.spin = false; }
+        x.rpm = ((x.vWheel / r) * i) * RPM_PER_RADS;
+        finish(fSlide, v0);
+        return;
+      }
+      x.vSpeed = Math.max(0, x.vSpeed + a * h);
+      x.vWheel = x.vSpeed;
       x.rpm = ((x.vSpeed / r) * i) * RPM_PER_RADS;
+      finish(fTyre, v0);
       return;
     }
   }
@@ -493,5 +591,14 @@ function stepVehicle(x: Internal, c: VehicleCoupling, engineTorqueNm: number, J:
   if (wE < 0) wE = 0;
   x.rpm = wE * RPM_PER_RADS;
   const fDrive = i > 0 ? cut((tc * i * (tc >= 0 ? eta : 1 / eta)) / r) : 0;
+  if (canSpin && fDrive > fGrip) {
+    x.spin = true;
+    x.vSpeed = Math.max(0, x.vSpeed + (net(fSlide) / veh.massKg) * h);
+    x.vWheel = Math.max(x.vSpeed, v0 + ((fDrive - fSlide) / mWheels) * h);
+    finish(fSlide, v0);
+    return;
+  }
   x.vSpeed = Math.max(0, x.vSpeed + (net(fDrive) / veh.massKg) * h);
+  x.vWheel = x.vSpeed;
+  finish(fDrive, v0);
 }
