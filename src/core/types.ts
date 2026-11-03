@@ -222,13 +222,25 @@ export interface VehicleParams {
   rollingResistance: number;
   wheelRadiusM: number;
   /**
-   * Optional wheelie limit (motorcycles, issue #25): centre-of-gravity height and horizontal distance from the
-   * rear axle to the centre of gravity, m. When both are set, the drive force is limited to
-   * m·g·cgToRearAxleM / cgHeightM (front wheel unloaded; simplified anti-wheelie control).
+   * Optional chassis data, m (shared by cars and motorcycles; issues #22 and #25):
+   *  - cgHeightM: centre-of-gravity height, cgToRearAxleM: horizontal distance rear axle → CG, wheelbaseM: wheelbase.
+   *    Static front axle share = cgToRearAxleM / wheelbaseM; load transfer ΔN = m·a·h/l (see vehicle.ts).
+   *  - Wheelie limit (motorcycles, #25): with cgHeightM and cgToRearAxleM the drive force is limited to
+   *    m·g·cgToRearAxleM / cgHeightM (front wheel unloaded; simplified anti-wheelie control). Cars never reach it.
+   *  - driveLayout (#22): driven axle(s). With driveLayout and VehicleCoupling.grip the drive force is
+   *    traction-limited (μ·N on the driven axle), see simulator.ts stepVehicle.
    */
   cgHeightM?: number;
   cgToRearAxleM?: number;
+  wheelbaseM?: number;
+  driveLayout?: DriveLayout;
+  /** Rotating inertia of the driven wheels incl. tyres, discs, half shafts, kg·m² (issue #22). Default 1.0 per
+   *  driven wheel (2 for FWD/RWD, 4 for AWD); a motorcycle rear wheel ≈ 0.6. */
+  drivenWheelInertiaKgM2?: number;
 }
+
+/** Driven axle(s) (issue #22). */
+export type DriveLayout = "fwd" | "rwd" | "awd";
 
 /** What the drivetrain hands to the simulator for one frame. */
 export interface VehicleCoupling {
@@ -243,6 +255,14 @@ export interface VehicleCoupling {
   clutchCapacityNm: number;
   /** Service brake 0 … 1 (1 ≈ full braking, about 1 g). Optional, default 0. */
   brake?: number;
+  /**
+   * Peak tyre–road friction coefficient μ for this frame (issue #22: tyre type × surface × tyre temperature, see
+   * `tyreGrip()`). When set, drive force is limited to μ·N on the driven axle(s) (wheel spin above it, sliding
+   * friction ≈ 0.9·μ) and the service brake to μ·m·g (wheels lock above it). Unset = no traction limit, brake 1 g.
+   */
+  grip?: number;
+  /** Torque multiplication of a slipping torque converter (issue #22), ≥ 1; applies only while the clutch slips. */
+  torqueRatio?: number;
 }
 
 export type Severity = "info" | "warning" | "critical";
@@ -341,6 +361,17 @@ export interface EngineState {
   afterfire?: number;
   /** Torque limit of the ECU currently active (brake torque held at `ecuTorqueLimitNm`, issue #18). */
   torqueLimited?: boolean;
+  /**
+   * Issue #22 (only with VehicleCoupling.grip): circumferential speed of the driven wheels, m/s (> vehicle speed
+   * while they spin), longitudinal tyre slip of the driven wheels (v_wheel − v) / max(v, 1 m/s), wheel spin and
+   * locked-brake flags, tyre force on the road (N, + = driving) and longitudinal acceleration (m/s²).
+   */
+  wheelSpeedMs?: number;
+  wheelSlip?: number;
+  wheelSpin?: boolean;
+  wheelsLocked?: boolean;
+  tyreForceN?: number;
+  accelMs2?: number;
 }
 
 /** One point of a steady-state full-load dyno sweep. */

@@ -9,26 +9,49 @@
  *              without closing the throttle (ignition cut ≈ 50 ms), downshift with auto-blipper (≈ 80 ms).
  * Vehicles (issue #25): compact car (default), superbike and tourer motorcycle (VEHICLES). Motorcycles carry CG
  * data, the simulator then limits the drive force at the wheelie limit (wheelieLimitN in vehicle.ts).
+ * Vehicle and tyres (issue #22): chassis data (drive layout, weight distribution, CG height, wheelbase), tyre type and
+ * size (tyres.ts), traction limit and wheel spin (simulator.ts stepVehicle), ready-made cars (src/data/vehicle-library.ts
+ * via applyCar), per-car gear ratios (gearbox spec override).
  * Pure TypeScript, no DOM.
  */
-import { wheelieLimitN } from "./vehicle.ts";
+import { DEFAULT_TYRE, TYRE_TYPES, speedRatingKmh, stepTyreTemp, tyreGrip, tyreRadii } from "./tyres.ts";
+import type { RoadSurface, TyreSetup } from "./tyres.ts";
+import { drivenAxleLoadN, wheelieLimitN } from "./vehicle.ts";
 import type { EngineConfig, EngineState, EngineSummary, VehicleCoupling, VehicleParams } from "./types.ts";
 
 export type GearboxType = "manual" | "dsg" | "cvt" | "sequential";
 
-export const DEFAULT_VEHICLE: VehicleParams = {
-  massKg: 1450, // compact car incl. driver [S]
+/** Vehicle params with wheel radius and rolling resistance taken from the tyre (issue #22). */
+export function withTyre(v: VehicleParams, tyre: TyreSetup): VehicleParams {
+  return { ...v, wheelRadiusM: tyreRadii(tyre.size).dynamicM, rollingResistance: TYRE_TYPES[tyre.type].rollingResistance };
+}
+
+/**
+ * Compact car incl. driver [S] (Golf-class: 1450 kg, cW 0.30, A 2.2 m², FWD, 61 % front, CG 0.55 m, wheelbase
+ * 2.64 m), standard 225/45 R17 W tyres (dynamic radius 0.308 m).
+ */
+export const DEFAULT_VEHICLE: VehicleParams = withTyre({
+  massKg: 1450,
   dragCoefficient: 0.3,
   frontalAreaM2: 2.2,
-  rollingResistance: 0.012,
-  wheelRadiusM: 0.316, // 225/45 R17 dynamic radius
-};
+  rollingResistance: 0.011,
+  wheelRadiusM: 0.308,
+  driveLayout: "fwd",
+  cgHeightM: 0.55,
+  cgToRearAxleM: 1.61, // 61 % front axle load
+  wheelbaseM: 2.64,
+}, DEFAULT_TYRE);
 
-interface GearboxSpec {
+export interface GearboxSpec {
   ratios: number[];
   finalDrive: number;
   efficiency: number;
   shiftTimeS: number;
+  /**
+   * Torque-converter automatic (issue #22): input-shaft speed up to which the launch slips (converter) before the
+   * lock-up clutch closes, rpm. Torque multiplication of the converter is not modelled. Unset = clutch launch.
+   */
+  converterLockRpm?: number;
 }
 
 /** Typical ratios [S]: VW MQ350 6-speed manual, DQ381 7-speed DSG, generic chain CVT. */
@@ -52,6 +75,8 @@ export interface VehiclePreset {
   /** Short description for the panel. */
   hint: string;
   params: VehicleParams;
+  /** Fitted tyre (issue #22); sets wheel radius and rolling resistance of params. */
+  tyre: TyreSetup;
   /** Gearboxes this vehicle can have; the first is the default. */
   gearboxes: GearboxType[];
   finalDrive: number;
@@ -65,18 +90,24 @@ export interface VehiclePreset {
  * - Tourer (BMW R 1250 RT class): 280 kg + rider ≈ 350 kg; cW·A ≈ 0.55 m² (fairing, upright rider); 180/55 ZR17
  *   (dynamic radius 0.30 m); wheelbase 1.49 m, CG 0.65 m high, 0.72 m ahead of the rear axle. Same sequential
  *   gearbox, longer final drive (the real RT has a shaft drive, the total 6th gear ratio is similar).
- * Rolling resistance of motorcycle tyres ≈ 0.015.
+ * Rolling resistance of motorcycle tyres ≈ 0.015 (tyre type "motorcycle" in tyres.ts). Rear wheel with tyre, disc and
+ * sprocket ≈ 0.6 kg·m² [S]. Rear-wheel drive with the
+ * traction limit of issue #22 (rear axle load incl. load transfer).
  */
+const SUPERBIKE_TYRE: TyreSetup = { type: "motorcycle", size: { widthMm: 190, aspectPct: 55, rimInch: 17 }, speedIndex: "(Y)" };
+const TOURER_TYRE: TyreSetup = { type: "motorcycle", size: { widthMm: 180, aspectPct: 55, rimInch: 17 }, speedIndex: "W" };
 export const VEHICLES: Record<VehicleKind, VehiclePreset> = {
-  car: { label: "Auto (Kompaktklasse)", hint: "Fahrzeug: 1450 kg, cW 0,30.", params: DEFAULT_VEHICLE, gearboxes: ["manual", "dsg", "cvt"], finalDrive: GEARBOXES.manual.finalDrive },
+  car: { label: "Auto (Kompaktklasse)", hint: "Kompaktwagen mit Fahrer.", params: DEFAULT_VEHICLE, tyre: DEFAULT_TYRE, gearboxes: ["manual", "dsg", "cvt"], finalDrive: GEARBOXES.manual.finalDrive },
   superbike: {
     label: "Motorrad (Superbike)", hint: "Superbike: 270 kg mit Fahrer, cW·A 0,30 m², Quickshifter. Wheelie-Grenze ≈ 1,2 g.",
-    params: { massKg: 270, dragCoefficient: 0.6, frontalAreaM2: 0.5, rollingResistance: 0.015, wheelRadiusM: 0.31, cgHeightM: 0.6, cgToRearAxleM: 0.7 },
+    params: withTyre({ massKg: 270, dragCoefficient: 0.6, frontalAreaM2: 0.5, rollingResistance: 0.015, wheelRadiusM: 0.31, cgHeightM: 0.6, cgToRearAxleM: 0.7, wheelbaseM: 1.4, driveLayout: "rwd", drivenWheelInertiaKgM2: 0.6 }, SUPERBIKE_TYRE),
+    tyre: SUPERBIKE_TYRE,
     gearboxes: ["sequential"], finalDrive: 4.51,
   },
   tourer: {
     label: "Motorrad (Tourer)", hint: "Tourer: 350 kg mit Fahrer, cW·A 0,55 m², Quickshifter.",
-    params: { massKg: 350, dragCoefficient: 0.65, frontalAreaM2: 0.85, rollingResistance: 0.015, wheelRadiusM: 0.3, cgHeightM: 0.65, cgToRearAxleM: 0.72 },
+    params: withTyre({ massKg: 350, dragCoefficient: 0.65, frontalAreaM2: 0.85, rollingResistance: 0.015, wheelRadiusM: 0.3, cgHeightM: 0.65, cgToRearAxleM: 0.72, wheelbaseM: 1.49, driveLayout: "rwd", drivenWheelInertiaKgM2: 0.6 }, TOURER_TYRE),
+    tyre: TOURER_TYRE,
     gearboxes: ["sequential"], finalDrive: 3.6,
   },
 };
@@ -106,13 +137,35 @@ export interface DrivetrainState {
   maxSpeedLimited: boolean;
   /** Motorcycle: drive force at the wheelie limit, anti-wheelie is cutting (issue #25). */
   wheelie: boolean;
+  /** Issue #22: driven wheels spin (held ≥ 0.3 s for the display), brakes locked, tyre tread temperature °C,
+   *  current peak μ (tyre × surface × temperature), rated speed of the fitted tyre (speed index) in km/h. */
+  wheelSpin: boolean;
+  wheelsLocked: boolean;
+  tyreTempC: number;
+  grip: number;
+  tyreRatingKmh: number;
+}
+
+/** A complete vehicle setup (issue #22, src/data/vehicle-library.ts): kind, body, tyre, gearbox, governor. */
+export interface CarSetup {
+  /** Vehicle kind (issue #25); default "car". */
+  kind?: VehicleKind;
+  /** Body/chassis; wheel radius and rolling resistance are overwritten from the tyre. */
+  vehicle: VehicleParams;
+  tyre: TyreSetup;
+  gearbox: GearboxType;
+  /** Gear ratios of this car; default GEARBOXES[gearbox]. */
+  gearboxSpec?: GearboxSpec;
+  speedLimitKmh: number | null;
 }
 
 /** Governor presets in km/h, null = off. Default 250 km/h (German manufacturers' voluntary agreement) [S]. */
 export const SPEED_LIMIT_OPTIONS: readonly (number | null)[] = [null, 180, 210, 250, 270, 300];
 export const DEFAULT_SPEED_LIMIT_KMH = 250;
-/** Tyre speed rating W (ETRTO / ECE-R 30): 270 km/h. Real tyre model follows in #22. */
+/** Tyre speed rating W (ETRTO / ECE-R 30): 270 km/h. Since #22 the fitted tyre's index is in state.tyreRatingKmh. */
 export const TYRE_RATING_W_KMH = 270;
+/** Ambient for the tyre temperature model, °C. */
+const TYRE_AMBIENT_C = 20;
 
 // Governor PI gains (issue #32). It takes over from (limit − 5 km/h) and trims the pedal so speed settles at the
 // limit without the hard cut of a rev limiter, like an ECU top-speed limiter acting on throttle / injection.
@@ -127,6 +180,9 @@ export class Drivetrain {
   private shiftT = 0;
   private pendingGear = 0;
   private holdLaunch = 0;
+  /** Pedal cap holding the launch speed while the clutch is dosed by traction (review PR #37). */
+  private launchCap = 1;
+  private gearDwell = 0;
   private lastSpeedMs = 0;
   private govActive = false;
   private govI = 0;
@@ -137,6 +193,13 @@ export class Drivetrain {
   private wheelieHold = 0;
   /** Current vehicle preset (issue #25). */
   kind: VehicleKind = "car";
+  /** Gear ratios in use (GEARBOXES[type] or a car's own, issue #22). */
+  private spec: GearboxSpec;
+  private tyreSetup: TyreSetup = DEFAULT_TYRE;
+  private surfaceKind: RoadSurface = "dry";
+  private gripFactor = 1;
+  private spinHold = 0;
+  private tyreT = TYRE_AMBIENT_C;
 
   constructor(
     private cfg: EngineConfig,
@@ -144,16 +207,19 @@ export class Drivetrain {
     type: GearboxType = "manual",
     public vehicle: VehicleParams = DEFAULT_VEHICLE,
   ) {
+    this.spec = GEARBOXES[type];
     this.st = this.fresh(type, GEARBOXES[type].finalDrive, DEFAULT_SPEED_LIMIT_KMH);
   }
 
   private fresh(type: GearboxType, finalDrive: number, speedLimitKmh: number | null): DrivetrainState {
-    const g = GEARBOXES[type];
+    const g = this.spec;
     return {
       type, gear: type === "cvt" ? 1 : 1, gearCount: type === "cvt" ? 1 : g.ratios.length,
       ratio: g.ratios[0]!, finalDrive, manualMode: type === "manual", shifting: false, clutch: 0,
       speedKmh: 0, maxSpeedKmh: 0, t0to100S: null, t0to100Running: null,
       speedLimitKmh, limiting: false, maxSpeedLimited: false, wheelie: false,
+      wheelSpin: false, wheelsLocked: false, tyreTempC: this.tyreT, grip: this.currentGrip(),
+      tyreRatingKmh: speedRatingKmh(this.tyreSetup.speedIndex),
     };
   }
 
@@ -168,7 +234,66 @@ export class Drivetrain {
 
   setType(type: GearboxType) {
     this.clearTransient();
+    this.spec = GEARBOXES[type];
     Object.assign(this.st, this.fresh(type, GEARBOXES[type].finalDrive, this.st.speedLimitKmh));
+  }
+
+  /** Gear ratios in use (generic per type or the loaded car's own). */
+  get gearbox(): Readonly<GearboxSpec> {
+    return this.spec;
+  }
+
+  get tyre(): TyreSetup {
+    return this.tyreSetup;
+  }
+
+  get surface(): RoadSurface {
+    return this.surfaceKind;
+  }
+
+  /** Body/chassis parameters (mass, cW, A, layout, weight share, CG, wheelbase); a fresh object each time. */
+  setVehicleParams(p: Partial<VehicleParams>) {
+    this.vehicle = withTyre({ ...this.vehicle, ...p }, this.tyreSetup);
+    this.refreshTyreState();
+  }
+
+  /** Tyre type, size and speed index: wheel radius, rolling resistance, μ and tyre rating follow (issue #22). */
+  setTyre(t: TyreSetup) {
+    this.tyreSetup = { type: t.type, size: { ...t.size }, speedIndex: t.speedIndex };
+    this.vehicle = withTyre(this.vehicle, this.tyreSetup);
+    this.refreshTyreState();
+  }
+
+  /**
+   * Road surface and an extra grip factor (issue #23 hooks: wetness, snow, ice; factor e.g. for a water film).
+   * μ = tyreGrip(type, surface, tyreTemp) × factor.
+   */
+  setSurface(surface: RoadSurface, factor = 1) {
+    this.surfaceKind = surface;
+    this.gripFactor = Math.max(0, factor);
+    this.refreshTyreState();
+  }
+
+  /** Loads a complete car (issue #22): body, tyre, gearbox incl. its own ratios, governor. Vehicle at standstill. */
+  applyCar(car: CarSetup) {
+    this.kind = car.kind ?? "car";
+    this.tyreSetup = { type: car.tyre.type, size: { ...car.tyre.size }, speedIndex: car.tyre.speedIndex };
+    this.vehicle = withTyre({ ...car.vehicle }, this.tyreSetup);
+    this.tyreT = TYRE_AMBIENT_C;
+    this.clearTransient();
+    this.spec = car.gearboxSpec ? { ...car.gearboxSpec, ratios: [...car.gearboxSpec.ratios] } : GEARBOXES[car.gearbox];
+    Object.assign(this.st, this.fresh(car.gearbox, this.spec.finalDrive, car.speedLimitKmh), { maxSpeedKmh: 0, t0to100S: null });
+  }
+
+  private currentGrip(): number {
+    return tyreGrip(this.tyreSetup.type, this.surfaceKind, this.tyreT) * this.gripFactor;
+  }
+
+  private refreshTyreState() {
+    if (!this.st) return;
+    this.st.grip = this.currentGrip();
+    this.st.tyreRatingKmh = speedRatingKmh(this.tyreSetup.speedIndex);
+    this.st.tyreTempC = this.tyreT;
   }
 
   /** Top-speed governor in km/h; null (or ≤ 0) switches it off ("Aufhebung"). */
@@ -180,10 +305,7 @@ export class Drivetrain {
   /** Vehicle preset: sets mass/aero/wheel, the default gearbox and final drive of that vehicle (issue #25). */
   setVehicle(kind: VehicleKind) {
     const p = VEHICLES[kind];
-    this.kind = kind;
-    this.vehicle = p.params;
-    this.clearTransient();
-    Object.assign(this.st, this.fresh(p.gearboxes[0]!, p.finalDrive, this.st.speedLimitKmh), { maxSpeedKmh: 0, t0to100S: null });
+    this.applyCar({ kind, vehicle: p.params, tyre: p.tyre, gearbox: p.gearboxes[0]!, gearboxSpec: { ...GEARBOXES[p.gearboxes[0]!], finalDrive: p.finalDrive }, speedLimitKmh: this.st.speedLimitKmh });
   }
 
   /** Final drive ratio ("Achsübersetzung"): shorter = more pull, lower top speed. */
@@ -277,13 +399,33 @@ export class Drivetrain {
     if (target === s.gear && !s.shifting) return;
     this.pendingGear = target;
     this.shiftDir = target < s.gear ? -1 : 1;
-    this.shiftT = s.type === "sequential" && this.shiftDir < 0 ? SEQ_DOWNSHIFT_S : GEARBOXES[s.type].shiftTimeS;
+    this.shiftT = s.type === "sequential" && this.shiftDir < 0 ? SEQ_DOWNSHIFT_S : this.spec.shiftTimeS;
     s.shifting = true;
+  }
+
+  /**
+   * Hard launch (issue #22): with the pedal beyond half the driver keeps the clutch slipping until the input shaft
+   * reaches ≈ 60 % of the launch speed, so a turbo engine is not pulled down into its boost lag [S].
+   */
+  private launchSyncRpm(pedal: number): number {
+    if (pedal < 0.5) return 0;
+    return 0.6 * this.launchRpm(pedal);
+  }
+
+  /**
+   * Launch speed of the automatic clutch: rises with the pedal; full pedal ≈ 45 % of the limiter (test-driver
+   * launch, petrol sports cars 3000–4000 rpm so a turbo has boost; the clutch is dosed by traction, so no burnout). Converter automatic: stall speed ≈ lock-up
+   * speed + 600 rpm [S] (issue #22, review PR #37).
+   */
+  private launchRpm(pedal: number): number {
+    const idle = this.cfg.idleRpm;
+    const lock = this.spec.converterLockRpm;
+    return lock ? idle + pedal * Math.max(300, lock + 600 - idle) : idle + 200 + pedal * Math.max(900, 0.45 * this.cfg.revLimitRpm - idle - 200);
   }
 
   /** Engine rpm the gear `g` would give at the current speed. */
   private rpmInGear(g: number, speedMs: number): number {
-    const ratio = GEARBOXES[this.st.type].ratios[g - 1] ?? 1;
+    const ratio = this.spec.ratios[g - 1] ?? 1;
     return (speedMs / this.vehicle.wheelRadiusM) * ratio * this.st.finalDrive * RAD_TO_RPM;
   }
 
@@ -293,19 +435,25 @@ export class Drivetrain {
    */
   inputs(dt: number, engine: EngineState, pedal: number, brake = 0): VehicleCoupling {
     const s = this.st;
-    const g = GEARBOXES[s.type];
-    const v = engine.vehicleSpeedMs ?? 0;
+    const g = this.spec;
+    // the gearbox sees the driven wheels; they run ahead of the road speed while spinning (issue #22)
+    const vRoad = engine.vehicleSpeedMs ?? 0;
+    const v = engine.wheelSpeedMs ?? vRoad;
     this.lastSpeedMs = v;
     const rpm = engine.rpm;
     const idle = this.cfg.idleRpm;
     const limit = this.cfg.revLimitRpm;
 
     // --- shift execution
+    this.gearDwell = Math.max(0, this.gearDwell - dt);
     if (s.shifting) {
       this.shiftT -= dt;
       if (this.shiftT <= 0) {
         s.gear = this.pendingGear;
         s.shifting = false;
+        // DSG schedule: at least 0.5 s in a gear before the next automatic upshift, so a short rpm flare (wheel slip,
+        // clutch handover) does not skip a gear (review PR #37) [S]
+        this.gearDwell = 0.5;
       }
     }
 
@@ -318,7 +466,7 @@ export class Drivetrain {
       const upRpm = Math.min(limit * 0.97, idle + 900 + Math.pow(req, 0.8) * (limit * 0.97 - idle - 900));
       const downRpm = Math.max(idle * 1.35, upRpm * 0.42);
       if (!s.manualMode) {
-        if (rpm > upRpm && s.gear < s.gearCount && this.rpmInGear(s.gear + 1, v) > idle * 1.25) this.beginShift(s.gear + 1);
+        if (this.gearDwell <= 0 && rpm > upRpm && s.gear < s.gearCount && this.rpmInGear(s.gear + 1, v) > idle * 1.25) this.beginShift(s.gear + 1);
         else if (rpm < downRpm && s.gear > 1 && this.rpmInGear(s.gear - 1, v) < limit * 0.9) this.beginShift(s.gear - 1);
       } else if (rpm < idle * 1.1 && s.gear > 1) {
         // M mode still protects against stalling
@@ -347,6 +495,8 @@ export class Drivetrain {
     // --- clutch: automatic launch control and shift interruption
     const inputRpm = s.gear > 0 ? (v / this.vehicle.wheelRadiusM) * ratio * s.finalDrive * RAD_TO_RPM : 0;
     let clutch: number;
+    let torqueRatio = 1;
+    let launchHoldRpm = 0;
     // Engine not running (ignition off, stalled): the automatic clutch opens, so there is no engine braking
     // and the engine is not dragged along (simplification of an automated clutch, review #19).
     if (s.gear === 0 || !engine.running) {
@@ -361,7 +511,8 @@ export class Drivetrain {
       // the brake and can stall, like a real car (review #20).
       this.holdLaunch = 0;
       clutch = 0;
-    } else if (inputRpm < (s.type === "sequential" ? Math.max(idle * 1.05, 0.4 * limit) : idle * 1.05)) {
+    } else if (inputRpm < (s.type === "sequential" ? Math.max(idle * 1.05, 0.4 * limit)
+      : Math.max(idle * 1.05, g.converterLockRpm ?? 0, this.holdLaunch < 1 ? this.launchSyncRpm(pedal) : 0))) {
       // launch: engage with engine speed above idle (anti-stall), harder with pedal
       let want: number;
       if (s.type === "sequential") {
@@ -370,17 +521,47 @@ export class Drivetrain {
         const launchRpm = idle + pedal * (0.6 * limit - idle);
         want = pedal > 0.02 ? Math.min(1, Math.max(0, (rpm - 0.85 * launchRpm) / Math.max(1, 0.15 * launchRpm))) : 0;
       } else {
-        const launchRpm = idle + 200 + pedal * 900;
-        want = pedal > 0.02 ? Math.min(1, Math.max(0, (rpm - idle * 0.9) / Math.max(1, launchRpm - idle * 0.9))) : 0;
+        const launchRpm = this.launchRpm(pedal);
+        launchHoldRpm = launchRpm;
+        // quadratic engagement: the clutch bites gently near idle, so the engine (and the turbo) can rise towards
+        // the launch speed before the clutch carries the full torque (issue #22, launch with traction limit)
+        // full pedal (hard launch): the clutch only starts to bite from 70 % of the launch speed, so a turbo engine
+        // gets onto its boost before it takes load (review PR #37)
+        const lo = pedal > 0.9 ? Math.max(idle * 0.9, 0.7 * launchRpm) : idle * 0.9;
+        const x = Math.min(1, Math.max(0, (rpm - lo) / Math.max(1, launchRpm - lo)));
+        want = pedal > 0.02 ? x * x : 0;
       }
-      this.holdLaunch += (want - this.holdLaunch) * Math.min(1, dt * 8);
+      this.holdLaunch += (want - this.holdLaunch) * Math.min(1, dt * 15);
       clutch = this.holdLaunch * 0.9;
+      // torque converter (issue #22): torque ratio ≈ 2.0 at stall falling linearly to 1 at speed ratio 0.85
+      // (coupling point), typical passenger-car converter characteristic (Naunheimer et al., Automotive
+      // Transmissions, ch. 9 "Hydrodynamic torque converter") [S]
+      if (g.converterLockRpm && rpm > 1) torqueRatio = 1 + Math.max(0, 1 - inputRpm / rpm / 0.85);
     } else {
       this.holdLaunch = 1;
-      // sequential: dog engagement after the shift, only the slipper clutch smooths it (≈ 30 ms) [S]
-      clutch = Math.min(1, s.clutch + dt * (s.type === "manual" ? 4 : s.type === "sequential" ? 30 : 10));
+      // manual: driver lets the clutch in within ≈ 0.15 s after a shift (review PR #37); sequential: dog engagement,
+      // only the slipper clutch smooths it (≈ 30 ms) [S]
+      clutch = Math.min(1, s.clutch + dt * (s.type === "manual" ? 7 : s.type === "sequential" ? 30 : 10));
+      // closing right after the launch (below ≈ 30 km/h): still dosed by traction (review PR #37), engine held just
+      // above the input shaft so it does not flare while the clutch slips
+      if (s.type !== "sequential" && clutch < 0.98 && s.gear > 0 && rpm - inputRpm > 150 && vRoad < 8) launchHoldRpm = Math.max(this.launchRpm(pedal), inputRpm + 500);
+    }
+    if (launchHoldRpm > 0 && s.type !== "sequential" && s.gear > 0 && this.vehicle.driveLayout) {
+      // traction-limited launch (review PR #37): the automatic clutch lets in only the torque the driven tyres can
+      // carry at their μ peak (μ·N with load transfer); the driver/ECU then holds the launch speed with the pedal
+      // instead of flaring the engine. With a standard tyre and 400+ kW the wheels still spin after the clutch
+      // has closed – only the launch itself is dosed.
+      const total = ratio * s.finalDrive;
+      const n = drivenAxleLoadN(this.vehicle, Math.max(0, engine.accelMs2 ?? 0));
+      const capNm = Math.max(250, this.summary.peakTorqueNm * 1.6);
+      if (Number.isFinite(n) && total > 0) {
+        const tcMax = (s.grip * n * this.vehicle.wheelRadiusM) / (total * g.efficiency * torqueRatio);
+        clutch = Math.min(clutch, tcMax / capNm);
+      }
     }
     s.clutch = clutch;
+    // launch speed hold: above the launch speed the pedal is taken back (clutch dosed by traction)
+    this.launchCap = launchHoldRpm > 0 && rpm > launchHoldRpm ? Math.max(0.2, 1 - (rpm - launchHoldRpm) / 800) : 1;
 
     // --- wheelie indicator: drive force the engine would deliver vs. the limit (shown ≥ 0.3 s) (#25)
     const fLimit = wheelieLimitN(this.vehicle);
@@ -389,8 +570,18 @@ export class Drivetrain {
     else this.wheelieHold = Math.max(0, this.wheelieHold - dt);
     s.wheelie = this.wheelieHold > 0;
 
+    // --- tyres (issue #22): tread temperature, μ, wheel-spin indicator
+    const slipMs = engine.wheelsLocked ? vRoad : Math.max(0, v - vRoad);
+    const mu = this.currentGrip();
+    this.tyreT = stepTyreTemp(this.tyreT, dt, (engine.tyreForceN ?? 0) / Math.max(1, mu * this.vehicle.massKg * 9.81), vRoad, slipMs, TYRE_AMBIENT_C);
+    s.tyreTempC = this.tyreT;
+    s.grip = this.currentGrip();
+    this.spinHold = engine.wheelSpin ? 0.3 : Math.max(0, this.spinHold - dt);
+    s.wheelSpin = this.spinHold > 0;
+    s.wheelsLocked = engine.wheelsLocked ?? false;
+
     // --- measurements
-    s.speedKmh = v * 3.6;
+    s.speedKmh = vRoad * 3.6;
     this.governor(dt, s.speedKmh, pedal);
     if (s.speedKmh > s.maxSpeedKmh) {
       s.maxSpeedKmh = s.speedKmh;
@@ -415,6 +606,8 @@ export class Drivetrain {
       clutch,
       clutchCapacityNm: Math.max(250, this.summary.peakTorqueNm * 1.6),
       brake,
+      grip: s.grip,
+      ...(torqueRatio > 1 ? { torqueRatio } : {}),
     };
   }
 
@@ -429,7 +622,8 @@ export class Drivetrain {
       return this.shiftDir > 0 ? 0 : Math.max(Math.min(pedal, this.govActive ? this.govCap : 1), 0.35);
     }
     if (this.st.type === "manual" && this.st.shifting) return 0;
-    return this.govActive ? Math.min(pedal, this.govCap) : pedal;
+    const p = Math.min(pedal, this.launchCap);
+    return this.govActive ? Math.min(p, this.govCap) : p;
   }
 
   /** Label for the gear indicator: "N", "3", "D4", "M4", "CVT". */
@@ -448,14 +642,14 @@ export class Drivetrain {
  */
 export function theoreticalVmax(
   torqueAt: (rpm: number) => number, limitRpm: number, type: GearboxType, finalDrive: number,
-  vehicle: VehicleParams = DEFAULT_VEHICLE,
+  vehicle: VehicleParams = DEFAULT_VEHICLE, spec: GearboxSpec = GEARBOXES[type],
 ): { vmaxKmh: number; limitedBy: "limiter" | "power"; gear: number } {
-  const g = GEARBOXES[type];
+  const g = spec;
   const ratios = type === "cvt" ? Array.from({ length: 40 }, (_, k) => g.ratios[0]! + ((g.ratios[1]! - g.ratios[0]!) * k) / 39) : g.ratios;
   let best = { vmaxKmh: 0, limitedBy: "power" as "limiter" | "power", gear: 1 };
   ratios.forEach((ratio, idx) => {
     const i = ratio * finalDrive;
-    for (let v = 1; v < 120; v += 0.25) {
+    for (let v = 1; v < 130; v += 0.25) {
       const rpm = (v / vehicle.wheelRadiusM) * i * RAD_TO_RPM;
       if (rpm > limitRpm) {
         if (v * 3.6 > best.vmaxKmh) best = { vmaxKmh: (v - 0.25) * 3.6, limitedBy: "limiter", gear: idx + 1 };

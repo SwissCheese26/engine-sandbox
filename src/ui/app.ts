@@ -114,6 +114,16 @@ export class App {
       this.pendingCfg = cfg;
     });
     this.gearbox.onResetVehicle = () => this.sim.resetVehicle();
+    // ready-made car (issue #22): engine from the library, the rest is set on the drivetrain by the plate
+    this.gearbox.vehiclePanel.onLoadCar = (car) => {
+      if (App.turning(this.sim.state) || this.bench.isLocked) {
+        this.announce("Erst den Motor abstellen, dann lässt sich ein fertiges Auto laden.");
+        return false;
+      }
+      this.bench.loadLibrary(car.engineId);
+      this.announce(`${car.name} geladen.`);
+      return true;
+    };
     this.console.onModeChange = (mode) => this.gearbox.setVisible(mode === "vehicle");
     this.console.onIgnition = (on) => {
       if (on) void this.ensureSound();
