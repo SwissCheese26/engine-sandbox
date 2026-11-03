@@ -45,6 +45,11 @@ export interface Model {
   /** Lazily filled full-load table (100 rpm grid) for load and λ strategy. */
   fullTorque: Float64Array | null;
   fullAir: Float64Array | null;
+  /** ECU torque limit [Nm] (issue #18), +Infinity when the config has none. */
+  torqueLimitNm: number;
+  /** Per table row: diesel fuel quantity cap [kg/cycle], petrol manifold pressure cap [kPa abs]; +Infinity = limit inactive. */
+  capFuel: Float64Array | null;
+  capPMan: Float64Array | null;
 }
 
 const isExhaust = (a: EngineConfig["induction"]["aspiration"]) =>
@@ -83,6 +88,10 @@ export function getModel(cfg: EngineConfig): Model {
       ? 140 * (Math.PI / 4) * (Math.max(15, cfg.induction.compressorInducerMm) / 1000) ** 2 * (asp === "twin-turbo-sequential" ? 1.5 : 1)
       : Number.POSITIVE_INFINITY,
     fullTorque: null, fullAir: null,
+    torqueLimitNm: cfg.ecuTorqueLimitNm !== undefined && Number.isFinite(cfg.ecuTorqueLimitNm) && cfg.ecuTorqueLimitNm > 0
+      ? cfg.ecuTorqueLimitNm
+      : Number.POSITIVE_INFINITY,
+    capFuel: null, capPMan: null,
   };
   if (m.d) {
     // diesel.md §3.2c: capacity ∝ √Δp · injection window (35 °CA → time ∝ 1/n). Calibration decision [S, PR]:
@@ -125,6 +134,10 @@ export interface OpPoint {
   loadPrev: number;
   /** Starter is cranking: extra compression losses (diesel.md §3.11). */
   cranking: boolean;
+  /** Diesel: ECU quantity cap from the torque limit [kg/cycle] (issue #18), +Infinity = none. */
+  fuelCapKg: number;
+  /** Petrol overrun afterfire (issue #16): fuel injected in overrun as share of the stoichiometric idle-air quantity, 0 = off. */
+  afterfireFuel: number;
 }
 
 export interface CycleOut {
@@ -157,6 +170,7 @@ export function newOpPoint(): OpPoint {
   return {
     rpm: 0, pManKpa: 101.325, TManK: 293, ambientKpa: 101.325, TambK: 293.15, boostBar: 0, fuelCmd: 0, relLoad: 0,
     knockRetardDeg: 0, coolantC: 90, oilC: 90, egrRate: 0, combust: true, fuelCut: false, loadPrev: 1, cranking: false,
+    fuelCapKg: Number.POSITIVE_INFINITY, afterfireFuel: 0,
   };
 }
 
@@ -224,7 +238,7 @@ export function evaluateCycle(m: Model, op: OpPoint): CycleOut {
     mFuelMax = full;
     full *= governor(d, n);
     mFuelFull = full;
-    mFuelCyc = op.combust && !op.fuelCut ? clamp(op.fuelCmd, 0, 1) * full : 0;
+    mFuelCyc = op.combust && !op.fuelCut ? Math.min(clamp(op.fuelCmd, 0, 1) * full, op.fuelCapKg) : 0;
     const c = dieselCombustion(d, mFresh, mFuelCyc, Vh, pIntBar, op.TManK, op.coolantC, op.egrRate);
     lambda = c.lambda;
     imep = c.imepBar;
@@ -255,6 +269,17 @@ export function evaluateCycle(m: Model, op: OpPoint): CycleOut {
     imep = c.imepBar * (1 - 0.5 * residual);
     peak = c.peakPressureBar;
     egtC = c.egtC;
+    if (op.combust && op.fuelCut && op.afterfireFuel > 0 && mAirCyc > 0) {
+      // Overrun afterfire, "pops & bangs" (issue #16) [S]: the ECU injects afterfireFuel × the stoichiometric
+      // quantity of the (throttled) air charge and fires the spark ≈ 30 … 40 °CA after TDC. Combustion runs into
+      // the exhaust stroke: ≈ 5 % of the ideal Otto work reaches the piston, ≈ 85 % of the heat is released in
+      // the runner / manifold (energy balance ΔT = 0.85·ṁF·Hu / (ṁ·cp), cp ≈ 1.2 kJ/(kg·K) as petrol.md §3.10),
+      // the rest oxidises later in the catalyst (simulator.ts catalyst temperature).
+      mFuelCyc = (op.afterfireFuel * mAirCyc) / p.afr;
+      lambda = 1 / op.afterfireFuel;
+      imep = (0.05 * p.etaOtto * mFuelCyc * p.lhv) / Vh / 1e5;
+      egtC += (0.85 * mFuelCyc * p.lhv) / ((mAirCyc + mFuelCyc) * 1200);
+    }
   }
   // pumping losses (diesel.md §3.4 / petrol.md §3.7), positive = loss
   let pmep: number;
@@ -321,6 +346,11 @@ export interface SteadyPoint {
   boostBar: number;
   pManKpa: number;
   knockRetardDeg: number;
+  /** ECU torque limit active at this point (issue #18). */
+  limited: boolean;
+  /** Diesel quantity cap [kg/cycle] / petrol manifold pressure cap [kPa abs] that holds the limit; +Infinity if inactive. */
+  fuelCapKg: number;
+  pManCapKpa: number;
 }
 
 /**
@@ -370,7 +400,69 @@ export function steadyFullLoad(m: Model, rpm: number, ambientC = 20, ambientKpa 
     }
     boost = 0.5 * (boost + nb);
   }
-  return { out, boostBar: boost, pManKpa: pMan, knockRetardDeg: retard };
+  const res: SteadyPoint = { out, boostBar: boost, pManKpa: pMan, knockRetardDeg: retard, limited: false, fuelCapKg: Infinity, pManCapKpa: Infinity };
+  if (out.torqueNm > m.torqueLimitNm) applyTorqueLimit(m, op, res, ambientC, ambientKpa);
+  return res;
+}
+
+/**
+ * ECU torque limit (issue #18, petrol.md §7 "ECU-Plateau"): modern ECUs hold the brake torque at a calibrated
+ * maximum (gearbox protection) by requesting less instead of cutting: the diesel ECU limits the injected quantity
+ * (diesel.md §3.2 "mFuelTorqueLimit"), the petrol turbo ECU lowers the boost target (wastegate opens) and, below
+ * ambient pressure, closes the throttle (petrol.md §3.3). Solved by bisection on the quantity / manifold
+ * pressure so that the steady brake torque equals the limit; knock control settles at each trial point.
+ */
+function applyTorqueLimit(m: Model, op: OpPoint, res: SteadyPoint, ambientC: number, ambientKpa: number) {
+  const lim = m.torqueLimitNm;
+  let out = res.out;
+  if (m.d) {
+    let lo = 0;
+    let hi = 1;
+    for (let i = 0; i < 30; i++) {
+      op.fuelCmd = 0.5 * (lo + hi);
+      if (evaluateCycle(m, op).torqueNm > lim) hi = op.fuelCmd;
+      else lo = op.fuelCmd;
+    }
+    op.fuelCmd = lo;
+    out = evaluateCycle(m, op);
+    op.fuelCmd = 1;
+    res.fuelCapKg = out.mFuelCyc;
+  } else {
+    const p = m.p!;
+    const ratio = res.pManKpa / Math.max(1, ambientKpa - 2 + 100 * Math.max(0, res.boostBar));
+    let lo = 0.2 * ambientKpa;
+    let hi = res.pManKpa;
+    let retard = res.knockRetardDeg;
+    const at = (pMan: number) => {
+      // boost that the wastegate has to hold for this manifold pressure (throttle stays at its WOT ratio)
+      const boost = m.charged ? clamp((pMan / Math.max(0.5, ratio) - ambientKpa + 2) / 100, 0, res.boostBar) : 0;
+      op.boostBar = boost;
+      op.TManK = manifoldTempK(m, boost, ambientC);
+      op.pManKpa = pMan;
+      op.knockRetardDeg = retard;
+      let o = evaluateCycle(m, op);
+      const need = Math.min(p.maxRetard, Math.max(0, -o.knockMargin / 0.8));
+      if (Math.abs(need - retard) > 0.05) {
+        retard = need;
+        op.knockRetardDeg = retard;
+        o = evaluateCycle(m, op);
+      }
+      return { o, boost };
+    };
+    for (let i = 0; i < 30; i++) {
+      const mid = 0.5 * (lo + hi);
+      if (at(mid).o.torqueNm > lim) hi = mid;
+      else lo = mid;
+    }
+    const r = at(lo);
+    out = r.o;
+    res.boostBar = r.boost;
+    res.pManKpa = lo;
+    res.knockRetardDeg = retard;
+    res.pManCapKpa = lo;
+  }
+  res.out = out;
+  res.limited = true;
 }
 
 /**
@@ -389,10 +481,14 @@ export function fullLoadAt(m: Model, rpm: number): { torque: number; air: number
     const nMax = Math.ceil((m.cfg.revLimitRpm * 1.3) / 100) + 1;
     m.fullTorque = new Float64Array(nMax);
     m.fullAir = new Float64Array(nMax);
+    m.capFuel = new Float64Array(nMax);
+    m.capPMan = new Float64Array(nMax);
     for (let i = 0; i < nMax; i++) {
       const sp = steadyFullLoad(m, Math.max(300, i * 100));
       m.fullTorque[i] = Math.max(1, sp.out.torqueNm);
       m.fullAir[i] = Math.max(1e-7, sp.out.mAirCyc);
+      m.capFuel[i] = sp.fuelCapKg;
+      m.capPMan[i] = sp.pManCapKpa;
     }
   }
   const x = clamp(rpm / 100, 0, m.fullTorque.length - 1.001);
@@ -402,4 +498,30 @@ export function fullLoadAt(m: Model, rpm: number): { torque: number; air: number
     torque: m.fullTorque[i]! * (1 - f) + m.fullTorque[i + 1]! * f,
     air: m.fullAir[i]! * (1 - f) + m.fullAir[i + 1]! * f,
   };
+}
+
+/**
+ * ECU torque limit caps at rpm (issue #18): diesel quantity [kg/cycle] and petrol manifold pressure [kPa abs],
+ * interpolated from the full-load table (+Infinity where the limit is inactive; the smaller neighbour wins at the edge).
+ */
+// Interpolation: caps are linear between the 100 rpm grid points. At the edge of the limited band one neighbour is
+// +Infinity (limit inactive there); then the smaller (finite) cap is used for the whole interval, so the ECU never
+// lets torque overshoot the limit inside the 100 rpm step (conservative by at most one grid step, < 1 % torque).
+// Caps come from the steady warm full-load point (90 °C, 20 °C ambient); in transients with less boost the
+// quantity cap stays above the smoke limit, so the limit only acts where the steady torque would exceed it.
+export function torqueLimitCaps(m: Model, rpm: number): { fuelKg: number; pManKpa: number } {
+  if (!Number.isFinite(m.torqueLimitNm)) return { fuelKg: Infinity, pManKpa: Infinity };
+  fullLoadAt(m, rpm);
+  const a = m.capFuel!;
+  const b = m.capPMan!;
+  const x = clamp(rpm / 100, 0, a.length - 1.001);
+  const i = Math.floor(x);
+  const f = x - i;
+  const lerp = (t: Float64Array) => {
+    const u = t[i]!;
+    const v = t[i + 1]!;
+    if (!Number.isFinite(u) || !Number.isFinite(v)) return Math.min(u, v);
+    return u * (1 - f) + v * f;
+  };
+  return { fuelKg: lerp(a), pManKpa: lerp(b) };
 }

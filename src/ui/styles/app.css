@@ -1439,3 +1439,54 @@ kbd {
   font-size: var(--fs-14);
   cursor: pointer;
 }
+
+/* optional number (ECU torque limit, #18): switch row, slider + value below when on */
+.field--optional-number {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+.field--optional-number .field__value {
+  grid-column: 1 / -1;
+  justify-self: end;
+}
+.field--optional-number input[type="range"],
+.field--optional-number .field__effect,
+.field--optional-number .field__warn {
+  grid-column: 1 / -1;
+}
+.field--optional-number [hidden] {
+  display: none;
+}
+
+/* field that is shown but not applicable (pops on a diesel, #16) */
+.field.is-disabled .field__label,
+.field.is-disabled select {
+  opacity: 0.55;
+}
+.field.is-disabled .field__effect {
+  font-style: italic;
+}
+
+/* tuning plate (#16) */
+.tuning__changes {
+  margin: 8px 0 0;
+  padding-left: 1.2em;
+  font-size: var(--fs-14);
+  line-height: 1.4;
+}
+.tuning__changes li + li {
+  margin-top: 2px;
+}
+.tuning__warn:empty {
+  display: none;
+}
+.tuning__warn .note {
+  margin-top: 6px;
+}
+.plate--tuning {
+  margin-bottom: var(--space-4);
+}
+.tuning__status {
+  margin: 8px 0 0;
+  font-size: var(--fs-14);
+  font-style: italic;
+}

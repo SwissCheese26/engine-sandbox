@@ -92,12 +92,16 @@ export interface Key {
   knock?: number;
   boost?: number;
   destroyed?: boolean;
+  /** EngineState.afterfire (pops & bangs, issue #16). */
+  afterfire?: number;
 }
 
 export interface Render {
   l: Float32Array;
   r: Float32Array;
   fs: number;
+  /** Afterfire events the DSP triggered (issue #16). */
+  afterfireEvents?: number;
 }
 
 const FRAME = 1 / 60;
@@ -134,13 +138,14 @@ export function renderRun(cfg: EngineConfig, keys: Key[], fs = 48000, seed = 1):
         coolantC: k.coolantC ?? 90,
         knock: k.knock ?? 0,
         boostBar: boost,
+        afterfire: k.afterfire ?? 0,
       });
       (s as EngineState & { starterEngaged?: boolean }).starterEngaged = k.starter ?? false;
       dsp.setControl(tracker.next(s, k.pedal));
     }
     dsp.process(l.subarray(i, i + BLOCK), r.subarray(i, i + BLOCK), BLOCK);
   }
-  return { l, r, fs };
+  return { l, r, fs, afterfireEvents: dsp.afterfireEvents };
 }
 
 function sample(keys: Key[], t: number): Key {

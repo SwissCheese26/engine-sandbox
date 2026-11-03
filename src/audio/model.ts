@@ -424,12 +424,14 @@ export interface ControlFrame {
   blowOff: number;
   /** One-shot: engine just got destroyed. */
   crash: boolean;
+  /** Overrun afterfire intensity 0 … 1 (pops & bangs, EngineState.afterfire, issue #16). Optional, default 0. */
+  afterfire?: number;
 }
 
 export function silentFrame(): ControlFrame {
   return {
     rpm: 0, load: 0, pedal: 0, combustion: false, starter: false, limiter: false, turboRpm: 0, boostBar: 0,
-    airFlow: 0, knock: 0, nail: 0, rodKnock: 0, destroyed: false, blowOff: 0, crash: false,
+    airFlow: 0, knock: 0, nail: 0, rodKnock: 0, destroyed: false, blowOff: 0, crash: false, afterfire: 0,
   };
 }
 
@@ -530,6 +532,7 @@ export class ControlTracker {
       destroyed: s.destroyed,
       blowOff,
       crash,
+      afterfire: v.fuel === "petrol" && s.running && !s.destroyed ? clamp(Number.isFinite(s.afterfire) ? s.afterfire! : 0, 0, 1) : 0,
     };
   }
 }

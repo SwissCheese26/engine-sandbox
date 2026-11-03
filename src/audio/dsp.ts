@@ -55,6 +55,7 @@ const K_KNOCK = 2;
 const K_POP = 3;
 const K_ROD = 4;
 const K_TICK = 5;
+const K_AFTER = 6;
 
 class Ev {
   active = false;
@@ -89,6 +90,11 @@ export class EngineDsp {
   private nail = 0;
   private knock = 0;
   private rod = 0;
+  private af = 0;
+  /** Remaining pops of a running popcorn chain and samples until the next one. */
+  private chainLeft = 0;
+  private chainWait = 0;
+  private chainBank = 0;
   private starterG = 0;
   private engineG = 1;
   private master = 0;
@@ -154,6 +160,8 @@ export class EngineDsp {
 
   /** Peak of the last processed block (after limiter), for meters/tests. */
   lastPeak = 0;
+  /** Number of afterfire (pops & bangs) events triggered so far, for tests. */
+  afterfireEvents = 0;
 
   constructor(sampleRate: number, seed = 1) {
     this.fs = sampleRate;
@@ -219,6 +227,7 @@ export class EngineDsp {
       destroyed: !!raw.destroyed,
       blowOff: num(raw.blowOff, 0, 0, 1),
       crash: !!raw.crash,
+      afterfire: num(raw.afterfire ?? 0, p.afterfire ?? 0, 0, 1),
     };
     if (f.blowOff > 0) this.bovEnv = Math.max(this.bovEnv, f.blowOff);
     if (f.crash && v) {
@@ -289,6 +298,11 @@ export class EngineDsp {
       this.nail += (f.nail - this.nail) * this.cSlow;
       this.knock += (f.knock - this.knock) * this.cFast;
       this.rod += (f.rodKnock - this.rod) * this.cSlow;
+      // afterfire: fast attack (lift-off), slower release
+      const afT = f.afterfire ?? 0;
+      this.af += (afT - this.af) * (afT > this.af ? this.cFast : this.cMid);
+      if (this.af < 1e-4 && afT === 0) this.af = 0;
+      this.stepChain();
       this.starterG += ((f.starter ? 1 : 0) - this.starterG) * this.cFast;
       this.engineG += (engineT - this.engineG) * this.cMid;
       this.master += (this.volume - this.master) * this.cMid;
@@ -454,6 +468,9 @@ export class EngineDsp {
     this.lp2L = this.lp2R = 0;
     this.dcL.x = this.dcL.y = this.dcR.x = this.dcR.y = 0;
     this.limEnv = 0;
+    this.af = 0;
+    this.chainLeft = 0;
+    this.chainWait = 0;
     this.rpm = this.load = this.pedal = this.air = this.turbo = this.nail = this.knock = this.rod = this.starterG = 0;
     this.engineG = 1;
     this.master = 0; // fades back in smoothly
@@ -505,6 +522,19 @@ export class EngineDsp {
           const chance = cut ? 0.12 : overrun ? v.popChance : 0;
           if (chance > 0 && this.rand01() < chance) this.trigger(K_POP, slot.bank, 0.5 + 0.5 * this.rand01(), delay + this.fs * 0.003 * this.rand01());
         }
+        // Pops & bangs map (issue #16): late-spark overrun fuel burns in the manifold. Random per exhaust event,
+        // density grows with the intensity; from "popcorn" on a pop often starts a fast chain of crackles.
+        const af = this.af;
+        // rate ≈ 2 + 10·af pops per second, spread over the exhaust events (rpm/120 · cylinders per second)
+        const evPerS = Math.max(1, (rpm / 120) * v.slots.length);
+        if (!diesel && af > 0.01 && f.combustion && this.chainLeft === 0 && this.rand01() < (2 + 10 * af) / evPerS) {
+          this.afterfire(slot.bank, af, delay + this.fs * 0.004 * this.rand01());
+          if (af > 0.5 && this.rand01() < 0.25 + 0.5 * af) {
+            this.chainLeft = 1 + Math.floor(this.rand01() * (2 + 4 * af));
+            this.chainWait = Math.round(this.fs * (0.012 + 0.03 * this.rand01()));
+            this.chainBank = slot.bank;
+          }
+        }
       }
       if (!f.combustion) continue;
       // Combustion-synchronous structure noise shortly after TDC.
@@ -531,6 +561,31 @@ export class EngineDsp {
         if (crossed(prev, dAng, v.slots[s]!.angleDeg + 250)) this.trigger(K_TICK, 0, v.tickGain * 0.8, 0);
       }
     }
+  }
+
+  /**
+   * One afterfire event: a short broadband crack (unburnt mixture igniting in the runner) exciting the exhaust
+   * pipe resonances, loudness and body grow with the intensity ("brutal" = deep bang).
+   */
+  private afterfire(bank: number, af: number, delay: number) {
+    const e = this.trigger(K_AFTER, bank, (0.35 + 0.65 * af) * (0.6 + 0.4 * this.rand01()), delay);
+    if (!e) return;
+    this.afterfireEvents++;
+    const hz = 110 + 260 * this.rand01() * (1.2 - 0.6 * af); // brutal: lower body
+    e.p1 = (2 * Math.PI * hz) / this.fs;
+    const tau = 0.004 + 0.01 * af * this.rand01();
+    e.p2 = Math.exp(-1 / (tau * this.fs));
+    e.len = Math.round(7 * tau * this.fs);
+  }
+
+  /** Popcorn chain: further pops 12 … 42 ms apart after a chain start. */
+  private stepChain() {
+    if (this.chainLeft <= 0) return;
+    if (--this.chainWait > 0) return;
+    if (this.af > 0.01) this.afterfire(this.chainBank, this.af * (0.6 + 0.4 * this.rand01()), 0);
+    this.chainLeft--;
+    this.chainWait = Math.round(this.fs * (0.012 + 0.03 * this.rand01()));
+    if (this.af <= 0.01) this.chainLeft = 0;
   }
 
   private trigger(kind: number, bank: number, amp: number, delay: number): Ev | null {
@@ -614,6 +669,15 @@ export class EngineDsp {
           const y = e.amp * e.env * (0.6 * this.noise() + 0.8);
           this.bankIn[e.bank] = (this.bankIn[e.bank] ?? 0) + y * 0.9;
           this.flowEnv += y;
+          e.env *= e.p2;
+          break;
+        }
+        case K_AFTER: {
+          // broadband crack (noise, instant attack) plus the ringing body of the gas column
+          const y = e.amp * e.env * (0.75 * this.noise() + 0.7 * Math.sin(e.p1 * e.t));
+          this.bankIn[e.bank] = (this.bankIn[e.bank] ?? 0) + y * 2.2;
+          this.direct += y * 0.35 * (e.t < 0.002 * this.fs ? 1 : 0.3);
+          this.flowEnv += Math.abs(y) * 0.5;
           e.env *= e.p2;
           break;
         }

@@ -67,11 +67,12 @@ describe("reference engine data", () => {
 
 /**
  * Known calibration gaps after integration (#3). All other cases are sharp.
- * EA888: the reference config asks for 1.3 bar; the mean value model turns that into bmep ≈ 26 bar,
- * the data-sheet 350 Nm plateau is an ECU torque limit the config cannot express (petrol.md §3.8 / §7).
- * The model hits 350 Nm at ≈ 0.9 bar. See PR "Mittelwertmodell Diesel & Benziner".
+ * EA888 torque is sharp since #18: the data-sheet 350 Nm plateau is the ECU torque limit (`ecuTorqueLimitNm`).
+ * EA888 power stays a known gap: with the limit the model makes ≈ 193 kW @ 5300 (data sheet 162 kW @ 4500 … 6200).
+ * The real ECU also tapers boost above ≈ 4500 1/min (power plateau, petrol.md §7); a boost-over-rpm map is not
+ * part of the config yet.
  */
-const KNOWN_GAPS = new Set(["ref-vw-ea888-gen3-chhb:torque", "ref-vw-ea888-gen3-chhb:power"]);
+const KNOWN_GAPS = new Set(["ref-vw-ea888-gen3-chhb:power"]);
 const calib = (id: string, kind: "torque" | "power") => (KNOWN_GAPS.has(`${id}:${kind}`) ? test.failing : test);
 
 describe("dynoSweep hits the reference engines (±10 % value, ±12 % rpm)", () => {

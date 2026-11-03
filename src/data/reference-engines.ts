@@ -219,6 +219,8 @@ const VW_EA888_GEN3: ReferenceEngine = {
     cooling: { radiatorCapacityKw: 160, thermostatOpenC: 95, oilCooler: true },
     revLimitRpm: 6800,
     idleRpm: 700,
+    // ECU torque limit (gearbox protection): the 350 Nm plateau is calibrated, not air-limited (issue #18)
+    ecuTorqueLimitNm: 350,
   },
   expected: { peakTorqueNm: 350, peakTorqueRpm: 2950, peakPowerKw: 162, peakPowerRpm: 5350 },
   source: "docs/research/petrol.md §7 (VW EA888 Gen3 CHHB; 162 kW @ 4500–6200, 350 Nm @ 1500–4400, ECU-Plateau)",
