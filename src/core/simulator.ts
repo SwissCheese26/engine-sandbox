@@ -13,6 +13,7 @@ import { meanPistonSpeed } from "./geometry.ts";
 import { createLimitTracker, evaluateLimits, oilPressureBar, stepThermal, stepTurbo } from "./subsystems.ts";
 import type { LimitTracker, ThermalState, TurboState } from "./subsystems.ts";
 import { isAirCooled } from "./thermal.ts";
+import { wheelieLimitN } from "./vehicle.ts";
 import type { EngineConfig, EngineState, SimInputs, VehicleCoupling, Warning } from "./types.ts";
 
 const clamp = (x: number, lo: number, hi: number) => (x < lo ? lo : x > hi ? hi : x);
@@ -390,17 +391,6 @@ const RHO_AIR = 1.2;
 export function roadLoadN(v: VehicleCoupling["vehicle"], speedMs: number): number {
   if (speedMs <= 0) return 0;
   return v.rollingResistance * v.massKg * G + 0.5 * RHO_AIR * v.dragCoefficient * v.frontalAreaM2 * speedMs * speedMs;
-}
-
-/**
- * Wheelie limit of the drive force, N (issue #25): the front wheel lifts when the pitching moment of the drive
- * force about the rear contact patch, F·h, exceeds the weight moment m·g·l_r (l_r = CG ahead of the rear axle;
- * Cossalter, Motorcycle Dynamics, ch. 3 "wheelie limit"; aero drag acts at ≈ CG height, so F_drive is the total
- * force). Infinity for vehicles without CG data (cars).
- */
-export function wheelieLimitN(v: VehicleCoupling["vehicle"]): number {
-  if (!(v.cgHeightM && v.cgHeightM > 0 && v.cgToRearAxleM && v.cgToRearAxleM > 0)) return Infinity;
-  return (v.massKg * G * v.cgToRearAxleM) / v.cgHeightM;
 }
 
 /**

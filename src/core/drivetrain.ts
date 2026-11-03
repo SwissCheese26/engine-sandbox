@@ -8,10 +8,10 @@
  *  - "sequential": motorcycle 6-speed (issue #25). The rider shifts like the manual, but with quickshifter: upshift
  *              without closing the throttle (ignition cut ≈ 50 ms), downshift with auto-blipper (≈ 80 ms).
  * Vehicles (issue #25): compact car (default), superbike and tourer motorcycle (VEHICLES). Motorcycles carry CG
- * data, the simulator then limits the drive force at the wheelie limit (wheelieLimitN in simulator.ts).
+ * data, the simulator then limits the drive force at the wheelie limit (wheelieLimitN in vehicle.ts).
  * Pure TypeScript, no DOM.
  */
-import { wheelieLimitN } from "./simulator.ts";
+import { wheelieLimitN } from "./vehicle.ts";
 import type { EngineConfig, EngineState, EngineSummary, VehicleCoupling, VehicleParams } from "./types.ts";
 
 export type GearboxType = "manual" | "dsg" | "cvt" | "sequential";
