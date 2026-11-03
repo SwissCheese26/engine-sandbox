@@ -344,7 +344,9 @@ export class Drivetrain {
 
   /** Loads a complete car (issue #22): body, tyre, gearbox incl. its own ratios, governor. Vehicle at standstill. */
   applyCar(car: CarSetup) {
+    const wasCar = this.kind === "car";
     this.kind = car.kind ?? "car";
+    if (this.kind === "car" && !wasCar) this.setAssists({ asr: true, esp: true });
     // motorcycles (issue #25 presets: CBR1000RR-class superbike, tourer) have ABS but no ESP; traction control is
     // off like on the non-electronic base bikes the presets are modelled on (issue #23 decision)
     if (this.kind !== "car") this.setAssists({ asr: false, esp: false });
@@ -685,7 +687,8 @@ export class Drivetrain {
     this.tcCutting = tcr.cutting;
     this.absHold = a.abs && engine.absActive ? ASSIST_LAMP_HOLD_S : Math.max(0, this.absHold - dt);
     this.asrHold = tcr.asrActive ? ASSIST_LAMP_HOLD_S : Math.max(0, this.asrHold - dt);
-    this.espHold = tcr.msrActive || (a.esp && (tcr.asrActive || !!engine.absActive)) ? ASSIST_LAMP_HOLD_S : Math.max(0, this.espHold - dt);
+    // the ESP lamp flashes for ASR and MSR interventions (as in the cluster); ABS has its own lamp
+    this.espHold = tcr.msrActive || (a.esp && tcr.asrActive) ? ASSIST_LAMP_HOLD_S : Math.max(0, this.espHold - dt);
     s.absActive = this.absHold > 0;
     s.asrActive = this.asrHold > 0;
     s.espActive = this.espHold > 0;

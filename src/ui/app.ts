@@ -251,7 +251,8 @@ export class App {
         if (this.inputs.dynoMode === "vehicle") {
           const d = this.gearbox.drivetrain;
           const vehicle = d.inputs(dt, this.sim.state, this.inputs.pedal, this.console.brakeHeld ? 1 : 0);
-          s = this.sim.step(dt, { ...this.inputs, vehicle, pedal: d.effectivePedal(this.inputs.pedal) });
+          // environment (issue #23): outside temperature and air pressure of the test track reach the engine intake
+          s = this.sim.step(dt, { ...this.inputs, ...d.simInputs(), vehicle, pedal: d.effectivePedal(this.inputs.pedal) });
         } else {
           s = this.sim.step(dt, this.inputs);
         }
