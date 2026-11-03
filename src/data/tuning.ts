@@ -97,7 +97,7 @@ export function applyTuningStage(base: EngineConfig, stage: TuningStage, opts: T
       c.exhaust.manifold = charged ? "tubular-short" : "tubular-long";
       changes.push(charged ? "Downpipe und Rohrkrümmer (weniger Gegendruck)" : "Fächerkrümmer lang");
     }
-    if (c.exhaust.catalyst) changes.push("Sport-Kat statt Serien-Kat (Kat bleibt drin)");
+    if (c.exhaust.catalyst) changes.push("Sport-Kat statt Serien-Kat, Kat bleibt drin (nicht modelliert)");
     if (charged) {
       const ic = ind.intercooler === "none" ? "air-to-air" : "air-to-water";
       if (ic !== ind.intercooler) {
@@ -120,7 +120,7 @@ export function applyTuningStage(base: EngineConfig, stage: TuningStage, opts: T
       ind.compressorInducerMm = d;
       ind.turbineAR = ar;
     } else if (charged) {
-      changes.push("Kleinere Kompressor-Riemenscheibe (mehr Ladedruck)");
+      changes.push("Kleinere Kompressor-Riemenscheibe (wirkt über den Ladedruck oben)");
     } else {
       const cam = r2(Math.min(1, base.head.camProfile + 0.2));
       const eps = r2(base.block.compressionRatio + 0.5);
@@ -134,7 +134,7 @@ export function applyTuningStage(base: EngineConfig, stage: TuningStage, opts: T
       if (p > base.fuelSystem.injectionPressureBar) changes.push(`Größere Düsen, Einspritzdruck ${Math.round(base.fuelSystem.injectionPressureBar)} → ${p} bar`);
       fs.injectionPressureBar = Math.max(p, base.fuelSystem.injectionPressureBar);
     } else {
-      changes.push("Größere Einspritzdüsen und Kraftstoffpumpe");
+      changes.push("Größere Einspritzdüsen und Kraftstoffpumpe (nicht modelliert)");
     }
     if (opts.forgedInternals ?? true) {
       const pistons = c.block.pistons === "cast-aluminium" ? "forged-aluminium" : c.block.pistons;

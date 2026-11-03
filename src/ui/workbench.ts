@@ -31,6 +31,11 @@ export class Workbench {
   private tuneBase: { cfg: EngineConfig; customName: boolean } | null = null;
   private stage: TuningStage = 0;
   private forged = true;
+  /** Values were changed by hand while a stage is active (shown as "Stage n (angepasst)"). */
+  private tunedDirty = false;
+  private tuneChanges: string[] = [];
+  /** One-shot hint after a stage change discarded manual edits. */
+  private discardNote = "";
   private tuning!: HTMLElement;
 
   constructor(initial: EngineConfig) {
@@ -150,6 +155,11 @@ export class Workbench {
       return;
     }
     this.apply(setPath(this.cfg, path, value));
+    if (this.stage > 0 && !this.tunedDirty) {
+      this.tunedDirty = true;
+      this.discardNote = "";
+      this.syncTuning(this.tuneChanges);
+    }
   }
 
   private sig(): string {
@@ -402,6 +412,8 @@ export class Workbench {
   private resetTuning() {
     this.tuneBase = null;
     this.stage = 0;
+    this.tunedDirty = false;
+    this.discardNote = "";
     this.syncTuning([]);
   }
 
@@ -426,6 +438,7 @@ export class Workbench {
         <input type="checkbox" class="switch" role="switch" id="tuning-forged" checked />
         <span class="field__state" aria-hidden="true">Ein</span>
       </div>
+      <p class="tuning__status" role="status" aria-live="polite" hidden></p>
       <ul class="tuning__changes" aria-live="polite"></ul>
       <div class="tuning__warn" role="status" aria-live="polite"></div>`;
     for (const r of plate.querySelectorAll<HTMLInputElement>('input[name="tuning-stage"]')) {
@@ -446,6 +459,9 @@ export class Workbench {
     if (this.locked) return this.syncTuning([]);
     if (!this.tuneBase) this.tuneBase = { cfg: structuredClone(this.cfg), customName: this.customName };
     const base = this.tuneBase;
+    // manual edits on top of a stage are discarded: every stage is recomputed from the production config
+    this.discardNote = this.tunedDirty ? "Manuelle Änderungen wurden verworfen – die Stufe rechnet immer vom Serienstand." : "";
+    this.tunedDirty = false;
     this.stage = stage;
     let changes: string[];
     let next: EngineConfig;
@@ -467,7 +483,18 @@ export class Workbench {
   private syncTuning(changes: string[]) {
     const t = this.tuning;
     if (!t) return;
-    for (const r of t.querySelectorAll<HTMLInputElement>('input[name="tuning-stage"]')) r.checked = Number(r.value) === this.stage;
+    this.tuneChanges = changes;
+    for (const r of t.querySelectorAll<HTMLInputElement>('input[name="tuning-stage"]')) {
+      const n = Number(r.value) as TuningStage;
+      r.checked = n === this.stage;
+      r.nextElementSibling!.textContent = STAGE_LABELS[n] + (n === this.stage && this.tunedDirty ? " (angepasst)" : "");
+    }
+    const status = t.querySelector<HTMLElement>(".tuning__status")!;
+    const msg = this.tunedDirty
+      ? `${STAGE_LABELS[this.stage]} (angepasst): Ein Stufenwechsel oder „Serie“ verwirft die manuellen Änderungen.`
+      : this.discardNote;
+    status.textContent = msg;
+    status.hidden = msg === "";
     const list = t.querySelector<HTMLElement>(".tuning__changes")!;
     list.replaceChildren(...(changes.length ? changes : ["Serienstand – wähle eine Stufe."]).map((c) => {
       const li = document.createElement("li");

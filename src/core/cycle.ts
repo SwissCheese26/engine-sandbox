@@ -504,6 +504,11 @@ export function fullLoadAt(m: Model, rpm: number): { torque: number; air: number
  * ECU torque limit caps at rpm (issue #18): diesel quantity [kg/cycle] and petrol manifold pressure [kPa abs],
  * interpolated from the full-load table (+Infinity where the limit is inactive; the smaller neighbour wins at the edge).
  */
+// Interpolation: caps are linear between the 100 rpm grid points. At the edge of the limited band one neighbour is
+// +Infinity (limit inactive there); then the smaller (finite) cap is used for the whole interval, so the ECU never
+// lets torque overshoot the limit inside the 100 rpm step (conservative by at most one grid step, < 1 % torque).
+// Caps come from the steady warm full-load point (90 °C, 20 °C ambient); in transients with less boost the
+// quantity cap stays above the smoke limit, so the limit only acts where the steady torque would exceed it.
 export function torqueLimitCaps(m: Model, rpm: number): { fuelKg: number; pManKpa: number } {
   if (!Number.isFinite(m.torqueLimitNm)) return { fuelKg: Infinity, pManKpa: Infinity };
   fullLoadAt(m, rpm);

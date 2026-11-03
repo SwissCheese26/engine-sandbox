@@ -74,6 +74,19 @@ describe("tuning stages (#16)", () => {
     expect(s0.config).not.toBe(base);
     expect(s3.changes.length).toBeGreaterThan(3);
   });
+  test("stages are idempotent and computed from the production config: Stage 2 twice = same, 2 → 2 → Serie = base", () => {
+    for (const base of [EA888.config, N57.config, S54.config]) {
+      const a = applyTuningStage(base, 2);
+      const b = applyTuningStage(base, 2);
+      expect(b.config).toEqual(a.config);
+      expect(b.changes).toEqual(a.changes);
+      expect(b.config).not.toBe(a.config);
+      // the workbench keeps the production config and always recomputes from it
+      const again = applyTuningStage(base, 2);
+      expect(again.config).toEqual(a.config);
+      expect(applyTuningStage(base, 0).config).toEqual(base);
+    }
+  });
   test("EA888 Stage 1: torque +20 … 30 %, power +15 … 35 % over the data sheet (model power is turbo-choke limited)", () => {
     const b = peak(EA888.config);
     const t = peak(applyTuningStage(EA888.config, 1).config);

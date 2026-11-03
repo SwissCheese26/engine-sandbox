@@ -1485,3 +1485,8 @@ kbd {
 .plate--tuning {
   margin-bottom: var(--space-4);
 }
+.tuning__status {
+  margin: 8px 0 0;
+  font-size: var(--fs-14);
+  font-style: italic;
+}
