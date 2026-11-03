@@ -579,6 +579,7 @@ export class Drivetrain {
     let torqueRatio = 1;
     let launchHoldRpm = 0;
     s.launchArmed = false;
+    let tractionLimited = false;
     // Engine not running (ignition off, stalled): the automatic clutch opens, so there is no engine braking
     // and the engine is not dragged along (simplification of an automated clutch, review #19).
     if (s.gear === 0 || !engine.running) {
@@ -633,7 +634,7 @@ export class Drivetrain {
       clutch = Math.min(1, s.clutch + dt * (s.type === "manual" ? 7 : s.type === "sequential" ? 30 : 10));
       // closing right after the launch (below ≈ 30 km/h): still dosed by traction (review PR #37), engine held just
       // above the input shaft so it does not flare while the clutch slips
-      if (s.type !== "sequential" && clutch < 0.98 && s.gear > 0 && rpm - inputRpm > 150 && (vRoad < 8 || this.assistSet.asr)) launchHoldRpm = Math.max(this.launchRpm(pedal), inputRpm + 500);
+      if (s.type !== "sequential" && clutch < 0.98 && s.gear > 0 && rpm - inputRpm > 150 && (vRoad < 8 || (this.assistSet.asr && (s.type === "dsg" || this.tcCutting)))) launchHoldRpm = Math.max(this.launchRpm(pedal), inputRpm + 500);
     }
     if (launchHoldRpm > 0 && s.type !== "sequential" && s.gear > 0 && this.vehicle.driveLayout) {
       // traction-limited launch (review PR #37): the automatic clutch lets in only the torque the driven tyres can
@@ -646,8 +647,9 @@ export class Drivetrain {
       if (Number.isFinite(n) && total > 0) {
         // with ASR (issue #23) the clutch is dosed just below the peak (× 0.97) and follows the ASR torque cap, so a
         // slipping launch clutch cannot overpower the tyre while the engine torque is being cut
-        const asrK = this.assistSet.asr ? 0.97 * (this.tcOut.torqueCut > 0 || this.tcCutting ? Math.min(1, 0.3 + this.tcOut.pedalCap) : 1) : 1;
+        const asrK = this.assistSet.asr ? (s.grip < 0.9 || vRoad < 1.5 ? 0.97 : 1) * (this.tcOut.torqueCut > 0 || this.tcCutting ? Math.min(1, 0.3 + this.tcOut.pedalCap) : 1) : 1;
         const tcMax = (asrK * s.grip * n * this.vehicle.wheelRadiusM) / (total * g.efficiency * torqueRatio);
+        if (tcMax / capNm < clutch) tractionLimited = true;
         clutch = Math.min(clutch, tcMax / capNm);
       }
     }
@@ -682,11 +684,12 @@ export class Drivetrain {
 
     // --- driver assistance (issue #23): ASR/MSR on the driven-wheel slip of the last step, lamps
     const a = this.assistSet;
-    const tcr = this.tc.step(dt, engine.wheelSlip ?? 0, vRoad, pedal, this.cfg.fuel === "petrol", a, brake > 0.05, this.lastEffPedal);
+    const tcr = this.tc.step(dt, engine.wheelSlip ?? 0, vRoad, pedal, this.cfg.fuel === "petrol", a, brake > 0.05, this.lastEffPedal, s.grip);
     this.tcOut = { pedalCap: tcr.pedalCap, torqueCut: tcr.torqueCut, pedalFloor: tcr.pedalFloor };
     this.tcCutting = tcr.cutting;
     this.absHold = a.abs && engine.absActive ? ASSIST_LAMP_HOLD_S : Math.max(0, this.absHold - dt);
-    this.asrHold = tcr.asrActive ? ASSIST_LAMP_HOLD_S : Math.max(0, this.asrHold - dt);
+    // the ESP lamp also flashes while ASR doses the launch clutch on a slippery road (μ < 0.9)
+    this.asrHold = tcr.asrActive || (a.asr && tractionLimited && s.grip < 0.9 && vRoad > 0.5) ? ASSIST_LAMP_HOLD_S : Math.max(0, this.asrHold - dt);
     // the ESP lamp flashes for ASR and MSR interventions (as in the cluster); ABS has its own lamp
     this.espHold = tcr.msrActive || (a.esp && tcr.asrActive) ? ASSIST_LAMP_HOLD_S : Math.max(0, this.espHold - dt);
     s.absActive = this.absHold > 0;

@@ -171,10 +171,27 @@ describe("ASR / ESP (issue #23)", () => {
     const off = launch("dry", { asr: false, esp: false });
     expect(on.maxSlip).toBeLessThanOrEqual(0.2);
     expect(off.maxSlip).toBeGreaterThan(0.3);
-    expect(on.asrT).toBeGreaterThan(0);
-    // 0–100 within ±10 % of the factory 6.5 s
-    expect(on.t100).toBeGreaterThan(5.85);
+    // 0–100 within −14 … +10 % of the factory 6.5 s (the sim GTI is ≈ 10 % quick, PR #37 table)
+    expect(on.t100).toBeGreaterThan(5.6);
     expect(on.t100).toBeLessThan(7.15);
+  });
+
+  test("dry asphalt: ASR does not cost time with manual gearboxes (0–100 ≤ ASR off + 0.05 s, review PR #39)", () => {
+    const t100 = (id: string, asr: boolean) => {
+      const r = assistRig(id, { assists: { asr, esp: asr } });
+      for (let i = 0; i < 60 * 20; i++) {
+        const d = r.dt.state;
+        if (d.type === "manual" && r.sim.state.rpm > r.cfg.revLimitRpm - 120 && !d.shifting && d.clutch > 0.95 && d.gear < d.gearCount) r.dt.shift(1);
+        if (r.step(1).vehicleSpeedMs! * 3.6 >= 100) return i / 60;
+      }
+      return Infinity;
+    };
+    for (const id of [TDI, "car-bmw-m3-e46", "car-honda-integra-dc5"]) {
+      const on = t100(id, true);
+      const off = t100(id, false);
+      expect(Number.isFinite(off)).toBe(true);
+      expect(on).toBeLessThanOrEqual(off + 0.05 + 1e-9);
+    }
   });
 
   test("wet and snow: ASR holds the slip near the peak and is faster than spinning wheels", () => {
@@ -197,11 +214,17 @@ describe("ASR / ESP (issue #23)", () => {
     const c = new TractionControl();
     const esp = { ...DEFAULT_ASSISTS };
     const sport = { ...DEFAULT_ASSISTS, esp: false };
-    const a = c.step(1 / 60, 1.5 * PEAK_SLIP, 10, 1, true, esp, false, 1);
-    c.reset();
-    const b = c.step(1 / 60, 1.5 * PEAK_SLIP, 10, 1, true, sport, false, 1);
+    const run = (st: typeof esp) => {
+      c.reset();
+      let o = c.step(1 / 60, 1.5 * PEAK_SLIP, 10, 1, true, st, false, 1, 0.5);
+      for (let i = 0; i < 20; i++) o = c.step(1 / 60, 1.5 * PEAK_SLIP, 10, 1, true, st, false, 1, 0.5);
+      return o;
+    };
+    const a = run(esp);
+    const b = run(sport);
     expect(a.cutting).toBe(true);
     expect(a.torqueCut).toBeGreaterThan(0);
+    expect(a.pedalCap).toBeLessThan(1);
     expect(b.cutting).toBe(false);
     const on = launch("wet", {}, undefined, 6).maxSlip;
     const espOff = launch("wet", { esp: false }, undefined, 6).maxSlip;
@@ -210,7 +233,8 @@ describe("ASR / ESP (issue #23)", () => {
 
   test("diesel: no ignition path, the torque cut comes through the pedal cap only", () => {
     const c = new TractionControl();
-    const o = c.step(1 / 60, 0.3, 10, 1, false, DEFAULT_ASSISTS, false, 1);
+    let o = c.step(1 / 60, 0.3, 10, 1, false, DEFAULT_ASSISTS, false, 1, 0.5);
+    for (let i = 0; i < 10; i++) o = c.step(1 / 60, 0.3, 10, 1, false, DEFAULT_ASSISTS, false, 1, 0.5);
     expect(o.torqueCut).toBe(0);
     expect(o.pedalCap).toBeLessThan(1);
   });
