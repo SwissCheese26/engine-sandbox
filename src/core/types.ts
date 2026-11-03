@@ -263,6 +263,18 @@ export interface VehicleCoupling {
   grip?: number;
   /** Torque multiplication of a slipping torque converter (issue #22), ≥ 1; applies only while the clutch slips. */
   torqueRatio?: number;
+  /**
+   * Issue #23 (Umwelt & Fahrassistenten), all optional:
+   *  - abs: the ABS hydraulic unit modulates the brake pressure so the braked wheels stay near the μ peak
+   *    (brake slip ≈ PEAK_SLIP, cycles at ≈ 8–15 Hz). Unset/false = wheels lock above μ·m·g.
+   *  - gradePct: road gradient in % (+ uphill): downhill force m·g·sin(atan(p/100)), normal force × cos.
+   *  - airDensityKgM3: air density for the aerodynamic drag (altitude, temperature), default 1.2.
+   *  - torqueCut: share 0 … 1 of the positive engine torque removed by ignition retard (ASR, petrol only).
+   */
+  abs?: boolean;
+  gradePct?: number;
+  airDensityKgM3?: number;
+  torqueCut?: number;
 }
 
 export type Severity = "info" | "warning" | "critical";
@@ -372,6 +384,16 @@ export interface EngineState {
   wheelsLocked?: boolean;
   tyreForceN?: number;
   accelMs2?: number;
+  /**
+   * Issue #23 (only with VehicleCoupling.grip): longitudinal slip of the braked wheels (< 0 braking, −1 locked), ABS
+   * regulating (held 0.3 s), number of ABS pressure-release cycles since reset (for the rattle sound, counts up at
+   * the ABS rhythm), brake pressure relative to the driver demand 0 … 1, and the peak μ of this frame.
+   */
+  brakeSlip?: number;
+  absActive?: boolean;
+  absCycles?: number;
+  absPressure?: number;
+  roadGrip?: number;
 }
 
 /** One point of a steady-state full-load dyno sweep. */

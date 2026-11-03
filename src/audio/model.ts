@@ -426,12 +426,35 @@ export interface ControlFrame {
   crash: boolean;
   /** Overrun afterfire intensity 0 … 1 (pops & bangs, EngineState.afterfire, issue #16). Optional, default 0. */
   afterfire?: number;
+  /**
+   * Issue #23, optional (default 0): tyre squeal intensity 0 … 1 (tyreSqueal()), squeal pitch in Hz, and the ABS
+   * pressure-release counter (EngineState.absCycles): each increment triggers one rattle of the hydraulic unit, so
+   * the rattle runs synchronous to the ABS rhythm (8–15 Hz).
+   */
+  tyreSqueal?: number;
+  squealHz?: number;
+  absCycles?: number;
+}
+
+/**
+ * Tyre squeal (issue #23) [S]: stick–slip of the tread blocks in the contact patch radiates a narrow band around
+ * ≈ 0.8–1.5 kHz (Sandberg & Ejsmont, Tyre/Road Noise Reference Book, ch. "squeal"); it starts beyond the μ peak and
+ * grows with the slip and the sliding speed. Wet roads lubricate the patch (quieter), snow and ice hardly squeal.
+ * I = clamp((|s| − 0.12)/0.3) · clamp(v/15 m/s) · clamp((μ − 0.3)/0.6); pitch rises with the slip.
+ */
+export function tyreSqueal(slip: number, speedMs: number, mu: number): { level: number; hz: number } {
+  const s = Number.isFinite(slip) ? Math.abs(slip) : 0;
+  const v = Number.isFinite(speedMs) ? Math.abs(speedMs) : 0;
+  const m = Number.isFinite(mu) ? mu : 1;
+  const level = clamp((s - 0.12) / 0.3, 0, 1) * clamp(v / 15, 0, 1) * clamp((m - 0.3) / 0.6, 0, 1);
+  return { level, hz: 850 + 450 * clamp(s, 0, 1) };
 }
 
 export function silentFrame(): ControlFrame {
   return {
     rpm: 0, load: 0, pedal: 0, combustion: false, starter: false, limiter: false, turboRpm: 0, boostBar: 0,
     airFlow: 0, knock: 0, nail: 0, rodKnock: 0, destroyed: false, blowOff: 0, crash: false, afterfire: 0,
+    tyreSqueal: 0, squealHz: 1000, absCycles: 0,
   };
 }
 
@@ -507,6 +530,14 @@ export class ControlTracker {
     }
     this.pedalSlow += (p - this.pedalSlow) * (1 - Math.exp(-dt / 0.15));
 
+    // tyres (issue #23): the larger of driving slip (spinning: sliding speed = wheel speed) and braking slip
+    const vVeh = Number.isFinite(s.vehicleSpeedMs) ? s.vehicleSpeedMs! : 0;
+    const spin = Number.isFinite(s.wheelSlip) ? Math.max(0, s.wheelSlip!) : 0;
+    const brk = Number.isFinite(s.brakeSlip) ? Math.max(0, -s.brakeSlip!) : 0;
+    const sq = spin > brk
+      ? tyreSqueal(spin, Math.max(vVeh, Number.isFinite(s.wheelSpeedMs) ? s.wheelSpeedMs! : 0), s.roadGrip ?? 1)
+      : tyreSqueal(brk, vVeh, s.roadGrip ?? 1);
+
     const crash = s.destroyed && !this.wasDestroyed;
     this.wasDestroyed = s.destroyed;
 
@@ -533,6 +564,9 @@ export class ControlTracker {
       blowOff,
       crash,
       afterfire: v.fuel === "petrol" && s.running && !s.destroyed ? clamp(Number.isFinite(s.afterfire) ? s.afterfire! : 0, 0, 1) : 0,
+      tyreSqueal: sq.level,
+      squealHz: sq.hz,
+      absCycles: Number.isFinite(s.absCycles) ? s.absCycles! : 0,
     };
   }
 }

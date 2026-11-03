@@ -13,7 +13,7 @@ import { meanPistonSpeed } from "./geometry.ts";
 import { createLimitTracker, evaluateLimits, oilPressureBar, stepThermal, stepTurbo } from "./subsystems.ts";
 import type { LimitTracker, ThermalState, TurboState } from "./subsystems.ts";
 import { isAirCooled } from "./thermal.ts";
-import { SLIDE_FACTOR, tyreForceFactor } from "./tyres.ts";
+import { PEAK_SLIP, tyreForceFactor } from "./tyres.ts";
 import { drivenAxleLoadN, wheelieLimitN } from "./vehicle.ts";
 import type { EngineConfig, EngineState, SimInputs, VehicleCoupling, Warning } from "./types.ts";
 
@@ -71,6 +71,17 @@ interface Internal {
   locked: boolean;
   tyreF: number;
   aLong: number;
+  /**
+   * Issue #23: circumferential speed of the braked wheels (lumped, all four), m/s; ABS brake force N (the modulated
+   * pressure), the force at the last pressure release, release phase flag, time since the last ABS cycle, cycle counter.
+   */
+  vBrk: number;
+  absF: number;
+  absRef: number;
+  absRelease: boolean;
+  absT: number;
+  absCycles: number;
+  grip: number;
 }
 
 /** Steady idle command (feed-forward for the idle governor) found by bisection at warm conditions. */
@@ -138,7 +149,7 @@ export class EngineSimulator {
 
   /** Vehicle back to standstill (chassis dyno), engine state untouched. */
   resetVehicle() {
-    Object.assign(this.x, { vSpeed: 0, vWheel: 0, spin: false, locked: false, tyreF: 0, aLong: 0 });
+    Object.assign(this.x, { vSpeed: 0, vWheel: 0, spin: false, locked: false, tyreF: 0, aLong: 0, vBrk: 0, absF: 0, absRelease: false, absT: 9 });
   }
 
   reset() {
@@ -149,6 +160,7 @@ export class EngineSimulator {
       thermal: { coolantC: amb, oilC: amb, egtC: amb }, knockRetard: 0, idleI: this.idleU0, dynoI: 0,
       running: false, armed: false, stallT: 0, stalled: false, limiterCut: false, relLoad: 0, load: 0, boostCut: 0,
       initialised: false, wear: 0, destroyed: false, vSpeed: 0, catC: amb, vWheel: 0, spin: false, locked: false, tyreF: 0, aLong: 0,
+      vBrk: 0, absF: 0, absRef: 0, absRelease: false, absT: 9, absCycles: 0, grip: 1,
     };
     this.lastOut = null;
     this.s = {
@@ -334,7 +346,10 @@ export class EngineSimulator {
       }
       const veh = input.dynoMode === "vehicle" ? input.vehicle : undefined;
       if (veh) {
-        stepVehicle(x, veh, out.torqueNm + tStarter, m.J, h);
+        // ASR ignition retard (issue #23): petrol engines lose torque within one firing when the spark is retarded
+        // (≈ 3–4 %/°CA, up to ≈ 60 % with 15–20 °CA retard; Bosch, Gasoline Engine Management, "torque-based ECU") [S]
+        const cut = m.p && out.torqueNm > 0 ? clamp(fin(veh.torqueCut ?? 0, 0), 0, 0.7) : 0;
+        stepVehicle(x, veh, out.torqueNm * (1 - cut) + tStarter, m.J, h);
       } else {
         const net = out.torqueNm + tStarter - brake;
         let omega = x.rpm / RPM_PER_RADS + (net / m.J) * h;
@@ -410,6 +425,12 @@ export class EngineSimulator {
       s.wheelsLocked = x.locked;
       s.tyreForceN = x.tyreF;
       s.accelMs2 = x.aLong;
+      s.brakeSlip = slipRatio(x.vBrk, x.vSpeed);
+      s.absActive = x.absT < 0.3;
+      s.absCycles = x.absCycles;
+      const demand = clamp(input.vehicle.brake ?? 0, 0, 1) * BRAKE_MAX_G * input.vehicle.vehicle.massKg * G;
+      s.absPressure = demand > 1 ? clamp(x.absF / demand, 0, 1) : 0;
+      s.roadGrip = x.grip;
     }
     s.torqueNm = torque;
     s.powerKw = powerKw;
@@ -461,13 +482,40 @@ const G = 9.81;
 const RHO_AIR = 1.2;
 
 /** Road load at the wheel in N (rolling + aerodynamic), opposing motion. Vehicle at rest: no force. */
-export function roadLoadN(v: VehicleCoupling["vehicle"], speedMs: number): number {
+export function roadLoadN(v: VehicleCoupling["vehicle"], speedMs: number, rho = RHO_AIR, cosGrade = 1): number {
   if (speedMs <= 0) return 0;
-  return v.rollingResistance * v.massKg * G + 0.5 * RHO_AIR * v.dragCoefficient * v.frontalAreaM2 * speedMs * speedMs;
+  return v.rollingResistance * v.massKg * G * cosGrade + 0.5 * rho * v.dragCoefficient * v.frontalAreaM2 * speedMs * speedMs;
 }
 
-/** Brake system force capacity at full pedal, in g: enough to lock any tyre (no ABS yet, issue #23) [S]. */
+/**
+ * Road gradient (issue #23): slope angle θ = atan(p/100); downhill force F = m·g·sin θ (+ = against an uphill
+ * drive), normal force m·g·cos θ (Mitschke/Wallentowitz, Dynamik der Kraftfahrzeuge, "Steigungswiderstand") [S].
+ */
+function gradeOf(c: VehicleCoupling): { sin: number; cos: number } {
+  const p = clamp(fin(c.gradePct ?? 0, 0), -40, 40);
+  if (p === 0) return { sin: 0, cos: 1 };
+  const th = Math.atan(p / 100);
+  return { sin: Math.sin(th), cos: Math.cos(th) };
+}
+
+/** Brake system force capacity at full pedal, in g: enough to lock any tyre (ABS: issue #23) [S]. */
 const BRAKE_MAX_G = 1.6;
+/** Rotating inertia of all four braked wheels, kg·m² (4 × ≈ 1.0, see WHEEL_INERTIA) [S]. */
+const BRAKED_INERTIA = 4;
+/**
+ * ABS hydraulic unit (issue #23) [S]: Bosch ABS control cycle (Bosch, Kraftfahrtechnisches Taschenbuch, "ABS
+ * Regelzyklus"; Burckhardt, Fahrwerktechnik: Radschlupf-Regelsysteme): pressure release when the wheel slip passes
+ * the μ peak (here PEAK_SLIP + 5 %), re-apply once the wheel has re-accelerated (slip back to half the peak slip).
+ * Release is fast (outlet valve to the low-pressure accumulator, ≈ 50 ms full → 0); re-apply in a steep first step
+ * to ≈ 90 % of the last lock pressure, then a slow pulsed ramp (inlet valve) that finds the peak again; relative to the pressure at the last release, so the cycle rate is μ-independent and lands
+ * at ≈ 8–15 Hz like real systems. Below ≈ 7 km/h ABS is passive (wheels may lock just before standstill).
+ */
+const ABS_MIN_SPEED_MS = 2;
+const ABS_RELEASE_SLIP = -(PEAK_SLIP + 0.04);
+const ABS_REAPPLY_SLIP = -0.7 * PEAK_SLIP;
+const ABS_RELEASE_RATE = 20;
+const ABS_BUILD_RATE = 2;
+const ABS_STEP_RATE = 25;
 /** Rotating inertia of one wheel incl. tyre, brake disc and half shaft, kg·m² (17–18" car wheel ≈ 0.8–1.2) [S]. */
 const WHEEL_INERTIA = 1.0;
 /** Driven-wheel slip below which the wheels count as "gripping" for the flags (beyond the μ peak) [S]. */
@@ -494,11 +542,14 @@ function stepVehicle(x: Internal, c: VehicleCoupling, engineTorqueNm: number, J:
   const pedalB = clamp(c.brake ?? 0, 0, 1);
   const atRest = x.vSpeed <= 1e-3;
   const traction = c.grip !== undefined && Number.isFinite(c.grip) && veh.driveLayout !== undefined;
+  x.absT = Math.min(9, x.absT + h);
   if (!traction || (atRest && pedalB > 0.05 && x.vWheel <= 0.05)) {
     tiedStep(x, c, engineTorqueNm, J, h, traction ? Math.max(0.01, c.grip!) : undefined);
     return;
   }
-  const mu = Math.max(0.01, c.grip!);
+  const gr = gradeOf(c);
+  const mu = Math.max(0.01, c.grip!) * gr.cos;
+  x.grip = mu;
   const r = veh.wheelRadiusM;
   const i = c.totalRatio;
   const eta = clamp(c.efficiency, 0.5, 1);
@@ -507,12 +558,10 @@ function stepVehicle(x: Internal, c: VehicleCoupling, engineTorqueNm: number, J:
   const cap = lock * c.clutchCapacityNm;
   const fWheelie = wheelieLimitN(veh);
   const cut = (f: number) => (f > fWheelie ? fWheelie : f);
-  // service brake on the vehicle, μ-limited (locks above μ·m·g)
-  const demand = pedalB * BRAKE_MAX_G * m * G;
-  const peak = mu * m * G;
-  const brakeLocked = demand > peak && x.vSpeed > 0.5;
-  const fBrake = atRest ? 0 : brakeLocked ? SLIDE_FACTOR * peak : Math.min(demand, peak);
-  const R = roadLoadN(veh, x.vSpeed) + fBrake;
+  // service brake through the braked wheels' tyre force (issue #23: brake slip, ABS)
+  const fBrake = atRest ? 0 : stepBrakes(x, c, pedalB, mu, h);
+  const brakeLocked = fBrake > 0 && x.vSpeed > 0.5 && slipRatio(x.vBrk, x.vSpeed) < LOCK_SLIP;
+  const R = roadLoadN(veh, x.vSpeed, airRho(c), gr.cos) + m * G * gr.sin + fBrake;
   const N = drivenAxleLoadN(veh, x.aLong);
   const mW = (veh.drivenWheelInertiaKgM2 ?? (veh.driveLayout === "awd" ? 4 : 2) * WHEEL_INERTIA) / (r * r);
   // tyre force and its slope d F / d vWheel (only the rising part is used for the implicit step)
@@ -560,8 +609,76 @@ function stepVehicle(x: Internal, c: VehicleCoupling, engineTorqueNm: number, J:
   x.tyreF = tyre(x.vWheel);
   x.spin = s > SPIN_SLIP;
   x.locked = brakeLocked || (x.vSpeed > 1 && s < LOCK_SLIP);
+  if (fBrake === 0) x.vBrk = x.vSpeed;
   // acceleration for the load transfer, low-pass 20 ms against single-step spikes
   x.aLong += ((x.vSpeed - v0) / h - x.aLong) * Math.min(1, h / 0.02);
+}
+
+function airRho(c: VehicleCoupling): number {
+  const r = c.airDensityKgM3;
+  return r !== undefined && Number.isFinite(r) ? clamp(r, 0.3, 1.6) : RHO_AIR;
+}
+
+/**
+ * Braked wheels (issue #23), lumped into one body with all four wheels' inertia and an ideal brake balance (every
+ * wheel at the same slip, total normal force m·g·cos θ): BRAKED_INERTIA/r² · dv_B/dt = F_tyre(s_B) − F_brake,
+ * F_tyre = −μ·N·tyreForceFactor(s_B) (same force–slip curve as the driven wheels). Implicit in v_B (the curve is
+ * stiff), the vehicle speed is taken from the start of the step (it changes ≈ 30× slower). The brake is Coulomb
+ * friction: a stopped wheel stays locked while the tyre force is below the brake force. With c.abs the brake force
+ * is the modulated pressure of the ABS unit (see ABS_* above). Returns the tyre force on the vehicle (≥ 0, against
+ * the motion). Without ABS a full brake locks the wheels: F → SLIDE_FACTOR·μ·N, as in the issue #22 model.
+ */
+function stepBrakes(x: Internal, c: VehicleCoupling, pedalB: number, mu: number, h: number): number {
+  const m = c.vehicle.massKg;
+  const r = c.vehicle.wheelRadiusM;
+  const v = x.vSpeed;
+  const demand = pedalB * BRAKE_MAX_G * m * G;
+  if (!(demand > 0)) {
+    x.vBrk = v;
+    x.absF = 0;
+    x.absRelease = false;
+    return 0;
+  }
+  if (x.vBrk > v || !Number.isFinite(x.vBrk)) x.vBrk = v;
+  let fb = demand;
+  if (c.abs && v > ABS_MIN_SPEED_MS) {
+    const sB = slipRatio(x.vBrk, v);
+    if (!x.absRelease && sB < ABS_RELEASE_SLIP) {
+      x.absRelease = true;
+      // lock pressure: the pressure at which the wheel just passed the μ peak (adapts every cycle)
+      x.absRef = clamp(x.absF > 0 ? x.absF : demand, 1, demand);
+      x.absCycles++;
+      x.absT = 0;
+    } else if (x.absRelease && sB > ABS_REAPPLY_SLIP) x.absRelease = false;
+    if (x.absRelease) {
+      // outlet valve: the pressure falls ≈ exponentially (τ = 1/ABS_RELEASE_RATE), never slower than towards the
+      // estimated lock pressure
+      x.absF = Math.max(0, x.absF - ABS_RELEASE_RATE * Math.max(x.absF, x.absRef) * h);
+      x.absT = 0;
+    }
+    else if (x.absT > 0.5) x.absF = demand; // not regulating: driver pressure passes straight through
+    else {
+      // re-apply: a steep first step up to ≈ 90 % of the last lock pressure, then a slow ramp that finds the peak
+      const rate = x.absF < 0.9 * x.absRef ? ABS_STEP_RATE : ABS_BUILD_RATE;
+      x.absF = Math.min(demand, x.absF + rate * x.absRef * h);
+    }
+    fb = x.absF;
+  } else {
+    x.absF = demand;
+    x.absRelease = false;
+  }
+  const N = m * G;
+  const mB = BRAKED_INERTIA / (r * r);
+  const tyre = (w: number) => -mu * N * tyreForceFactor(slipRatio(w, v));
+  const w0 = x.vBrk;
+  const F0 = tyre(w0);
+  if (w0 <= 1e-6 && F0 <= fb) x.vBrk = 0; // locked wheel, held by static brake friction
+  else {
+    const eps = 0.01;
+    const k = Math.max(0, (tyre(w0 - eps) - tyre(w0 + eps)) / (2 * eps));
+    x.vBrk = clamp(w0 + (h * (F0 - fb)) / (mB + h * k), 0, v);
+  }
+  return Math.max(0, tyre(x.vBrk));
 }
 
 /** Longitudinal slip (v_wheel − v) / max(|v_wheel|, |v|, 1 m/s): 0 rolling, → 1 spinning, < 0 braking / locking. */
@@ -604,8 +721,13 @@ function tiedStep(x: Internal, c: VehicleCoupling, engineTorqueNm: number, J: nu
   const pedalB = clamp(c.brake ?? 0, 0, 1);
   const brakeCapN = mu === undefined ? pedalB * 1.0 * veh.massKg * G : Math.min(pedalB * BRAKE_MAX_G, mu) * veh.massKg * G;
   const atRest = x.vSpeed <= 1e-3;
-  const fRes = roadLoadN(veh, x.vSpeed) + (atRest ? 0 : brakeCapN);
-  const net = (fDrive: number) => (atRest ? Math.max(0, fDrive - brakeCapN) : fDrive - fRes);
+  // gradient (issue #23): at rest the car only starts to roll downhill or when the drive beats the slope; it never
+  // rolls backwards (vehicle speed ≥ 0: like a hill-hold assistant, docs/research/vehicle.md §3, Issue #23)
+  const gr = gradeOf(c);
+  const fGrade = veh.massKg * G * gr.sin;
+  const fRes = roadLoadN(veh, x.vSpeed, airRho(c), gr.cos) + fGrade + (atRest ? 0 : brakeCapN);
+  const net = (fDrive: number) => (atRest ? Math.max(0, fDrive - fGrade - brakeCapN) : fDrive - fRes);
+  x.grip = mu ?? 1;
   const slip = wEng - wIn;
   const fWheelie = wheelieLimitN(veh);
   const cut = (f: number) => (f > fWheelie ? fWheelie : f);
@@ -627,6 +749,8 @@ function tiedStep(x: Internal, c: VehicleCoupling, engineTorqueNm: number, J: nu
     x.tyreF = fDrive;
   }
   x.vWheel = x.vSpeed;
+  x.vBrk = x.vSpeed;
+  x.absF = 0;
   x.spin = false;
   x.locked = false;
   x.aLong += ((x.vSpeed - v0) / h - x.aLong) * Math.min(1, h / 0.02);

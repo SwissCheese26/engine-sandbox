@@ -2,8 +2,10 @@
 // speed, top speed and 0–100 stopwatch, shift buttons (keys Q = down, E = up).
 // Issue #22: Fahrzeug-Platte (vehicle-panel.ts), wheel-spin / locked-wheel indicator, tyre warning from the
 // fitted tyre's speed index.
+// Issue #23: Umwelt- und Assistenz-Platte (environment-panel.ts) and the warning-lamp strip under the gear indicator.
 import { Drivetrain, GEARBOXES, VEHICLES, theoreticalVmax, dynoSweep, SPEED_LIMIT_OPTIONS } from "../core/index.ts";
 import type { EngineConfig, EngineSummary, GearboxType, VehicleKind } from "../core/index.ts";
+import { EnvironmentPanel, WarningLamps } from "./environment-panel.ts";
 import { VehiclePanel } from "./vehicle-panel.ts";
 
 const TYPE_LABEL: Record<GearboxType, string> = {
@@ -46,6 +48,8 @@ export class GearboxPanel {
   private spinEl: HTMLElement;
   private lockEl: HTMLElement;
   readonly vehiclePanel: VehiclePanel;
+  readonly environmentPanel: EnvironmentPanel;
+  readonly lamps = new WarningLamps();
   private cfg: EngineConfig;
   private summary: EngineSummary;
   private last = { gear: "", speed: "", vmax: "", t100: "", vmaxNote: false, gov: false, tyre: false, wheelie: false, spin: false, locked: false, tyreRating: 0 };
@@ -132,13 +136,19 @@ export class GearboxPanel {
     this.vehiclePanel.onChange = () => {
       this.onResetVehicle();
       this.syncSetup();
+      // a loaded motorcycle switches ESP/ASR off (issue #23)
+      this.environmentPanel?.sync();
     };
     el.append(this.vehiclePanel.el);
+    this.environmentPanel = new EnvironmentPanel(this.drivetrain);
+    el.append(this.environmentPanel.el);
+    q(".gearbox__gear").after(this.lamps.el);
 
     this.vehicleSel.addEventListener("change", () => {
       this.drivetrain.setVehicle(this.vehicleSel.value as VehicleKind);
       this.onResetVehicle();
       this.vehiclePanel.sync();
+      this.environmentPanel.sync();
       this.syncSetup();
     });
     this.typeSel.addEventListener("change", () => {
@@ -279,6 +289,8 @@ export class GearboxPanel {
     if (s.wheelSpin !== this.last.spin) this.spinEl.hidden = !(this.last.spin = s.wheelSpin);
     if (s.wheelsLocked !== this.last.locked) this.lockEl.hidden = !(this.last.locked = s.wheelsLocked);
     this.vehiclePanel.update();
+    this.lamps.update(d);
+    this.environmentPanel.update(s.speedKmh);
     this.gearEl.classList.toggle("is-braking", braking);
     // gearbox and final drive can only be changed at standstill (review #19)
     const moving = s.speedKmh > 0.5;

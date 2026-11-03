@@ -138,6 +138,16 @@ export class EngineDsp {
   private bov = new Svf();
   private crashLp = new Svf();
   private starterBp = new Svf();
+  /** Issue #23: tyre squeal band-passes (fundamental, upper partial), ABS rattle (valve thump, click). */
+  private squealBp = new Svf();
+  private squealBp2 = new Svf();
+  private absBp = new Svf();
+  private absClick = new Svf();
+  private squeal = 0;
+  private squealHzNow = 1000;
+  private squealPh = 0;
+  private absEnv = 0;
+  private lastAbsCycles = Number.NaN;
   private dcL = { x: 0, y: 0 };
   private dcR = { x: 0, y: 0 };
   private dcCoef: number;
@@ -156,12 +166,16 @@ export class EngineDsp {
   private crashModes = [0, 0, 0];
   private crashPh = [0, 0, 0];
 
-  private readonly filters: Svf[] = [this.lpL, this.lpR, ...this.res, this.rasp, this.intake1, this.intake2, this.mech, this.nailBp, this.bov, this.crashLp, this.starterBp];
+  private readonly filters: Svf[] = [this.lpL, this.lpR, ...this.res, this.rasp, this.intake1, this.intake2, this.mech, this.nailBp, this.bov, this.crashLp, this.starterBp, this.squealBp, this.squealBp2, this.absBp, this.absClick];
 
   /** Peak of the last processed block (after limiter), for meters/tests. */
   lastPeak = 0;
   /** Number of afterfire (pops & bangs) events triggered so far, for tests. */
   afterfireEvents = 0;
+  /** Number of ABS rattle events triggered so far (issue #23), for tests. */
+  absEvents = 0;
+  /** Peak of the tyre squeal bus in the last block (issue #23), for tests. */
+  squealPeak = 0;
 
   constructor(sampleRate: number, seed = 1) {
     this.fs = sampleRate;
@@ -190,6 +204,8 @@ export class EngineDsp {
     this.bov.set(2400, 0.9, fs);
     this.crashLp.set(900, 0.7, fs);
     this.starterBp.set(900, 1.2, fs);
+    this.absBp.set(170, 2.2, fs);
+    this.absClick.set(2600, 1.5, fs);
     this.rasp.set(v.fuel === "diesel" ? 1800 : 2600, 0.7, fs);
     for (let b = 0; b < 2; b++) {
       this.pipeD[b] = clamp(Math.round((v.bankPipeDelayS[b] ?? v.bankPipeDelayS[0] ?? 0.001) * fs), 2, MAX_PIPE_SAMPLES - 1);
@@ -228,7 +244,17 @@ export class EngineDsp {
       blowOff: num(raw.blowOff, 0, 0, 1),
       crash: !!raw.crash,
       afterfire: num(raw.afterfire ?? 0, p.afterfire ?? 0, 0, 1),
+      tyreSqueal: num(raw.tyreSqueal ?? 0, p.tyreSqueal ?? 0, 0, 1),
+      squealHz: num(raw.squealHz ?? 1000, p.squealHz ?? 1000, 300, 4000),
+      absCycles: num(raw.absCycles ?? 0, p.absCycles ?? 0, 0, Number.MAX_SAFE_INTEGER),
     };
+    // ABS: one rattle per pressure-release cycle (a jump of several counts, e.g. after a pause, is one rattle)
+    const ac = f.absCycles ?? 0;
+    if (Number.isFinite(this.lastAbsCycles) && ac > this.lastAbsCycles) {
+      this.absEnv = 1;
+      this.absEvents++;
+    }
+    this.lastAbsCycles = ac;
     if (f.blowOff > 0) this.bovEnv = Math.max(this.bovEnv, f.blowOff);
     if (f.crash && v) {
       this.crashEnv = 1;
@@ -286,6 +312,14 @@ export class EngineDsp {
     const mechAmp = v.mechGain * Math.pow(clamp(this.rpm / Math.max(1, v.revLimitRpm), 0, 1.3), 1.4) * 1.8;
     const lim = f.limiter && f.combustion;
     const limHz = diesel ? 7 : 13;
+
+    // tyre squeal pitch per block (smoothed below per sample by the level); slight wobble from the stick–slip
+    this.squealHzNow += ((f.squealHz ?? 1000) - this.squealHzNow) * 0.2;
+    this.squealBp.set(this.squealHzNow, 14, fs);
+    this.squealBp2.set(this.squealHzNow * 2.03, 10, fs);
+    const sqT = f.tyreSqueal ?? 0;
+    const absDecay = 1 - 1 / (0.022 * fs);
+    let sqPeak = 0;
 
     let peak = 0;
     for (let i = 0; i < n; i++) {
@@ -423,9 +457,31 @@ export class EngineDsp {
         this.crashEnv *= 1 - 1 / (0.45 * fs);
       }
 
+      // --- tyres (issue #23): squeal and ABS rattle, independent of the engine -------------------
+      this.squeal += (sqT - this.squeal) * (sqT > this.squeal ? this.cFast : this.cMid);
+      let tyre = 0;
+      if (this.squeal > 1e-4) {
+        this.squealPh += 7 / fs;
+        if (this.squealPh >= 1) this.squealPh -= 1;
+        const nz3 = this.noise();
+        this.squealBp.run(nz3);
+        this.squealBp2.run(nz3);
+        const wob = 0.8 + 0.2 * Math.sin(6.283185307 * this.squealPh);
+        tyre += (this.squealBp.bp * 0.9 + this.squealBp2.bp * 0.35) * this.squeal * wob * 0.5;
+      } else this.squeal = 0;
+      const tyreSq = Math.abs(tyre);
+      if (tyreSq > sqPeak) sqPeak = tyreSq;
+      if (this.absEnv > 1e-4) {
+        const nz4 = this.noise();
+        this.absBp.run(nz4);
+        this.absClick.run(nz4);
+        tyre += (this.absBp.bp * 0.55 + this.absClick.bp * 0.12 * this.absEnv) * this.absEnv;
+        this.absEnv *= absDecay;
+      } else this.absEnv = 0;
+
       // --- mix -------------------------------------------------------------------------------
       const eg = this.engineG;
-      const common = (intake + mech + nail + this.direct + aux) * eg + crash;
+      const common = (intake + mech + nail + this.direct + aux) * eg + crash + tyre;
       let l = yl * eg + common;
       let r = yr * eg + common;
 
@@ -458,6 +514,7 @@ export class EngineDsp {
       if (pa > peak) peak = pa;
     }
     this.lastPeak = peak;
+    this.squealPeak = sqPeak;
   }
 
   /** Clears all filter, delay, smoother and event state (used to recover from non-finite values). */
@@ -476,6 +533,7 @@ export class EngineDsp {
     this.master = 0; // fades back in smoothly
     this.angle = 0;
     this.bovEnv = this.crashEnv = 0;
+    this.squeal = this.absEnv = 0;
     this.phTurbo = this.phShaft = this.phSc = this.phStarter = 0;
     for (const e of this.evs) e.active = false;
   }

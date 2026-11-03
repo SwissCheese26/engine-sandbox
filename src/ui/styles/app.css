@@ -1579,3 +1579,117 @@ kbd {
   font-size: var(--fs-14);
   font-style: italic;
 }
+
+/* Issue #23: Umwelt & Assistenten plate (shares the vehicle plate layout) */
+.environment__range {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px var(--space-2);
+  align-items: center;
+  font-size: var(--fs-12);
+  color: var(--alu-shade);
+}
+.environment__range > span {
+  grid-column: 1 / -1;
+}
+.environment__range input {
+  min-width: 0;
+  min-height: 32px;
+  accent-color: var(--alu);
+}
+.environment__range output {
+  min-width: 4.5em;
+  text-align: right;
+  font-size: var(--fs-14);
+  color: var(--alu);
+}
+.environment__assists {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  padding: var(--space-2) 0 0;
+  border: 0;
+}
+.environment__assists legend {
+  padding: 0;
+  font-size: var(--fs-12);
+  color: var(--alu-shade);
+}
+.environment__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 32px;
+  font-size: var(--fs-14);
+  color: var(--alu);
+}
+.environment__toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--alu);
+}
+
+/* Kontrollleuchten (issue #23, cockpit #26): vehicle lamp colours are allowed here – amber for ABS/ESP is what the
+   driver knows from the instrument cluster (design.md: "Gelb heißt Grenze" – an intervention is the grip limit). */
+.lamps {
+  --lamp-amber: #ffad1f;
+  --lamp-ice: #e8f1f6;
+  --lamp-green: #5fd068;
+  --lamp-dark: #232b28;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: 4px;
+  border-radius: var(--radius-plate);
+  background: #141a18;
+}
+.lamp {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 26px;
+  padding: 0 4px;
+  border-radius: 2px;
+  color: var(--lamp-dark);
+}
+.lamp svg {
+  width: 30px;
+  height: 21px;
+}
+.lamp b {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.lamp[hidden] {
+  display: none;
+}
+.lamp--amber[data-state="on"],
+.lamp--amber[data-state="blink"] {
+  color: var(--lamp-amber);
+  filter: drop-shadow(0 0 3px rgba(255, 173, 31, 0.55));
+}
+.lamp--ice[data-state="on"] {
+  color: var(--lamp-ice);
+  filter: drop-shadow(0 0 3px rgba(232, 241, 246, 0.5));
+}
+.lamp--green[data-state="on"] {
+  color: var(--lamp-green);
+}
+/* ≈ 3 Hz like the ESP lamp in the cluster */
+.lamp[data-state="blink"] {
+  animation: lamp-blink 0.32s steps(1, end) infinite;
+}
+@keyframes lamp-blink {
+  50% {
+    color: var(--lamp-dark);
+    filter: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lamp[data-state="blink"] {
+    animation: none;
+  }
+}
