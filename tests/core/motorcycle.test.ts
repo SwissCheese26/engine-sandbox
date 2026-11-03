@@ -3,6 +3,10 @@ import { Drivetrain, EngineSimulator, VEHICLES, defaultInputs, summarize, valida
 import type { EngineConfig, VehicleKind } from "../../src/core/index.ts";
 import { ENGINE_LIBRARY, libraryConfig } from "../../src/data/engine-library.ts";
 import { defaultConfig } from "../../src/data/presets.ts";
+import { REFERENCE_ENGINES } from "../../src/data/reference-engines.ts";
+import { valveFloatRpm } from "../../src/core/limits.ts";
+import { valveFloatRpm as veFloatRpm } from "../../src/core/airpath.ts";
+import { crankInertia } from "../../src/core/geometry.ts";
 
 /** Issue #25: motorcycle layouts, air cooling, motorcycle vehicles. */
 
@@ -45,6 +49,33 @@ describe("motorcycle engines: limits", () => {
       expect(validateConfig(e.config).filter((w) => w.severity === "critical")).toHaveLength(0);
     });
   }
+  for (const e of moto) {
+    test(`${e.config.name}: no valve-float warning or VE drop up to the limiter (0.95·n_float > limiter)`, () => {
+      expect(0.95 * valveFloatRpm(e.config)).toBeGreaterThan(e.config.revLimitRpm);
+      expect(veFloatRpm(e.config)).toBeCloseTo(valveFloatRpm(e.config), 6);
+    });
+  }
+  test("car reference engines: valve float unchanged for B ≥ 86 mm, only raised below", () => {
+    for (const r of REFERENCE_ENGINES.filter((x) => x.config.fuel === "petrol")) {
+      const c = r.config;
+      const base = { ohv: 6600, sohc: 7400, dohc: 8200 }[c.head.valvetrain];
+      const old = base * (c.head.valvesPerCylinder >= 4 ? 1.08 : 1) * (1 + 0.1 * c.head.camProfile) * Math.sqrt(86 / c.block.boreMm);
+      if (c.block.boreMm >= 86) expect(valveFloatRpm(c)).toBeCloseTo(old, 6);
+      else expect(valveFloatRpm(c)).toBeGreaterThanOrEqual(old);
+    }
+  });
+  test("light flywheel: default from limiter > 9500, explicit field wins, car engines unchanged", () => {
+    const car = defaultConfig("petrol");
+    const light = structuredClone(car);
+    light.block.lightFlywheel = true;
+    expect(crankInertia(light)).toBeCloseTo(0.4 * crankInertia(car), 9);
+    const highRev = structuredClone(car);
+    highRev.revLimitRpm = 12000;
+    expect(crankInertia(highRev)).toBeCloseTo(0.4 * crankInertia(car), 9);
+    highRev.block.lightFlywheel = false;
+    expect(crankInertia(highRev)).toBeCloseTo(crankInertia(car), 9);
+    for (const r of REFERENCE_ENGINES) expect(r.config.revLimitRpm).toBeLessThanOrEqual(9500);
+  });
   test("titanium valves and desmodromics raise the valve-float speed", () => {
     const base = libraryConfig("lib-triumph-765-triple");
     const ti = structuredClone(base);
