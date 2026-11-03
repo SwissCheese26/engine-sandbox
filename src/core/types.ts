@@ -234,6 +234,9 @@ export interface VehicleParams {
   cgToRearAxleM?: number;
   wheelbaseM?: number;
   driveLayout?: DriveLayout;
+  /** Rotating inertia of the driven wheels incl. tyres, discs, half shafts, kg·m² (issue #22). Default 1.0 per
+   *  driven wheel (2 for FWD/RWD, 4 for AWD); a motorcycle rear wheel ≈ 0.6. */
+  drivenWheelInertiaKgM2?: number;
 }
 
 /** Driven axle(s) (issue #22). */

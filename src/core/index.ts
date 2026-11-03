@@ -37,8 +37,9 @@ export type { VehicleKind, VehiclePreset } from "./drivetrain.ts";
 export { withTyre } from "./drivetrain.ts";
 export type { CarSetup, GearboxSpec } from "./drivetrain.ts";
 export {
-  TYRE_TYPES, SPEED_INDEX, DEFAULT_TYRE, SLIDE_FACTOR, tyreGrip, tyreRadii, tyreTempFactor, speedRatingKmh,
+  TYRE_TYPES, SPEED_INDEX, DEFAULT_TYRE, SLIDE_FACTOR, PEAK_SLIP, tyreForceFactor, tyreGrip, tyreRadii, tyreTempFactor, speedRatingKmh,
   formatTyreSize, parseTyreSize,
 } from "./tyres.ts";
 export type { TyreType, RoadSurface, SpeedIndex, TyreSize, TyreSetup, TyreTypeSpec } from "./tyres.ts";
 export { drivenAxleLoadN, frontAxleShare } from "./vehicle.ts";
+export { slipRatio } from "./simulator.ts";

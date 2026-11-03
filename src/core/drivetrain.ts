@@ -16,7 +16,7 @@
  */
 import { DEFAULT_TYRE, TYRE_TYPES, speedRatingKmh, stepTyreTemp, tyreGrip, tyreRadii } from "./tyres.ts";
 import type { RoadSurface, TyreSetup } from "./tyres.ts";
-import { wheelieLimitN } from "./vehicle.ts";
+import { drivenAxleLoadN, wheelieLimitN } from "./vehicle.ts";
 import type { EngineConfig, EngineState, EngineSummary, VehicleCoupling, VehicleParams } from "./types.ts";
 
 export type GearboxType = "manual" | "dsg" | "cvt" | "sequential";
@@ -90,7 +90,8 @@ export interface VehiclePreset {
  * - Tourer (BMW R 1250 RT class): 280 kg + rider ≈ 350 kg; cW·A ≈ 0.55 m² (fairing, upright rider); 180/55 ZR17
  *   (dynamic radius 0.30 m); wheelbase 1.49 m, CG 0.65 m high, 0.72 m ahead of the rear axle. Same sequential
  *   gearbox, longer final drive (the real RT has a shaft drive, the total 6th gear ratio is similar).
- * Rolling resistance of motorcycle tyres ≈ 0.015 (tyre type "motorcycle" in tyres.ts). Rear-wheel drive with the
+ * Rolling resistance of motorcycle tyres ≈ 0.015 (tyre type "motorcycle" in tyres.ts). Rear wheel with tyre, disc and
+ * sprocket ≈ 0.6 kg·m² [S]. Rear-wheel drive with the
  * traction limit of issue #22 (rear axle load incl. load transfer).
  */
 const SUPERBIKE_TYRE: TyreSetup = { type: "motorcycle", size: { widthMm: 190, aspectPct: 55, rimInch: 17 }, speedIndex: "(Y)" };
@@ -99,13 +100,13 @@ export const VEHICLES: Record<VehicleKind, VehiclePreset> = {
   car: { label: "Auto (Kompaktklasse)", hint: "Kompaktwagen mit Fahrer.", params: DEFAULT_VEHICLE, tyre: DEFAULT_TYRE, gearboxes: ["manual", "dsg", "cvt"], finalDrive: GEARBOXES.manual.finalDrive },
   superbike: {
     label: "Motorrad (Superbike)", hint: "Superbike: 270 kg mit Fahrer, cW·A 0,30 m², Quickshifter. Wheelie-Grenze ≈ 1,2 g.",
-    params: withTyre({ massKg: 270, dragCoefficient: 0.6, frontalAreaM2: 0.5, rollingResistance: 0.015, wheelRadiusM: 0.31, cgHeightM: 0.6, cgToRearAxleM: 0.7, wheelbaseM: 1.4, driveLayout: "rwd" }, SUPERBIKE_TYRE),
+    params: withTyre({ massKg: 270, dragCoefficient: 0.6, frontalAreaM2: 0.5, rollingResistance: 0.015, wheelRadiusM: 0.31, cgHeightM: 0.6, cgToRearAxleM: 0.7, wheelbaseM: 1.4, driveLayout: "rwd", drivenWheelInertiaKgM2: 0.6 }, SUPERBIKE_TYRE),
     tyre: SUPERBIKE_TYRE,
     gearboxes: ["sequential"], finalDrive: 4.51,
   },
   tourer: {
     label: "Motorrad (Tourer)", hint: "Tourer: 350 kg mit Fahrer, cW·A 0,55 m², Quickshifter.",
-    params: withTyre({ massKg: 350, dragCoefficient: 0.65, frontalAreaM2: 0.85, rollingResistance: 0.015, wheelRadiusM: 0.3, cgHeightM: 0.65, cgToRearAxleM: 0.72, wheelbaseM: 1.49, driveLayout: "rwd" }, TOURER_TYRE),
+    params: withTyre({ massKg: 350, dragCoefficient: 0.65, frontalAreaM2: 0.85, rollingResistance: 0.015, wheelRadiusM: 0.3, cgHeightM: 0.65, cgToRearAxleM: 0.72, wheelbaseM: 1.49, driveLayout: "rwd", drivenWheelInertiaKgM2: 0.6 }, TOURER_TYRE),
     tyre: TOURER_TYRE,
     gearboxes: ["sequential"], finalDrive: 3.6,
   },
@@ -179,6 +180,9 @@ export class Drivetrain {
   private shiftT = 0;
   private pendingGear = 0;
   private holdLaunch = 0;
+  /** Pedal cap holding the launch speed while the clutch is dosed by traction (review PR #37). */
+  private launchCap = 1;
+  private gearDwell = 0;
   private lastSpeedMs = 0;
   private govActive = false;
   private govI = 0;
@@ -405,8 +409,18 @@ export class Drivetrain {
    */
   private launchSyncRpm(pedal: number): number {
     if (pedal < 0.5) return 0;
+    return 0.6 * this.launchRpm(pedal);
+  }
+
+  /**
+   * Launch speed of the automatic clutch: rises with the pedal; full pedal ≈ 45 % of the limiter (test-driver
+   * launch, petrol sports cars 3000–4000 rpm so a turbo has boost; the clutch is dosed by traction, so no burnout). Converter automatic: stall speed ≈ lock-up
+   * speed + 600 rpm [S] (issue #22, review PR #37).
+   */
+  private launchRpm(pedal: number): number {
     const idle = this.cfg.idleRpm;
-    return 0.6 * (idle + 200 + pedal * Math.max(900, 0.4 * this.cfg.revLimitRpm - idle - 200));
+    const lock = this.spec.converterLockRpm;
+    return lock ? idle + pedal * Math.max(300, lock + 600 - idle) : idle + 200 + pedal * Math.max(900, 0.45 * this.cfg.revLimitRpm - idle - 200);
   }
 
   /** Engine rpm the gear `g` would give at the current speed. */
@@ -431,11 +445,15 @@ export class Drivetrain {
     const limit = this.cfg.revLimitRpm;
 
     // --- shift execution
+    this.gearDwell = Math.max(0, this.gearDwell - dt);
     if (s.shifting) {
       this.shiftT -= dt;
       if (this.shiftT <= 0) {
         s.gear = this.pendingGear;
         s.shifting = false;
+        // DSG schedule: at least 0.5 s in a gear before the next automatic upshift, so a short rpm flare (wheel slip,
+        // clutch handover) does not skip a gear (review PR #37) [S]
+        this.gearDwell = 0.5;
       }
     }
 
@@ -448,7 +466,7 @@ export class Drivetrain {
       const upRpm = Math.min(limit * 0.97, idle + 900 + Math.pow(req, 0.8) * (limit * 0.97 - idle - 900));
       const downRpm = Math.max(idle * 1.35, upRpm * 0.42);
       if (!s.manualMode) {
-        if (rpm > upRpm && s.gear < s.gearCount && this.rpmInGear(s.gear + 1, v) > idle * 1.25) this.beginShift(s.gear + 1);
+        if (this.gearDwell <= 0 && rpm > upRpm && s.gear < s.gearCount && this.rpmInGear(s.gear + 1, v) > idle * 1.25) this.beginShift(s.gear + 1);
         else if (rpm < downRpm && s.gear > 1 && this.rpmInGear(s.gear - 1, v) < limit * 0.9) this.beginShift(s.gear - 1);
       } else if (rpm < idle * 1.1 && s.gear > 1) {
         // M mode still protects against stalling
@@ -478,6 +496,7 @@ export class Drivetrain {
     const inputRpm = s.gear > 0 ? (v / this.vehicle.wheelRadiusM) * ratio * s.finalDrive * RAD_TO_RPM : 0;
     let clutch: number;
     let torqueRatio = 1;
+    let launchHoldRpm = 0;
     // Engine not running (ignition off, stalled): the automatic clutch opens, so there is no engine braking
     // and the engine is not dragged along (simplification of an automated clutch, review #19).
     if (s.gear === 0 || !engine.running) {
@@ -502,18 +521,17 @@ export class Drivetrain {
         const launchRpm = idle + pedal * (0.6 * limit - idle);
         want = pedal > 0.02 ? Math.min(1, Math.max(0, (rpm - 0.85 * launchRpm) / Math.max(1, 0.15 * launchRpm))) : 0;
       } else {
-        // launch speed rises with the pedal; full pedal ≈ 40 % of the limiter (test-driver launch, petrol sports
-        // cars 3000–4000 rpm; diesel ≈ 1900 rpm as before) [S] (issue #22)
-        // converter automatic: stall speed ≈ lock-up speed + 600 rpm at full pedal [S]
-        const launchRpm = g.converterLockRpm
-          ? idle + pedal * Math.max(300, g.converterLockRpm + 600 - idle)
-          : idle + 200 + pedal * Math.max(900, 0.4 * limit - idle - 200);
+        const launchRpm = this.launchRpm(pedal);
+        launchHoldRpm = launchRpm;
         // quadratic engagement: the clutch bites gently near idle, so the engine (and the turbo) can rise towards
         // the launch speed before the clutch carries the full torque (issue #22, launch with traction limit)
-        const x = Math.min(1, Math.max(0, (rpm - idle * 0.9) / Math.max(1, launchRpm - idle * 0.9)));
+        // full pedal (hard launch): the clutch only starts to bite from 70 % of the launch speed, so a turbo engine
+        // gets onto its boost before it takes load (review PR #37)
+        const lo = pedal > 0.9 ? Math.max(idle * 0.9, 0.7 * launchRpm) : idle * 0.9;
+        const x = Math.min(1, Math.max(0, (rpm - lo) / Math.max(1, launchRpm - lo)));
         want = pedal > 0.02 ? x * x : 0;
       }
-      this.holdLaunch += (want - this.holdLaunch) * Math.min(1, dt * 8);
+      this.holdLaunch += (want - this.holdLaunch) * Math.min(1, dt * 15);
       clutch = this.holdLaunch * 0.9;
       // torque converter (issue #22): torque ratio ≈ 2.0 at stall falling linearly to 1 at speed ratio 0.85
       // (coupling point), typical passenger-car converter characteristic (Naunheimer et al., Automotive
@@ -521,10 +539,29 @@ export class Drivetrain {
       if (g.converterLockRpm && rpm > 1) torqueRatio = 1 + Math.max(0, 1 - inputRpm / rpm / 0.85);
     } else {
       this.holdLaunch = 1;
-      // sequential: dog engagement after the shift, only the slipper clutch smooths it (≈ 30 ms) [S]
-      clutch = Math.min(1, s.clutch + dt * (s.type === "manual" ? 4 : s.type === "sequential" ? 30 : 10));
+      // manual: driver lets the clutch in within ≈ 0.15 s after a shift (review PR #37); sequential: dog engagement,
+      // only the slipper clutch smooths it (≈ 30 ms) [S]
+      clutch = Math.min(1, s.clutch + dt * (s.type === "manual" ? 7 : s.type === "sequential" ? 30 : 10));
+      // closing right after the launch (below ≈ 30 km/h): still dosed by traction (review PR #37), engine held just
+      // above the input shaft so it does not flare while the clutch slips
+      if (s.type !== "sequential" && clutch < 0.98 && s.gear > 0 && rpm - inputRpm > 150 && vRoad < 8) launchHoldRpm = Math.max(this.launchRpm(pedal), inputRpm + 500);
+    }
+    if (launchHoldRpm > 0 && s.type !== "sequential" && s.gear > 0 && this.vehicle.driveLayout) {
+      // traction-limited launch (review PR #37): the automatic clutch lets in only the torque the driven tyres can
+      // carry at their μ peak (μ·N with load transfer); the driver/ECU then holds the launch speed with the pedal
+      // instead of flaring the engine. With a standard tyre and 400+ kW the wheels still spin after the clutch
+      // has closed – only the launch itself is dosed.
+      const total = ratio * s.finalDrive;
+      const n = drivenAxleLoadN(this.vehicle, Math.max(0, engine.accelMs2 ?? 0));
+      const capNm = Math.max(250, this.summary.peakTorqueNm * 1.6);
+      if (Number.isFinite(n) && total > 0) {
+        const tcMax = (s.grip * n * this.vehicle.wheelRadiusM) / (total * g.efficiency * torqueRatio);
+        clutch = Math.min(clutch, tcMax / capNm);
+      }
     }
     s.clutch = clutch;
+    // launch speed hold: above the launch speed the pedal is taken back (clutch dosed by traction)
+    this.launchCap = launchHoldRpm > 0 && rpm > launchHoldRpm ? Math.max(0.2, 1 - (rpm - launchHoldRpm) / 800) : 1;
 
     // --- wheelie indicator: drive force the engine would deliver vs. the limit (shown ≥ 0.3 s) (#25)
     const fLimit = wheelieLimitN(this.vehicle);
@@ -585,7 +622,8 @@ export class Drivetrain {
       return this.shiftDir > 0 ? 0 : Math.max(Math.min(pedal, this.govActive ? this.govCap : 1), 0.35);
     }
     if (this.st.type === "manual" && this.st.shifting) return 0;
-    return this.govActive ? Math.min(pedal, this.govCap) : pedal;
+    const p = Math.min(pedal, this.launchCap);
+    return this.govActive ? Math.min(p, this.govCap) : p;
   }
 
   /** Label for the gear indicator: "N", "3", "D4", "M4", "CVT". */

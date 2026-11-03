@@ -4,7 +4,7 @@ import { Drivetrain, EngineSimulator, defaultInputs, summarize } from "../../src
 import { libraryConfig } from "../../src/data/engine-library.ts";
 import type { LibraryCar } from "../../src/data/vehicle-library.ts";
 
-export function driveCar(car: LibraryCar, seconds = 90, tcCut = 4, tcFloor = 0.5, tcRise = 2, gripFactor = 1) {
+export function driveCar(car: LibraryCar, seconds = 90, tcCut = 3, tcFloor = 0.5, tcRise = 10, gripFactor = 1, slipTarget = 0.1) {
   const cfg = libraryConfig(car.engineId);
   const sim = new EngineSimulator(cfg);
   const dt = new Drivetrain(cfg, summarize(cfg));
@@ -24,9 +24,12 @@ export function driveCar(car: LibraryCar, seconds = 90, tcCut = 4, tcFloor = 0.5
   let spinS = 0;
   let speed80 = 0;
   for (let i = 0; i < seconds * 60; i++) {
-    if (dt.state.type === "manual" && sim.state.rpm > cfg.revLimitRpm - 250 && !dt.state.shifting && dt.state.clutch > 0.95 && dt.state.gear < dt.state.gearCount) dt.shift(1);
-    // simple traction control (like ASR / a test driver): cut torque while the wheels spin, then ramp back up
-    if (sim.state.wheelSpin) { spinS += h; pedal = Math.max(tcFloor, pedal * (1 - tcCut * h)); } else pedal = Math.min(1, pedal + tcRise * h);
+    if (dt.state.type === "manual" && sim.state.rpm > cfg.revLimitRpm - 120 && !dt.state.shifting && dt.state.clutch > 0.95 && dt.state.gear < dt.state.gearCount) dt.shift(1);
+    // traction control stand-in (the real ASR comes with #23): integral controller on the driven-wheel slip with a
+    // target near the μ peak (≈ 0.1); above it the torque factor falls, below it recovers
+    const slip = sim.state.wheelSlip ?? 0;
+    if (sim.state.wheelSpin) spinS += h;
+    pedal = Math.min(1, Math.max(tcFloor, pedal + h * (slip > slipTarget ? -tcCut * (slip - slipTarget) / slipTarget : tcRise)));
     step(1, pedal);
     if (i === (seconds - 10) * 60) speed80 = dt.state.speedKmh;
   }

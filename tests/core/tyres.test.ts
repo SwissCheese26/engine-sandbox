@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   DEFAULT_VEHICLE, Drivetrain, EngineSimulator, VEHICLES, defaultInputs, drivenAxleLoadN, parseTyreSize, speedRatingKmh,
-  summarize, tyreGrip, tyreRadii, tyreTempFactor,
+  PEAK_SLIP, summarize, tyreForceFactor, tyreGrip, tyreRadii, tyreTempFactor,
 } from "../../src/core/index.ts";
 import type { CarSetup, GearboxType, TyreType, VehicleParams } from "../../src/core/index.ts";
 import { defaultConfig } from "../../src/data/presets.ts";
@@ -31,10 +31,23 @@ describe("tyres (issue #22)", () => {
   });
 
   test("μ per tyre type on dry asphalt (warm) and on snow", () => {
-    const dry: Record<TyreType, number> = { standard: 1.0, winter: 0.9, uhp: 1.1, "semi-slick": 1.25, slick: 1.45, offroad: 0.8, motorcycle: 1.25 };
+    const dry: Record<TyreType, number> = { standard: 1.0, winter: 0.9, uhp: 1.15, "semi-slick": 1.25, slick: 1.45, offroad: 0.8, motorcycle: 1.3 };
     for (const [t, mu] of Object.entries(dry)) expect(tyreGrip(t as TyreType, "dry", 90)).toBeCloseTo(mu, 5);
     expect(tyreGrip("winter", "snow")).toBeGreaterThan(1.5 * tyreGrip("standard", "snow"));
     expect(tyreGrip("slick", "wet")).toBeLessThan(tyreGrip("standard", "wet"));
+  });
+
+  test("force–slip curve: 0 at 0, peak μ at PEAK_SLIP (0.08–0.12), ≈ 0.9 μ spinning or locked, odd", () => {
+    expect(tyreForceFactor(0)).toBe(0);
+    expect(PEAK_SLIP).toBeGreaterThanOrEqual(0.08);
+    expect(PEAK_SLIP).toBeLessThanOrEqual(0.12);
+    expect(tyreForceFactor(PEAK_SLIP)).toBeCloseTo(1, 6);
+    expect(tyreForceFactor(0.5 * PEAK_SLIP)).toBeGreaterThan(0.75);
+    expect(tyreForceFactor(0.5 * PEAK_SLIP)).toBeLessThan(1);
+    expect(tyreForceFactor(1)).toBeGreaterThan(0.88);
+    expect(tyreForceFactor(1)).toBeLessThan(0.92);
+    expect(tyreForceFactor(-0.3)).toBeCloseTo(-tyreForceFactor(0.3), 9);
+    for (const sl of [0.13, 0.2, 0.4, 0.8]) expect(tyreForceFactor(sl)).toBeLessThan(1);
   });
 
   test("slicks need temperature: cold clearly less grip", () => {
@@ -72,36 +85,87 @@ function rig(car: CarSetup | null, engineId: string | null, type: GearboxType = 
 }
 
 describe("traction and wheel spin (issue #22)", () => {
-  test("strong FWD car at full throttle: wheels spin, engine runs ahead of the road, accel ≤ μ·N/m", () => {
+  test("series setup (GTI, UHP) at full throttle from standstill: launch dosed at the μ peak, no burnout", () => {
     const car = libraryCar("car-vw-golf7-gti").setup;
-    const { sim, dt, step } = rig(car, "ref-vw-ea888-gen3-chhb", "dsg");
-    let spun = false;
-    let ahead = false;
+    const { sim, step } = rig(car, "ref-vw-ea888-gen3-chhb", "dsg");
+    let maxLaunchSlip = 0;
     let maxA = 0;
+    let spinT = 0;
     for (let i = 0; i < 4 * 60; i++) {
       step(1);
       const s = sim.state;
-      if (s.wheelSpin) spun = true;
-      if (s.wheelSpin && (s.wheelSpeedMs ?? 0) > (s.vehicleSpeedMs ?? 0) + 1) ahead = true;
+      expect(Number.isFinite(s.wheelSlip ?? 0)).toBe(true);
+      if ((s.vehicleSpeedMs ?? 0) > 1 && (s.vehicleSpeedMs ?? 0) < 6) maxLaunchSlip = Math.max(maxLaunchSlip, s.wheelSlip ?? 0);
+      if (s.wheelSpin) spinT += 1 / 60;
       if (i > 30) maxA = Math.max(maxA, s.accelMs2 ?? 0);
     }
-    expect(spun).toBe(true);
-    expect(ahead).toBe(true);
-    expect(dt.state.wheelSpin || spun).toBe(true);
-    // static front share 62 %, μ 1.1 → a ≤ μ·g·0.62 (load transfer only lowers it)
-    expect(maxA).toBeLessThan(1.1 * G * 0.62 * 1.03);
+    expect(maxLaunchSlip).toBeLessThan(0.2);
+    // after the clutch has closed, 350 Nm in 1st/2nd exceed the front-axle grip: without ASR (#23) the wheels spin
+    // for a while, but no endless burnout – the car keeps pulling at about the sliding limit
+    expect(spinT).toBeLessThan(3);
+    expect(sim.state.vehicleSpeedMs!).toBeGreaterThan(60 / 3.6);
+    // static front share 62 %, μ 1.15 → a ≤ μ·g·0.62 (load transfer only lowers it)
+    expect(maxA).toBeLessThan(tyreGrip("uhp") * G * 0.62 * 1.03);
+    expect(maxA).toBeGreaterThan(0.4 * G);
   });
 
-  test("same car as AWD spins much less than as FWD", () => {
-    const spin = (layout: "fwd" | "awd") => {
-      const car = libraryCar("car-vw-golf7-gti").setup;
+  test("400+ kW on standard tyres: the driven wheels spin, the engine runs ahead of the road", () => {
+    const car = libraryCar("car-ferrari-458").setup;
+    car.tyre.type = "standard";
+    const { sim, step } = rig(car, "ref-ferrari-f136fb-458", "dsg");
+    let ahead = false;
+    let spinT = 0;
+    for (let i = 0; i < 5 * 60; i++) {
+      step(1);
+      const s = sim.state;
+      if (s.wheelSpin) spinT += 1 / 60;
+      if ((s.wheelSpeedMs ?? 0) > (s.vehicleSpeedMs ?? 0) + 3) ahead = true;
+    }
+    expect(ahead).toBe(true);
+    expect(spinT).toBeGreaterThan(0.2);
+  });
+
+  test("same 400+ kW car spins much less as AWD than as RWD", () => {
+    const spin = (layout: "rwd" | "awd") => {
+      const car = libraryCar("car-ferrari-458").setup;
+      car.tyre.type = "standard";
       car.vehicle.driveLayout = layout;
-      const { sim, step } = rig(car, "ref-vw-ea888-gen3-chhb", "dsg");
+      const { sim, step } = rig(car, "ref-ferrari-f136fb-458", "dsg");
       let t = 0;
       for (let i = 0; i < 6 * 60; i++) { step(1); if (sim.state.wheelSpin) t += 1 / 60; }
       return t;
     };
-    expect(spin("awd")).toBeLessThan(0.5 * spin("fwd") + 0.05);
+    expect(spin("awd")).toBeLessThan(0.5 * spin("rwd") + 0.05);
+  });
+
+  test("steady cruise: small, steady positive slip without chatter", () => {
+    const car = libraryCar("car-vw-golf6-tdi").setup;
+    const { sim, dt, step } = rig(car, "lib-vw-ea189-20tdi-103kw");
+    for (let i = 0; i < 25 * 60; i++) {
+      if (sim.state.rpm > 3500 && !dt.state.shifting && dt.state.clutch > 0.95 && dt.state.gear < 5) dt.shift(1);
+      step(dt.state.speedKmh > 100 ? 0.35 : 1);
+    }
+    let signFlips = 0;
+    let last = Math.sign(sim.state.wheelSlip ?? 0);
+    for (let i = 0; i < 120; i++) {
+      step(0.35);
+      const sl = sim.state.wheelSlip ?? 0;
+      expect(Math.abs(sl)).toBeLessThan(0.05);
+      if (Math.sign(sl) !== last && sl !== 0) signFlips++;
+      last = Math.sign(sl);
+    }
+    expect(signFlips).toBeLessThan(3);
+  });
+
+  test("engine braking on ice in a low gear can lock the driven wheels", () => {
+    const car = libraryCar("car-vw-golf6-tdi").setup;
+    const { sim, dt, step } = rig(car, "lib-vw-ea189-20tdi-103kw");
+    for (let i = 0; i < 6 * 60; i++) step(1);
+    // 1st gear at speed, then ice and lift off: drag torque × 13:1 exceeds μ_ice·N
+    dt.setSurface("ice");
+    let minSlip = 0;
+    for (let i = 0; i < 60; i++) { step(0); minSlip = Math.min(minSlip, sim.state.wheelSlip ?? 0); }
+    expect(minSlip).toBeLessThan(-0.1);
   });
 
   test("braking from 100 km/h without ABS: wheels lock, distance ≈ v²/(2·0.9·μ·g) depends on the tyre", () => {

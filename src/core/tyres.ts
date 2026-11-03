@@ -53,8 +53,10 @@ export const TYRE_TYPES: Record<TyreType, TyreTypeSpec> = {
     rollingResistance: 0.012, coldFactor: 1, warmC: 20, hint: "Weiche Mischung, auf Schnee deutlich besser, μ ≈ 0,9 trocken.",
   },
   uhp: {
-    label: "Sport (UHP)", mu: { dry: 1.1, wet: 0.75, snow: 0.15, ice: 0.07, gravel: 0.55 },
-    rollingResistance: 0.012, coldFactor: 0.95, warmC: 30, hint: "Ultra-High-Performance, μ ≈ 1,1.",
+    // dry μ 1.15: sport summer tyres reach ≈ 1.1–1.2 g in braking tests (100–0 km/h in 33–35 m, e.g. ADAC/AutoBild
+    // summer tyre tests of UHP sizes) [S] (review PR #37)
+    label: "Sport (UHP)", mu: { dry: 1.15, wet: 0.75, snow: 0.15, ice: 0.07, gravel: 0.55 },
+    rollingResistance: 0.012, coldFactor: 0.95, warmC: 30, hint: "Ultra-High-Performance, μ ≈ 1,15.",
   },
   "semi-slick": {
     label: "Semi-Slick", mu: { dry: 1.25, wet: 0.6, snow: 0.12, ice: 0.06, gravel: 0.5 },
@@ -68,16 +70,34 @@ export const TYRE_TYPES: Record<TyreType, TyreTypeSpec> = {
     label: "Offroad (AT)", mu: { dry: 0.8, wet: 0.6, snow: 0.3, ice: 0.1, gravel: 0.7 },
     rollingResistance: 0.016, coldFactor: 1, warmC: 20, hint: "All-Terrain, μ ≈ 0,8 auf Asphalt, mehr Rollwiderstand.",
   },
-  // motorcycle sport tyre (issue #25 vehicles): soft compound, longitudinal μ ≈ 1.2–1.3 (sport bikes are wheelie-
-  // limited rather than traction-limited when accelerating on dry asphalt; Cossalter ch. 2), f_R ≈ 0.015 [S]
+  // motorcycle sport tyre (issue #25 vehicles): soft compound, longitudinal μ ≈ 1.2–1.4 (sport bikes are wheelie-
+  // limited rather than traction-limited when accelerating on dry asphalt; Cossalter ch. 2), f_R ≈ 0.015 [S].
+  // 1.3 so that at the wheelie limit (≈ 1.17 g) the rear tyre works below its peak slip (review PR #37)
   motorcycle: {
-    label: "Motorrad (Sport)", mu: { dry: 1.25, wet: 0.8, snow: 0.15, ice: 0.06, gravel: 0.5 },
-    rollingResistance: 0.015, coldFactor: 1, warmC: 20, hint: "Motorrad-Sportreifen, μ ≈ 1,25 längs.",
+    label: "Motorrad (Sport)", mu: { dry: 1.3, wet: 0.8, snow: 0.15, ice: 0.06, gravel: 0.5 },
+    rollingResistance: 0.015, coldFactor: 1, warmC: 20, hint: "Motorrad-Sportreifen, μ ≈ 1,3 längs.",
   },
 };
 
 /** Sliding friction as share of the peak (locked wheel, spinning wheel) [S]. */
 export const SLIDE_FACTOR = 0.9;
+/** Longitudinal slip at the μ peak [S] (passenger-car tyres ≈ 0.08–0.15 on dry asphalt, sport tyres at the low end; Pacejka ch. 1). */
+export const PEAK_SLIP = 0.08;
+
+/**
+ * Normalised force–slip curve (review PR #37), a simplified Magic-Formula shape: rises from 0 with slope 2/PEAK_SLIP,
+ * reaches 1 (= μ) at PEAK_SLIP, then falls exponentially towards SLIDE_FACTOR at large slip (spinning or locked
+ * wheel). Odd in the slip (braking = negative). F_x = μ·N·tyreForceFactor(s).
+ */
+export function tyreForceFactor(slip: number): number {
+  const s = Math.abs(slip);
+  let f: number;
+  if (s <= PEAK_SLIP) {
+    const x = s / PEAK_SLIP;
+    f = (2 * x) / (1 + x * x);
+  } else f = SLIDE_FACTOR + (1 - SLIDE_FACTOR) * Math.exp(-(s - PEAK_SLIP) / 0.25);
+  return slip < 0 ? -f : f;
+}
 
 /** Tyre size in ETRTO notation: width mm / aspect ratio % R rim inch. */
 export interface TyreSize {

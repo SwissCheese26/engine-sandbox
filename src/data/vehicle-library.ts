@@ -83,7 +83,7 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
       tyre: tyre("standard", 245, 45, 17, "W"),
       gearbox: "dsg",
       // ZF 6HP26: 4.171/2.340/1.521/1.143/0.867/0.691, final 2.56 [S]
-      gearboxSpec: { ...box([4.171, 2.34, 1.521, 1.143, 0.867, 0.691], 2.56, 0.9, 0.2), converterLockRpm: 1700 },
+      gearboxSpec: { ...box([4.171, 2.34, 1.521, 1.143, 0.867, 0.691], 2.56, 0.9, 0.2), converterLockRpm: 2400 },
       speedLimitKmh: 250,
     },
     factory: { kerbKg: 1590, kerbNorm: "DIN", t0to100S: 6.8, vmaxKmh: 248, vmaxGoverned: false, cw: 0.28 },
@@ -171,15 +171,15 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
   {
     id: "car-chevrolet-corvette-c6", name: "Chevrolet Corvette C6 (LS3)", maker: "Chevrolet", years: "2008–2013", engineId: "ref-gm-ls3-62",
     setup: {
-      vehicle: body(mass(1441, "DIN"), 0.28, 2.0, "rwd", 0.51, 0.46, 2.685),
+      vehicle: body(mass(1461, "DIN"), 0.28, 2.0, "rwd", 0.51, 0.46, 2.685),
       tyre: tyre("uhp", 285, 35, 19, "(Y)"),
       gearbox: "manual",
       // Tremec TR6060: 2.66/1.78/1.30/1.00/0.74/0.50, final 3.42 [GM Corvette 2008 specifications]
       gearboxSpec: box([2.66, 1.78, 1.3, 1.0, 0.74, 0.5], 3.42, 0.92, 0.25),
       speedLimitKmh: null,
     },
-    factory: { kerbKg: 1441, kerbNorm: "DIN", t0to100S: 4.3, vmaxKmh: 306, vmaxGoverned: false, cw: 0.28 },
-    source: "Chevrolet Europe Corvette C6 2008 (321 kW, 4,3 s, 306 km/h; 1441 kg Coupé) [S: nicht neu verifiziert]",
+    factory: { kerbKg: 1461, kerbNorm: "DIN", t0to100S: 4.4, vmaxKmh: 306, vmaxGoverned: false, cw: 0.28 },
+    source: "auto-data.net Corvette Coupé C6 6.2 V8 437 PS, 6-Gang (1461 kg, 4,4 s, 306 km/h, 285/35 ZR19 hinten)",
   },
   {
     id: "car-ferrari-458", name: "Ferrari 458 Italia (F1-DCT)", maker: "Ferrari", years: "2009–2015", engineId: "ref-ferrari-f136fb-458",
@@ -201,7 +201,7 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
       tyre: tyre("standard", 225, 55, 17, "W"),
       gearbox: "dsg",
       // 9G-Tronic: 5.35/3.24/2.25/1.64/1.21/1.00/0.86/0.72/0.60, final 2.65 [S]
-      gearboxSpec: { ...box([5.35, 3.24, 2.25, 1.64, 1.21, 1.0, 0.86, 0.72, 0.6], 2.65, 0.9, 0.15), converterLockRpm: 1700 },
+      gearboxSpec: { ...box([5.35, 3.24, 2.25, 1.64, 1.21, 1.0, 0.86, 0.72, 0.6], 2.65, 0.9, 0.15), converterLockRpm: 2400 },
       speedLimitKmh: null,
     },
     factory: { kerbKg: 1680, kerbNorm: "EU", t0to100S: 7.3, vmaxKmh: 240, vmaxGoverned: false, cw: 0.23 },
