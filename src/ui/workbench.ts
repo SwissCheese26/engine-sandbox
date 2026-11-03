@@ -5,6 +5,8 @@ import type { EngineConfig, FuelKind, Warning } from "../core/index.ts";
 import { defaultConfig } from "../data/presets.ts";
 import { ENGINE_LIBRARY, libraryConfig } from "../data/engine-library.ts";
 import type { LibraryEngine } from "../data/engine-library.ts";
+import { STAGE_LABELS, applyTuningStage, tuningWarnings } from "../data/tuning.ts";
+import type { TuningStage } from "../data/tuning.ts";
 import { FIELDS, GROUPS, getPath, isVisible, setPath } from "./fields.ts";
 import type { Field } from "./fields.ts";
 import { clamp, fmt, parseNumber, snap } from "./format.ts";
@@ -26,6 +28,16 @@ export class Workbench {
   /** True once the user typed an own name; until then the name follows the configuration. */
   private customName = false;
   private lockNote: HTMLElement;
+  /** Tuning (#16): production config the stages are computed from (null while at "Serie"). */
+  private tuneBase: { cfg: EngineConfig; customName: boolean } | null = null;
+  private stage: TuningStage = 0;
+  private forged = true;
+  /** Values were changed by hand while a stage is active (shown as "Stage n (angepasst)"). */
+  private tunedDirty = false;
+  private tuneChanges: string[] = [];
+  /** One-shot hint after a stage change discarded manual edits. */
+  private discardNote = "";
+  private tuning!: HTMLElement;
 
   constructor(initial: EngineConfig) {
     this.cfg = structuredClone(initial);
@@ -78,7 +90,8 @@ export class Workbench {
     });
     this.body = document.createElement("div");
     this.body.className = "bench__plates";
-    this.el.append(head, this.body);
+    this.tuning = this.buildTuning();
+    this.el.append(head, this.tuning, this.body);
     this.cfg.name = autoName(this.cfg);
     this.render();
   }
@@ -101,7 +114,7 @@ export class Workbench {
     this.el.classList.toggle("is-locked", locked);
     this.lockNote.hidden = !locked;
     for (const c of this.el.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>("input, select, button")) {
-      c.disabled = locked;
+      c.disabled = locked || c.dataset.fixedDisabled === "1";
     }
   }
 
@@ -113,12 +126,14 @@ export class Workbench {
   loadLibrary(id: string) {
     if (this.locked) return;
     this.customName = true;
+    this.resetTuning();
     this.apply(libraryConfig(id));
   }
 
   loadPreset(fuel: FuelKind) {
     if (this.locked) return;
     this.customName = false;
+    this.resetTuning();
     this.apply(defaultConfig(fuel));
   }
 
@@ -141,6 +156,11 @@ export class Workbench {
       return;
     }
     this.apply(setPath(this.cfg, path, value));
+    if (this.stage > 0 && !this.tunedDirty) {
+      this.tunedDirty = true;
+      this.discardNote = "";
+      this.syncTuning(this.tuneChanges);
+    }
   }
 
   private sig(): string {
@@ -266,6 +286,52 @@ export class Workbench {
         row.append(label, valWrap, slider, range, effect, warn);
         break;
       }
+      case "optional-number": {
+        const r = f.range(this.cfg);
+        const on = document.createElement("input");
+        on.type = "checkbox";
+        on.className = "switch";
+        on.id = id;
+        on.dataset.role = "control";
+        on.setAttribute("role", "switch");
+        on.setAttribute("aria-describedby", describe);
+        const state = document.createElement("span");
+        state.className = "field__state";
+        state.setAttribute("aria-hidden", "true");
+        const slider = document.createElement("input");
+        slider.type = "range";
+        slider.dataset.role = "slider";
+        slider.min = String(r.min);
+        slider.max = String(r.max);
+        slider.step = String(r.step);
+        slider.setAttribute("aria-label", f.label);
+        const val = document.createElement("input");
+        val.type = "text";
+        val.inputMode = "decimal";
+        val.className = "num field__num";
+        val.dataset.role = "value";
+        val.setAttribute("aria-label", `${f.label} in ${f.unit}`);
+        const unit = document.createElement("span");
+        unit.className = "field__unit";
+        unit.textContent = f.unit;
+        on.addEventListener("change", () => this.set(f.path, on.checked ? f.defaultOn(this.cfg) : undefined));
+        slider.addEventListener("input", () => this.set(f.path, Number(slider.value)));
+        const commit = () => {
+          const rr = f.range(this.cfg);
+          const raw = parseNumber(val.value, { min: rr.min, max: rr.max });
+          if (!Number.isFinite(raw)) return this.sync();
+          this.set(f.path, snap(clamp(raw, rr.min, rr.max), rr.min, rr.step));
+        };
+        val.addEventListener("change", commit);
+        val.addEventListener("keydown", (e) => {
+          if (e.key === "Enter") commit();
+        });
+        const valWrap = document.createElement("span");
+        valWrap.className = "field__value";
+        valWrap.append(val, unit);
+        row.append(label, on, state, valWrap, slider, effect, warn);
+        break;
+      }
       case "choice-number": {
         const values = f.values(this.cfg);
         const group = document.createElement("div");
@@ -343,6 +409,117 @@ export class Workbench {
     return row;
   }
 
+  /** Back to "Serie" without touching the config (a new engine was loaded). */
+  private resetTuning() {
+    this.tuneBase = null;
+    this.stage = 0;
+    this.tunedDirty = false;
+    this.discardNote = "";
+    this.syncTuning([]);
+  }
+
+  /**
+   * Tuning plate (#16): Serie / Stage 1 / 2 / 3. Every stage is computed from the remembered production config,
+   * so "Serie" leads back; all values stay individually adjustable afterwards.
+   */
+  private buildTuning(): HTMLElement {
+    const plate = document.createElement("section");
+    plate.className = "plate plate--tuning";
+    plate.dataset.group = "tuning";
+    plate.setAttribute("aria-labelledby", "plate-tuning");
+    plate.innerHTML = `<span class="screw screw--tl" aria-hidden="true"></span><span class="screw screw--tr" aria-hidden="true"></span><span class="screw screw--bl" aria-hidden="true"></span><span class="screw screw--br" aria-hidden="true"></span>
+      <h3 class="plate__title" id="plate-tuning">Tuning</h3>
+      <p class="plate__effect">Stufen ändern mehrere Werte gemeinsam, ausgehend vom geladenen Serienmotor. Danach bleibt alles einzeln einstellbar.</p>
+      <div class="field field--choice-number">
+        <span class="field__label" id="tuning-l">Stufe</span>
+        <div class="seg" role="radiogroup" aria-labelledby="tuning-l">${([0, 1, 2, 3] as const).map((n) => `<label class="seg__opt"><input type="radio" name="tuning-stage" value="${n}" data-role="control" /><span>${STAGE_LABELS[n]}</span></label>`).join("")}</div>
+      </div>
+      <div class="field field--toggle">
+        <label class="field__label" for="tuning-forged">Stage 3 mit geschmiedeten Kolben und Pleueln</label>
+        <input type="checkbox" class="switch" role="switch" id="tuning-forged" checked />
+        <span class="field__state" aria-hidden="true">Ein</span>
+      </div>
+      <p class="tuning__status" role="status" aria-live="polite" hidden></p>
+      <ul class="tuning__changes" aria-live="polite"></ul>
+      <div class="tuning__warn" role="status" aria-live="polite"></div>`;
+    for (const r of plate.querySelectorAll<HTMLInputElement>('input[name="tuning-stage"]')) {
+      r.addEventListener("change", () => r.checked && this.setStage(Number(r.value) as TuningStage));
+    }
+    const forged = plate.querySelector<HTMLInputElement>("#tuning-forged")!;
+    forged.addEventListener("change", () => {
+      this.forged = forged.checked;
+      plate.querySelector<HTMLElement>("#tuning-forged + .field__state")!.textContent = forged.checked ? "Ein" : "Aus";
+      if (this.stage === 3) this.setStage(3);
+    });
+    queueMicrotask(() => this.syncTuning([]));
+    return plate;
+  }
+
+  /** Applies a tuning stage relative to the remembered production config. */
+  setStage(stage: TuningStage) {
+    if (this.locked) return this.syncTuning([]);
+    if (!this.tuneBase) this.tuneBase = { cfg: structuredClone(this.cfg), customName: this.customName };
+    const base = this.tuneBase;
+    // manual edits on top of a stage are discarded: every stage is recomputed from the production config
+    this.discardNote = this.tunedDirty ? "Manuelle Änderungen wurden verworfen – die Stufe rechnet immer vom Serienstand." : "";
+    this.tunedDirty = false;
+    this.stage = stage;
+    let changes: string[];
+    let next: EngineConfig;
+    if (stage === 0) {
+      next = structuredClone(base.cfg);
+      changes = [];
+      this.customName = base.customName;
+      this.tuneBase = null;
+    } else {
+      const r = applyTuningStage(base.cfg, stage, { forgedInternals: this.forged });
+      next = r.config;
+      changes = r.changes;
+      this.customName = true;
+    }
+    this.apply(next);
+    this.syncTuning(changes);
+  }
+
+  private syncTuning(changes: string[]) {
+    const t = this.tuning;
+    if (!t) return;
+    this.tuneChanges = changes;
+    for (const r of t.querySelectorAll<HTMLInputElement>('input[name="tuning-stage"]')) {
+      const n = Number(r.value) as TuningStage;
+      r.checked = n === this.stage;
+      r.nextElementSibling!.textContent = STAGE_LABELS[n] + (n === this.stage && this.tunedDirty ? " (angepasst)" : "");
+    }
+    const status = t.querySelector<HTMLElement>(".tuning__status")!;
+    const msg = this.tunedDirty
+      ? `${STAGE_LABELS[this.stage]} (angepasst): Ein Stufenwechsel oder „Serie“ verwirft die manuellen Änderungen.`
+      : this.discardNote;
+    status.textContent = msg;
+    status.hidden = msg === "";
+    const list = t.querySelector<HTMLElement>(".tuning__changes")!;
+    list.replaceChildren(...(changes.length ? changes : ["Serienstand – wähle eine Stufe."]).map((c) => {
+      const li = document.createElement("li");
+      li.textContent = c;
+      return li;
+    }));
+    const warn = t.querySelector<HTMLElement>(".tuning__warn")!;
+    warn.replaceChildren();
+    if (this.stage > 0) {
+      let ws: Warning[] = [];
+      try {
+        ws = tuningWarnings(this.cfg, this.stage);
+      } catch {
+        ws = [];
+      }
+      for (const w of ws) {
+        const p = document.createElement("p");
+        p.className = `note note--${w.severity}`;
+        p.textContent = w.message;
+        warn.append(p);
+      }
+    }
+  }
+
   /** Writes current values into the existing controls and marks invalid combinations. */
   private sync() {
     const warnings = safeValidate(this.cfg);
@@ -364,7 +541,23 @@ export class Workbench {
       } else if (f.kind === "choice-number") {
         for (const inp of row.querySelectorAll<HTMLInputElement>("input")) inp.checked = Number(inp.value) === v;
       } else if (f.kind === "select") {
-        row.querySelector<HTMLSelectElement>("select")!.value = String(v);
+        const sel = row.querySelector<HTMLSelectElement>("select")!;
+        sel.value = v === undefined ? (f.options(this.cfg)[0]?.value ?? "") : String(v);
+      } else if (f.kind === "optional-number") {
+        const on = v !== undefined;
+        row.querySelector<HTMLInputElement>(".switch")!.checked = on;
+        row.querySelector<HTMLElement>(".field__state")!.textContent = on ? "Ein" : "Aus";
+        const slider = row.querySelector<HTMLInputElement>('input[type="range"]')!;
+        const val = row.querySelector<HTMLInputElement>(".field__num")!;
+        slider.hidden = !on;
+        (row.querySelector<HTMLElement>(".field__value")!).hidden = !on;
+        if (on) {
+          slider.value = String(v);
+          slider.setAttribute("aria-valuetext", `${fmt(v as number, f.decimals)} ${f.unit}`);
+          if (document.activeElement !== val) val.value = fmt(v as number, f.decimals);
+          const r = f.range(this.cfg);
+          row.style.setProperty("--p", String(((v as number) - r.min) / (r.max - r.min)));
+        }
       } else if (f.kind === "toggle") {
         row.querySelector<HTMLInputElement>("input")!.checked = Boolean(v);
         row.querySelector<HTMLElement>(".field__state")!.textContent = v ? "Ein" : "Aus";
@@ -372,6 +565,14 @@ export class Workbench {
         const inp = row.querySelector<HTMLInputElement>("input")!;
         if (document.activeElement !== inp) inp.value = String(v);
       }
+      // shown but fixed for this config (e.g. pops on a diesel): control greyed out, hint instead of the effect line
+      const hint = f.disabledHint?.(this.cfg);
+      row.classList.toggle("is-disabled", Boolean(hint));
+      for (const c of row.querySelectorAll<HTMLInputElement | HTMLSelectElement>("input, select")) {
+        c.dataset.fixedDisabled = hint ? "1" : "";
+        c.disabled = this.locked || Boolean(hint);
+      }
+      row.querySelector<HTMLElement>(".field__effect")!.textContent = hint ?? f.effect;
       const w = (f.warns ?? []).map((c) => byCode.get(c)).find(Boolean);
       const wEl = row.querySelector<HTMLElement>(".field__warn")!;
       row.classList.toggle("is-limit", Boolean(w));

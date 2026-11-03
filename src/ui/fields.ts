@@ -1,9 +1,10 @@
 // Declarative description of every EngineConfig parameter shown on the workbench. Pure, no DOM.
 // The workbench renders this list; tests check that every config leaf is covered.
+import { summarize } from "../core/index.ts";
 import type { CylinderLayout, EngineConfig, WarningCode } from "../core/index.ts";
 import { clamp, snap } from "./format.ts";
 
-export type GroupId = "block" | "head" | "mixture" | "induction" | "exhaust" | "cooling" | "limits";
+export type GroupId = "block" | "head" | "mixture" | "induction" | "exhaust" | "cooling" | "limits" | "ecu";
 
 export const GROUPS: { id: GroupId; title: string; effect: string }[] = [
   { id: "block", title: "Block", effect: "Bohrung, Hub und Zylinderzahl bestimmen Hubraum und Drehzahlfestigkeit." },
@@ -13,6 +14,7 @@ export const GROUPS: { id: GroupId; title: string; effect: string }[] = [
   { id: "exhaust", title: "Abgas", effect: "Abgasreinigung kostet Gegendruck, ein langer Krümmer bringt Drehmoment." },
   { id: "cooling", title: "Kühlung", effect: "Der Kühler hält bei Dauervolllast die Temperaturen im Rahmen." },
   { id: "limits", title: "Grenzen", effect: "Begrenzer und Leerlauf legen fest, in welchem Band der Motor arbeitet." },
+  { id: "ecu", title: "Steuergerät", effect: "Das Steuergerät begrenzt das Drehmoment über Ladedruck, Einspritzmenge oder Drosselklappe." },
 ];
 
 export interface Option {
@@ -31,6 +33,8 @@ interface FieldBase {
   visible?: (cfg: EngineConfig) => boolean;
   /** Warning codes from validateConfig / state that concern this field. */
   warns?: WarningCode[];
+  /** Shown but not changeable for this config; returns the hint text (e.g. pops on a diesel). */
+  disabledHint?: (cfg: EngineConfig) => string | undefined;
 }
 
 export interface NumberField extends FieldBase {
@@ -57,11 +61,21 @@ export interface ToggleField extends FieldBase {
   kind: "toggle";
 }
 
+/** Optional number (config value may be undefined = "aus"): switch plus slider. */
+export interface OptionalNumberField extends FieldBase {
+  kind: "optional-number";
+  unit: string;
+  decimals: number;
+  range: (cfg: EngineConfig) => { min: number; max: number; step: number };
+  /** Value used when the switch is turned on. */
+  defaultOn: (cfg: EngineConfig) => number;
+}
+
 export interface TextField extends FieldBase {
   kind: "text";
 }
 
-export type Field = NumberField | ChoiceNumberField | SelectField | ToggleField | TextField;
+export type Field = NumberField | ChoiceNumberField | SelectField | ToggleField | TextField | OptionalNumberField;
 
 const isDiesel = (c: EngineConfig) => c.fuel === "diesel";
 const isPetrol = (c: EngineConfig) => c.fuel === "petrol";
@@ -449,6 +463,18 @@ export const FIELDS: Field[] = [
     effect: "Baut Stickoxide ab und erlaubt früheren Spritzbeginn.",
     visible: isDiesel,
   },
+  {
+    kind: "select", path: "exhaust.overrunPops", group: "exhaust", label: "Schubknallen (Pops & Bangs)",
+    effect: "Im Schub etwas Kraftstoff mit Spätzündung: knallt im Auspuff, heizt Krümmer und Kat auf.",
+    warns: ["catalyst-overheat"],
+    options: () => [
+      { value: "off", label: "Aus" },
+      { value: "mild", label: "Dezent" },
+      { value: "popcorn", label: "Popcorn" },
+      { value: "brutal", label: "Brutal" },
+    ],
+    disabledHint: (c) => (isDiesel(c) ? "Diesel: physikalisch kein Schubknallen – kein Zündfunke, keine Einspritzung im Schub." : undefined),
+  },
   // ── Kühlung ──────────────────────────────────────────────────────────────
   {
     kind: "select", path: "cooling.type", group: "cooling", label: "Kühlungsart",
@@ -487,6 +513,14 @@ export const FIELDS: Field[] = [
     effect: "Höher → stabiler Leerlauf, mehr Verbrauch im Stand.",
     warns: ["stall"],
     range: () => ({ min: 500, max: 1500, step: 25 }),
+  },
+  // ── Steuergerät ──────────────────────────────────────────────────────────
+  {
+    kind: "optional-number", path: "ecuTorqueLimitNm", group: "ecu", label: "Drehmomentbegrenzung Steuergerät", unit: "Nm", decimals: 0,
+    effect: "Hält das Drehmoment am Limit (Getriebeschutz): weniger Ladedruck bzw. Einspritzmenge statt hartem Abschalten.",
+    range: () => ({ min: 50, max: 3000, step: 5 }),
+    // switching on starts at 90 % of the current full-load peak, so the effect is visible right away
+    defaultOn: (c) => Math.max(50, Math.round((0.9 * summarize({ ...c, ecuTorqueLimitNm: undefined }).peakTorqueNm) / 5) * 5),
   },
 ];
 
@@ -543,7 +577,8 @@ export function normalizeConfig(cfg: EngineConfig, changedPath?: string): Engine
   cfg.head.valveMaterial ??= "steel";
   cfg.head.valveSprings ??= "standard";
   for (const f of FIELDS) {
-    if (f.kind !== "number" || !isVisible(f, cfg)) continue;
+    if ((f.kind !== "number" && f.kind !== "optional-number") || !isVisible(f, cfg)) continue;
+    if (f.kind === "optional-number" && getPath(cfg, f.path) === undefined) continue;
     const r = f.range(cfg);
     const v = getPath(cfg, f.path) as number;
     const c = clamp(v, r.min, r.max);

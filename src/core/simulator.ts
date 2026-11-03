@@ -7,7 +7,7 @@
  */
 import { R_AIR, steadyManifoldRatio, throttlePsi, volumetricEfficiency } from "./airpath.ts";
 import { dieselFires } from "./combustion-diesel.ts";
-import { chokeLimitedUpKpa, evaluateCycle, fullLoadAt, getModel, knockBoostCutBar, manifoldTempK, newOpPoint } from "./cycle.ts";
+import { chokeLimitedUpKpa, evaluateCycle, fullLoadAt, getModel, knockBoostCutBar, manifoldTempK, newOpPoint, torqueLimitCaps } from "./cycle.ts";
 import type { CycleOut, Model, OpPoint } from "./cycle.ts";
 import { meanPistonSpeed } from "./geometry.ts";
 import { createLimitTracker, evaluateLimits, oilPressureBar, stepThermal, stepTurbo } from "./subsystems.ts";
@@ -22,6 +22,22 @@ const RPM_PER_RADS = 30 / Math.PI;
 const H = 0.001; // internal step [s]
 /** Largest dt handled per call; longer frames (tab in background) are clamped. */
 const MAX_DT = 0.25;
+
+/**
+ * Overrun afterfire calibrations (issue #16) [S, tuner maps]: fuel share of the stoichiometric air charge and the
+ * intensity handed to the sound engine. Active above idle + 500 1/min, faded in over the next 500 1/min.
+ */
+/**
+ * `throttle`: pops maps crack the throttle open in overrun so there is oxygen for the afterfire, expressed as a
+ * multiple of the idle throttle feed-forward (less engine braking as a side effect, as on real pops maps).
+ */
+const POPS: Record<"mild" | "popcorn" | "brutal", { fuel: number; intensity: number; throttle: number }> = {
+  mild: { fuel: 0.17, intensity: 0.35, throttle: 0.6 },
+  popcorn: { fuel: 0.25, intensity: 0.65, throttle: 1.0 },
+  brutal: { fuel: 0.4, intensity: 1, throttle: 1.5 },
+};
+/** Catalyst substrate temperature from which ageing accelerates sharply [S: cordierite/washcoat ≈ 900 … 1000 °C]. */
+const CAT_OVERHEAT_C = 900;
 
 interface Internal {
   rpm: number;
@@ -46,6 +62,8 @@ interface Internal {
   destroyed: boolean;
   /** Vehicle speed m/s (dynoMode "vehicle"). */
   vSpeed: number;
+  /** Catalyst substrate temperature °C (issue #16, only tracked with exhaust.catalyst). */
+  catC: number;
 }
 
 /** Steady idle command (feed-forward for the idle governor) found by bisection at warm conditions. */
@@ -123,7 +141,7 @@ export class EngineSimulator {
       rpm: 0, crank: 0, pManKpa: 101.325, turbo: { shaftRpm: 0, boostBar: 0 },
       thermal: { coolantC: amb, oilC: amb, egtC: amb }, knockRetard: 0, idleI: this.idleU0, dynoI: 0,
       running: false, armed: false, stallT: 0, stalled: false, limiterCut: false, relLoad: 0, load: 0, boostCut: 0,
-      initialised: false, wear: 0, destroyed: false, vSpeed: 0,
+      initialised: false, wear: 0, destroyed: false, vSpeed: 0, catC: amb,
     };
     this.lastOut = null;
     this.s = {
@@ -131,7 +149,7 @@ export class EngineSimulator {
       fmepBar: 0, load: 0, manifoldAbsKpa: 101.325, boostBar: 0, turboRpm: 0, airMassFlowKgS: 0, fuelMassFlowGS: 0,
       fuelFlowLh: 0, bsfcGkWh: Number.NaN, efficiency: 0, lambda: this.config.fuel === "diesel" ? 99 : 1, egtC: amb,
       coolantC: amb, oilC: amb, oilPressureBar: 0, peakPressureBar: 0, meanPistonSpeedMs: 0, knock: 0, smoke: 0, wear: 0,
-      warnings: [], damage: [], starterEngaged: false,
+      warnings: [], damage: [], starterEngaged: false, afterfire: 0, torqueLimited: false,
     };
   }
 
@@ -160,6 +178,7 @@ export class EngineSimulator {
         ? { coolantC: Math.max(ambientC, isAirCooled(cfg) ? 140 : cfg.cooling.thermostatOpenC), oilC: Math.max(ambientC, 90), egtC: Math.max(ambientC, 150) }
         : { coolantC: ambientC, oilC: ambientC, egtC: ambientC };
       x.pManKpa = ambientKpa;
+      x.catC = x.thermal.egtC;
       x.initialised = true;
     }
     const s: EngineState = { ...this.s, warnings: this.s.warnings, damage: this.s.damage };
@@ -204,6 +223,10 @@ export class EngineSimulator {
     let airSum = 0;
     let anyFire = false;
     let fuelCycSum = 0;
+    let afterfireSum = 0;
+    let afFuelSum = 0;
+    let limitedAny = false;
+    const pops = m.p && cfg.exhaust.overrunPops && cfg.exhaust.overrunPops !== "off" ? POPS[cfg.exhaust.overrunPops] : null;
     for (let i = 0; i < nSub; i++) {
       const rpm = x.rpm;
       // --- combustion permission
@@ -236,6 +259,14 @@ export class EngineSimulator {
       op.knockRetardDeg = x.knockRetard + reserve;
       op.combust = combust;
       op.fuelCut = x.limiterCut || (overrun && m.fuel === "petrol");
+      // pops & bangs (issue #16): in overrun (pedal 0, rpm > idle + 500) a little fuel with very late spark instead
+      // of the full fuel cut; never on the rev limiter and only with a running, firing engine
+      const popW = pops && overrun && !x.limiterCut && combust ? clamp((rpm - idle - 500) / 500, 0, 1) : 0;
+      op.afterfireFuel = pops ? pops.fuel * popW : 0;
+      afterfireSum += pops ? pops.intensity * popW : 0;
+      // ECU torque limit (issue #18): quantity cap (diesel) / manifold pressure cap (petrol) from the steady table
+      const caps = torqueLimitCaps(m, rpm);
+      op.fuelCapKg = caps.fuelKg;
       op.loadPrev = x.load;
       op.cranking = starter;
       // diesel.md §3.1 EGR, part load only. Load taken from the fuel command (the ECU closes the valve as soon as
@@ -250,7 +281,7 @@ export class EngineSimulator {
         op.relLoad = op.fuelCmd;
       } else {
         // throttle (petrol.md §3.3): φ = φidle + (1 − φidle)·pedal^1.8, manifold filling, semi-implicit
-        const phi = uIdle + (1 - uIdle) * Math.pow(pedal, 1.8);
+        const phi = Math.max(uIdle + (1 - uIdle) * Math.pow(pedal, 1.8), pops ? pops.throttle * this.idleU0 * popW : 0);
         const veEff = volumetricEfficiency(m.ve, Math.max(rpm, 30), TManK);
         const k = (R_AIR * TManK) / m.VMan / 1000; // kPa per kg
         const cTh = (phi * m.throttleA0 * m.Vh) / (120 * R_AIR * TManK); // kg/(s·kPa) · ψ
@@ -258,7 +289,12 @@ export class EngineSimulator {
         // Filling/emptying of the manifold (petrol.md §3.3 mass balance) solved as first-order relaxation to the
         // throttle/engine flow equilibrium with the linearised time constant VMan/(R·T·(c_eng + c_throttle)).
         // Unconditionally stable (explicit Euler oscillated with ITB plenums at high rpm, review of #17).
-        const pSteady = pUpKpa * (cEng > 0 ? steadyManifoldRatio((cTh * 1000) / cEng, 1) : 1);
+        let pSteady = pUpKpa * (cEng > 0 ? steadyManifoldRatio((cTh * 1000) / cEng, 1) : 1);
+        // ECU torque limit (issue #18): throttle / wastegate hold the manifold pressure at the cap
+        if (pSteady > caps.pManKpa) {
+          pSteady = caps.pManKpa;
+          limitedAny = true;
+        }
         const tau = 1 / (k * (cEng + cTh * 1000));
         x.pManKpa += (pSteady - x.pManKpa) * (1 - Math.exp(-h / tau));
         x.pManKpa = clamp(x.pManKpa, 5, pUpKpa + 5);
@@ -266,6 +302,8 @@ export class EngineSimulator {
         op.relLoad = x.relLoad;
       }
       out = evaluateCycle(m, op);
+      if (m.d && out.mFuelCyc >= op.fuelCapKg * 0.999) limitedAny = true;
+      if (op.afterfireFuel > 0) afFuelSum += out.mFuelCyc;
       // --- knock control (petrol.md §3.6): fast retard 30 °/s, slow advance 1 °/s
       if (m.p) {
         const need = out.mFuelCyc > 0 ? clamp(-out.knockMargin / 0.8, 0, m.p.maxRetard) : x.knockRetard;
@@ -328,12 +366,27 @@ export class EngineSimulator {
       boostReq = m.fuel === "diesel"
         ? clamp(fuelCycSum / nSub / Math.max(1e-9, out.mFuelMax), 0, 1)
         : Math.min(pedal, clamp(1.1 * x.load, 0, 1));
+      // ECU torque limit (issue #18): the boost target follows the manifold pressure cap (+3 % throttle reserve)
+      const capP = torqueLimitCaps(m, rpm).pManKpa;
+      if (m.p && m.exhaustDriven && Number.isFinite(capP) && cfg.induction.boostTargetBar > 0) {
+        boostReq = Math.min(boostReq, clamp((capP * 1.03 - ambientKpa + 2) / 100 / cfg.induction.boostTargetBar, 0, 1));
+      }
     }
     x.turbo = stepTurbo(x.turbo, cfg, dt, out.exhaustMassFlowKgS, x.thermal.egtC, boostReq, rpm, ambientKpa);
     if (!Number.isFinite(x.turbo.boostBar) || !Number.isFinite(x.turbo.shaftRpm)) x.turbo = { shaftRpm: 0, boostBar: 0 };
     // --- thermal (PR #12 stepThermal)
     x.thermal = stepThermal(x.thermal, cfg, dt, out.heatToCoolantKw, out.egtC, rpm, ambientC, input.dynoMode === "vehicle" ? x.vSpeed : 0);
     if (!Number.isFinite(x.thermal.coolantC + x.thermal.oilC + x.thermal.egtC)) x.thermal = { coolantC: ambientC, oilC: ambientC, egtC: ambientC };
+    // --- catalyst temperature (issue #16) [S]: substrate follows the exhaust gas with τ ≈ 6 s; afterfire fuel that
+    // did not burn in the manifold (≈ 15 %, cycle.ts) oxidises in the catalyst: ΔT = 0.15·ṁF·Hu/(ṁ·cp)
+    const afterfire = afterfireSum / nSub;
+    let catOver = false;
+    if (cfg.exhaust.catalyst) {
+      const afFuel = (afFuelSum / nSub) * (rpm / 120);
+      const exo = afFuel > 0 && out.exhaustMassFlowKgS > 1e-6 ? (0.15 * afFuel * out.fuelLhv) / (out.exhaustMassFlowKgS * 1200) : 0;
+      x.catC += (x.thermal.egtC + exo - x.catC) * (1 - Math.exp(-dt / 6));
+      catOver = x.catC > CAT_OVERHEAT_C;
+    } else x.catC = x.thermal.egtC;
     const full = fullLoadAt(m, Math.max(rpm, 300)).torque;
     x.load = clamp(torque / Math.max(1, full), 0, 1);
     const powerKw = (torque * rpm * Math.PI) / 30 / 1000;
@@ -366,11 +419,16 @@ export class EngineSimulator {
     s.meanPistonSpeedMs = meanPistonSpeed(cfg.block.strokeMm, rpm);
     s.knock = m.fuel === "petrol" ? out.knock : 0;
     s.smoke = m.fuel === "diesel" ? out.smoke : 0;
+    s.afterfire = x.running ? clamp(afterfire, 0, 1) : 0;
+    s.torqueLimited = limitedAny && pedal > 0.5;
     // --- limits (PR #12 evaluateLimits): warnings, wear, fatal damage
     const lim = evaluateLimits(cfg, s, this.tracker);
-    x.wear = clamp(x.wear + lim.wearRatePerS * dt, 0, 1);
+    // overheated catalyst ages the exhaust aftertreatment (issue #16) [S]: counted into the wear figure
+    x.wear = clamp(x.wear + (lim.wearRatePerS + (catOver ? 2e-4 : 0)) * dt, 0, 1);
     s.wear = x.wear;
-    s.warnings = x.stalled && rpm < 0.5 * idle ? [...lim.warnings, this.stallWarn] : lim.warnings;
+    let warns = x.stalled && rpm < 0.5 * idle ? [...lim.warnings, this.stallWarn] : lim.warnings;
+    if (catOver) warns = [...warns, { code: "catalyst-overheat", severity: "warning", message: `Kat überhitzt (${Math.round(x.catC)} °C): Nachbrennen im Katalysator` }];
+    s.warnings = warns;
     if (lim.fatal && !x.destroyed) {
       x.destroyed = true;
       x.running = false;
