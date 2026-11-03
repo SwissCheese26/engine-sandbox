@@ -274,6 +274,16 @@ export const FIELDS: Field[] = [
     ],
   },
   {
+    kind: "select", path: "head.valveSprings", group: "head", label: "Ventilfedern",
+    effect: "Doppelfedern mit hoher Federrate halten die Ventile auch bei Motorrad-Drehzahlen am Nocken.",
+    warns: ["valve-float"],
+    visible: (c) => !c.head.desmodromic,
+    options: () => [
+      { value: "standard", label: "Standard" },
+      { value: "high-rate", label: "Hohe Federrate (Doppelfedern)" },
+    ],
+  },
+  {
     kind: "toggle", path: "head.desmodromic", group: "head", label: "Desmodromik",
     effect: "Ventile werden zwangsweise geschlossen statt per Feder (Ducati): kaum Ventilflattern.",
     warns: ["valve-float"],
@@ -531,6 +541,7 @@ export function normalizeConfig(cfg: EngineConfig, changedPath?: string): Engine
   if (!(b.layout === "inline" && b.cylinders === 4)) delete b.crossplaneI4;
   cfg.cooling.type ??= "liquid";
   cfg.head.valveMaterial ??= "steel";
+  cfg.head.valveSprings ??= "standard";
   for (const f of FIELDS) {
     if (f.kind !== "number" || !isVisible(f, cfg)) continue;
     const r = f.range(cfg);

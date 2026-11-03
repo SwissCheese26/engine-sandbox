@@ -40,6 +40,11 @@ export interface BlockConfig {
   twinCrankDeg?: 180 | 270 | 360;
   /** Inline four only (issue #25): crossplane crank (Yamaha R1 since 2009), firing 270-180-90-180. Default false. */
   crossplaneI4?: boolean;
+  /**
+   * Light flywheel (issue #25): crank + clutch only, as on motorcycles (inertia ×0.4). Default: true when
+   * revLimitRpm > 9500, otherwise false.
+   */
+  lightFlywheel?: boolean;
 }
 
 export type Valvetrain = "ohv" | "sohc" | "dohc";
@@ -53,6 +58,8 @@ export interface HeadConfig {
   variableTiming: VariableValveTiming;
   /** Valve material (issue #25). Titanium valves are ≈ 40 % lighter → higher valve-float speed. Default steel. */
   valveMaterial?: "steel" | "titanium";
+  /** Valve springs (issue #25): "high-rate" = dual / beehive springs of high-revving heads (rate ≈ +55 %). Default standard. */
+  valveSprings?: "standard" | "high-rate";
   /** Desmodromic valve actuation (Ducati): valves closed by a cam, no spring → hardly any valve float. Default false. */
   desmodromic?: boolean;
 }

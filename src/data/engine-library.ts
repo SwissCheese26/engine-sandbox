@@ -137,7 +137,9 @@ const EXTRA: LibraryEngine[] = [
  * Motorcycle engines (issue #25). Bore, stroke, compression, rated power/torque: manufacturer data (sources per
  * entry). Rev limiter, conrod length, cam profile, runner length and fin/radiator rating are estimates [S]; cam
  * profile and runner length were tuned so that the model meets the rated figures (±15 %, engine-library.test.ts).
- * Superbikes: individual throttle bodies, short velocity stacks, 4-2-1 headers ("tubular-long").
+ * Superbikes: individual throttle bodies, short velocity stacks, 4-2-1 headers ("tubular-long"), light flywheel.
+ * Spring-valve engines get "high-rate" valve springs (dual / beehive springs, standard on high-revving motorcycle
+ * heads [S]), so valve float stays above the limiter (0.95·n_float > limiter, tests/core/motorcycle.test.ts).
  */
 const MOTO_EXHAUST = { manifold: "tubular-long", egr: false, catalyst: true, particulateFilter: false, scr: false } as const;
 const motoFuel = (fuel: "ron95" | "ron98", lambda = 0.88): EngineConfig["fuelSystem"] => ({
@@ -148,8 +150,8 @@ const MOTO: LibraryEngine[] = [
     maker: "Honda", cars: "CBR1000RR Fireblade (SC59)", years: "2008–2011", category: "motorcycle",
     config: {
       id: "lib-honda-cbr1000rr-sc59", name: "Honda CBR1000RR SC59 (1.0 R4, 131 kW)", fuel: "petrol",
-      block: blk("inline", 4, 76, 55.1, 108, 12.3, "aluminium", { pistons: "forged-aluminium" }),
-      head: { valvetrain: "dohc", valvesPerCylinder: 4, camProfile: 0.85, variableTiming: "none", valveMaterial: "titanium" },
+      block: blk("inline", 4, 76, 55.1, 108, 12.3, "aluminium", { lightFlywheel: true, pistons: "forged-aluminium" }),
+      head: { valvetrain: "dohc", valvesPerCylinder: 4, camProfile: 0.85, variableTiming: "none", valveMaterial: "titanium", valveSprings: "high-rate" },
       induction: { ...NA, intakeRunnerLengthMm: 90, individualThrottleBodies: true },
       fuelSystem: motoFuel("ron98"), exhaust: MOTO_EXHAUST,
       cooling: { radiatorCapacityKw: 110, thermostatOpenC: 82, oilCooler: true, type: "liquid" }, revLimitRpm: 13000, idleRpm: 1300,
@@ -161,8 +163,8 @@ const MOTO: LibraryEngine[] = [
     maker: "Yamaha", cars: "YZF-R1 (RN22, Crossplane)", years: "2009–2014", category: "motorcycle",
     config: {
       id: "lib-yamaha-r1-cp4", name: "Yamaha YZF-R1 Crossplane (1.0 R4, 134 kW)", fuel: "petrol",
-      block: blk("inline", 4, 78, 52.2, 105, 12.7, "aluminium", { pistons: "forged-aluminium", crossplaneI4: true }),
-      head: { valvetrain: "dohc", valvesPerCylinder: 4, camProfile: 0.9, variableTiming: "none", valveMaterial: "titanium" },
+      block: blk("inline", 4, 78, 52.2, 105, 12.7, "aluminium", { lightFlywheel: true, pistons: "forged-aluminium", crossplaneI4: true }),
+      head: { valvetrain: "dohc", valvesPerCylinder: 4, camProfile: 0.9, variableTiming: "none", valveMaterial: "titanium", valveSprings: "high-rate" },
       induction: { ...NA, intakeRunnerLengthMm: 80, individualThrottleBodies: true },
       fuelSystem: motoFuel("ron98"), exhaust: MOTO_EXHAUST,
       cooling: { radiatorCapacityKw: 110, thermostatOpenC: 82, oilCooler: true, type: "liquid" }, revLimitRpm: 13750, idleRpm: 1300,
@@ -174,7 +176,7 @@ const MOTO: LibraryEngine[] = [
     maker: "Ducati", cars: "1199 Panigale / S", years: "2012–2014", category: "motorcycle",
     config: {
       id: "lib-ducati-1199-superquadro", name: "Ducati 1199 Superquadro (1.2 V2 90°, 143 kW)", fuel: "petrol",
-      block: blk("v", 2, 112, 60.8, 124, 12.5, "aluminium", { bankAngleDeg: 90, pistons: "forged-aluminium" }),
+      block: blk("v", 2, 112, 60.8, 124, 12.5, "aluminium", { lightFlywheel: true, bankAngleDeg: 90, pistons: "forged-aluminium" }),
       head: { valvetrain: "dohc", valvesPerCylinder: 4, camProfile: 1, variableTiming: "none", valveMaterial: "titanium", desmodromic: true },
       induction: { ...NA, intakeRunnerLengthMm: 110, individualThrottleBodies: true },
       fuelSystem: motoFuel("ron98"), exhaust: MOTO_EXHAUST,
@@ -201,7 +203,7 @@ const MOTO: LibraryEngine[] = [
     config: {
       id: "lib-bmw-r1250-boxer", name: "BMW R 1250 Boxer ShiftCam (1.25 B2, 100 kW)", fuel: "petrol",
       block: blk("boxer", 2, 102.5, 76, 125, 12.5, "aluminium", { pistons: "forged-aluminium" }),
-      head: { valvetrain: "dohc", valvesPerCylinder: 4, camProfile: 0.5, variableTiming: "cam-switching" },
+      head: { valvetrain: "dohc", valvesPerCylinder: 4, camProfile: 0.3, variableTiming: "cam-switching", valveSprings: "high-rate" },
       induction: { ...NA, intakeRunnerLengthMm: 250, individualThrottleBodies: true },
       fuelSystem: motoFuel("ron95"), exhaust: MOTO_EXHAUST,
       cooling: { radiatorCapacityKw: 80, thermostatOpenC: 85, oilCooler: true, type: "liquid" }, revLimitRpm: 9000, idleRpm: 1000,
@@ -214,7 +216,7 @@ const MOTO: LibraryEngine[] = [
     config: {
       id: "lib-ktm-690-lc4", name: "KTM 690 LC4 (0.69 Einzylinder, 54 kW)", fuel: "petrol",
       block: blk("inline", 1, 105, 80, 150, 12.7, "aluminium", { pistons: "forged-aluminium" }),
-      head: { valvetrain: "sohc", valvesPerCylinder: 4, camProfile: 1, variableTiming: "none" },
+      head: { valvetrain: "sohc", valvesPerCylinder: 4, camProfile: 0.7, variableTiming: "none", valveSprings: "high-rate" },
       induction: { ...NA, intakeRunnerLengthMm: 200, individualThrottleBodies: true },
       fuelSystem: motoFuel("ron95"), exhaust: MOTO_EXHAUST,
       cooling: { radiatorCapacityKw: 50, thermostatOpenC: 85, oilCooler: false, type: "liquid" }, revLimitRpm: 8200, idleRpm: 1500,
@@ -226,8 +228,8 @@ const MOTO: LibraryEngine[] = [
     maker: "Triumph", cars: "Street Triple 765 RS", years: "2020–2022", category: "motorcycle",
     config: {
       id: "lib-triumph-765-triple", name: "Triumph Street Triple 765 RS (0.77 R3, 90 kW)", fuel: "petrol",
-      block: blk("inline", 3, 78, 53.4, 108, 12.54, "aluminium", { pistons: "forged-aluminium" }),
-      head: { valvetrain: "dohc", valvesPerCylinder: 4, camProfile: 0.9, variableTiming: "none" },
+      block: blk("inline", 3, 78, 53.4, 108, 12.54, "aluminium", { lightFlywheel: true, pistons: "forged-aluminium" }),
+      head: { valvetrain: "dohc", valvesPerCylinder: 4, camProfile: 0.9, variableTiming: "none", valveSprings: "high-rate" },
       induction: { ...NA, intakeRunnerLengthMm: 100, individualThrottleBodies: true },
       fuelSystem: motoFuel("ron95"), exhaust: MOTO_EXHAUST,
       cooling: { radiatorCapacityKw: 80, thermostatOpenC: 82, oilCooler: false, type: "liquid" }, revLimitRpm: 12500, idleRpm: 1200,

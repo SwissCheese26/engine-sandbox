@@ -26,21 +26,22 @@ export function rpmAtPistonSpeed(strokeMm: number, cm: number): number {
 }
 
 /**
- * Valve-float speed factor from valve size and material (issue #25), shared by airpath.ts and limits.ts.
- * Bore ≥ 86 mm: √(86/B) as before (petrol.md §4, calibrated car engines unchanged). Below 86 mm: (86/B)^2.5 [S, fit].
- * Geometric similarity alone (valve mass ∝ d³, spring force ∝ d², lift ∝ d) gives n_float ∝ 1/d; small
- * high-revving heads also have shorter stems and lighter followers (finger followers, small buckets). The exponent
- * 2.5 is fitted so that steel-valve motorcycle engines (Triumph 765: 78 mm, ≈ 12 500 1/min) do not float below
- * their limiter; car engines below 86 mm only gain headroom above their limiter (no effect on calibration).
- * Titanium valves (≈ 40 % lighter; 1/√0.6 ≈ 1.29, mixed Ti intake / steel exhaust → 1.25) [S];
- * desmodromic: no closing spring, the limit is cam/rocker stiffness, ×1.35 [S].
+ * Valve-float speed factor from valve size and valvetrain construction (issue #25), shared by airpath.ts and
+ * limits.ts. Valve float starts when the spring can no longer hold the follower on the cam: n_float ∝ √(k/m).
+ * - Size: bore ≥ 86 mm √(86/B) as before (petrol.md §4, calibrated car engines unchanged). Below 86 mm geometric
+ *   similarity of the valve train (valve mass ∝ d³, spring force ∝ d², lift ∝ d) gives n_float ∝ 1/d → (86/B)¹;
+ *   continuous at 86 mm. For car engines below 86 mm (EA888) this only adds headroom above the limiter.
+ * - `head.valveMaterial` "titanium": valve mass −40 % → 1/√0.6 ≈ 1.29; mixed Ti intake / steel exhaust → ×1.25 [S].
+ * - `head.valveSprings` "high-rate": dual / beehive springs of high-revving motorcycle heads, spring rate ≈ +55 %
+ *   → √1.55 ≈ ×1.25 [S].
+ * - `head.desmodromic`: no closing spring, limit is cam/rocker stiffness → ×1.35 [S] (springs then irrelevant).
  */
 export function valveFloatFactor(cfg: EngineConfig): number {
   const B = Math.max(40, cfg.block.boreMm);
-  const size = B >= 86 ? Math.sqrt(86 / B) : (86 / B) ** 2.5;
+  const size = B >= 86 ? Math.sqrt(86 / B) : 86 / B;
   const mat = cfg.head.valveMaterial === "titanium" ? 1.25 : 1;
-  const desmo = cfg.head.desmodromic ? 1.35 : 1;
-  return size * mat * desmo;
+  const springs = cfg.head.desmodromic ? 1.35 : cfg.head.valveSprings === "high-rate" ? 1.25 : 1;
+  return size * mat * springs;
 }
 
 const even = (n: number) => Array.from({ length: n }, () => 720 / n);
@@ -122,8 +123,11 @@ export function crankInertia(cfg: EngineConfig): number {
   if (cfg.block.crankshaft === "billet") J *= 0.92;
   if (cfg.block.crankshaft === "forged") J *= 0.97;
   if (cfg.fuel === "petrol") J *= 0.8;
-  // Engines revving beyond 9500 1/min (motorcycles, issue #25) have no car flywheel: crank, primary gear and
-  // clutch basket only (CBR1000RR ≈ 0.05 kg·m²). (9500/n_limit)³ [S]; engines up to 9500 1/min are unchanged.
-  if (cfg.revLimitRpm > 9500) J *= Math.max(0.25, (9500 / cfg.revLimitRpm) ** 3);
+  // Light flywheel (issue #25, `block.lightFlywheel`): no car flywheel, only crank, primary gear and clutch basket
+  // (CBR1000RR ≈ 0.05 kg·m² vs. 0.14 with the car law) → ×0.4 [S]. When the field is not set, it follows from the
+  // limiter: > 9500 1/min counts as a light flywheel – this deliberately includes self-built high-revving car
+  // engines (no production car engine in the library revs beyond 9000); set `lightFlywheel: false` to keep the
+  // car flywheel.
+  if (cfg.block.lightFlywheel ?? cfg.revLimitRpm > 9500) J *= 0.4;
   return J;
 }
