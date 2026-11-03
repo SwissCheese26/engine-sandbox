@@ -43,3 +43,11 @@ export {
 export type { TyreType, RoadSurface, SpeedIndex, TyreSize, TyreSetup, TyreTypeSpec } from "./tyres.ts";
 export { drivenAxleLoadN, frontAxleShare } from "./vehicle.ts";
 export { slipRatio } from "./simulator.ts";
+// environment and driver assistance (issue #23)
+export { aquaplaningFactor, compoundFactor, AQUAPLANING_KMH } from "./tyres.ts";
+export {
+  DEFAULT_ENVIRONMENT, WEATHER_LABELS, ICE_WARNING_C, airDensity, altitudeToKpa, environmentInputs, iceWarning, weatherSurface,
+} from "./environment.ts";
+export type { Environment, Weather } from "./environment.ts";
+export { DEFAULT_ASSISTS, ASSIST_LAMP_HOLD_S, TractionControl } from "./assists.ts";
+export type { AssistSettings, TractionOutput } from "./assists.ts";

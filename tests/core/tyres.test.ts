@@ -73,6 +73,8 @@ function rig(car: CarSetup | null, engineId: string | null, type: GearboxType = 
   const sim = new EngineSimulator(cfg);
   const dt = new Drivetrain(cfg, summarize(cfg), type);
   if (car) dt.applyCar(car);
+  // raw tyre physics (issue #22): ASR/ESP off, ABS off (the brake test below is "without ABS"); assists: assists.test.ts
+  dt.setAssists({ abs: false, asr: false, esp: false });
   const inp = { ...defaultInputs(), ignition: true, starter: true, startWarm: true, dynoMode: "vehicle" as const };
   const step = (pedal: number, brake = 0) => {
     const vehicle = dt.inputs(1 / 60, sim.state, pedal, brake);

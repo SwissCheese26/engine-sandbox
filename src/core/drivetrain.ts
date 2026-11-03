@@ -12,9 +12,15 @@
  * Vehicle and tyres (issue #22): chassis data (drive layout, weight distribution, CG height, wheelbase), tyre type and
  * size (tyres.ts), traction limit and wheel spin (simulator.ts stepVehicle), ready-made cars (src/data/vehicle-library.ts
  * via applyCar), per-car gear ratios (gearbox spec override).
+ * Environment and driver assistance (issue #23): weather/surface, outside temperature, altitude, gradient
+ * (environment.ts) and ABS / ASR / ESP / launch control (assists.ts), lamps in DrivetrainState.
  * Pure TypeScript, no DOM.
  */
-import { DEFAULT_TYRE, TYRE_TYPES, speedRatingKmh, stepTyreTemp, tyreGrip, tyreRadii } from "./tyres.ts";
+import { DEFAULT_ASSISTS, ASSIST_LAMP_HOLD_S, TractionControl } from "./assists.ts";
+import type { AssistSettings } from "./assists.ts";
+import { DEFAULT_ENVIRONMENT, airDensity, altitudeToKpa, iceWarning, weatherSurface } from "./environment.ts";
+import type { Environment } from "./environment.ts";
+import { DEFAULT_TYRE, TYRE_TYPES, aquaplaningFactor, compoundFactor, speedRatingKmh, stepTyreTemp, tyreGrip, tyreRadii } from "./tyres.ts";
 import type { RoadSurface, TyreSetup } from "./tyres.ts";
 import { drivenAxleLoadN, wheelieLimitN } from "./vehicle.ts";
 import type { EngineConfig, EngineState, EngineSummary, VehicleCoupling, VehicleParams } from "./types.ts";
@@ -144,6 +150,17 @@ export interface DrivetrainState {
   tyreTempC: number;
   grip: number;
   tyreRatingKmh: number;
+  /**
+   * Issue #23 (optional for older consumers): assistant settings, interventions (held ASSIST_LAMP_HOLD_S for the
+   * blinking lamps), launch control armed, black-ice warning (< +3 °C), aquaplaning (water film costs > 10 % grip).
+   */
+  assists?: AssistSettings;
+  absActive?: boolean;
+  asrActive?: boolean;
+  espActive?: boolean;
+  launchArmed?: boolean;
+  iceWarning?: boolean;
+  aquaplaning?: boolean;
 }
 
 /** A complete vehicle setup (issue #22, src/data/vehicle-library.ts): kind, body, tyre, gearbox, governor. */
@@ -164,8 +181,8 @@ export const SPEED_LIMIT_OPTIONS: readonly (number | null)[] = [null, 180, 210, 
 export const DEFAULT_SPEED_LIMIT_KMH = 250;
 /** Tyre speed rating W (ETRTO / ECE-R 30): 270 km/h. Since #22 the fitted tyre's index is in state.tyreRatingKmh. */
 export const TYRE_RATING_W_KMH = 270;
-/** Ambient for the tyre temperature model, °C. */
-const TYRE_AMBIENT_C = 20;
+/** Default ambient for the tyre temperature model, °C (issue #23: follows Environment.ambientC). */
+const TYRE_AMBIENT_C = DEFAULT_ENVIRONMENT.ambientC;
 
 // Governor PI gains (issue #32). It takes over from (limit − 5 km/h) and trims the pedal so speed settles at the
 // limit without the hard cut of a rev limiter, like an ECU top-speed limiter acting on throttle / injection.
@@ -200,6 +217,15 @@ export class Drivetrain {
   private gripFactor = 1;
   private spinHold = 0;
   private tyreT = TYRE_AMBIENT_C;
+  private env: Environment = { ...DEFAULT_ENVIRONMENT };
+  private aquaplane = false;
+  private assistSet: AssistSettings = { ...DEFAULT_ASSISTS };
+  private tc = new TractionControl();
+  private tcOut = { pedalCap: 1, torqueCut: 0, pedalFloor: 0 };
+  private absHold = 0;
+  private asrHold = 0;
+  private espHold = 0;
+  private roadKmh = 0;
 
   constructor(
     private cfg: EngineConfig,
@@ -220,6 +246,8 @@ export class Drivetrain {
       speedLimitKmh, limiting: false, maxSpeedLimited: false, wheelie: false,
       wheelSpin: false, wheelsLocked: false, tyreTempC: this.tyreT, grip: this.currentGrip(),
       tyreRatingKmh: speedRatingKmh(this.tyreSetup.speedIndex),
+      assists: { ...this.assistSet }, absActive: false, asrActive: false, espActive: false, launchArmed: false,
+      iceWarning: iceWarning(this.env.ambientC), aquaplaning: false,
     };
   }
 
@@ -274,19 +302,63 @@ export class Drivetrain {
     this.refreshTyreState();
   }
 
+  /**
+   * Environment (issue #23): weather → surface and water film, outside temperature (tyres; the simulator gets it via
+   * simInputs()), altitude (air pressure and density), gradient %. Partial updates are merged.
+   */
+  setEnvironment(e: Partial<Environment>) {
+    const n = { ...this.env, ...e };
+    n.ambientC = Math.min(50, Math.max(-30, Number.isFinite(n.ambientC) ? n.ambientC : 20));
+    n.altitudeM = Math.min(5000, Math.max(-400, Number.isFinite(n.altitudeM) ? n.altitudeM : 0));
+    n.gradePct = Math.min(30, Math.max(-30, Number.isFinite(n.gradePct) ? n.gradePct : 0));
+    this.env = n;
+    const w = weatherSurface(n.weather);
+    this.surfaceKind = w.surface;
+    this.gripFactor = w.factor;
+    this.aquaplane = w.aquaplaning;
+    this.refreshTyreState();
+    this.st.iceWarning = iceWarning(n.ambientC);
+  }
+
+  get environment(): Readonly<Environment> {
+    return this.env;
+  }
+
+  /** ambientC / ambientKpa for SimInputs (engine intake air) from the environment. */
+  simInputs(): { ambientC: number; ambientKpa: number } {
+    return { ambientC: this.env.ambientC, ambientKpa: altitudeToKpa(this.env.altitudeM) };
+  }
+
+  /** Driver assistance on/off (issue #23), partial updates merged. */
+  setAssists(a: Partial<AssistSettings>) {
+    this.assistSet = { ...this.assistSet, ...a };
+    this.st.assists = { ...this.assistSet };
+    if (!this.assistSet.asr) this.tc.reset();
+  }
+
+  get assists(): Readonly<AssistSettings> {
+    return this.assistSet;
+  }
+
   /** Loads a complete car (issue #22): body, tyre, gearbox incl. its own ratios, governor. Vehicle at standstill. */
   applyCar(car: CarSetup) {
     this.kind = car.kind ?? "car";
+    // motorcycles (issue #25 presets: CBR1000RR-class superbike, tourer) have ABS but no ESP; traction control is
+    // off like on the non-electronic base bikes the presets are modelled on (issue #23 decision)
+    if (this.kind !== "car") this.setAssists({ asr: false, esp: false });
     this.tyreSetup = { type: car.tyre.type, size: { ...car.tyre.size }, speedIndex: car.tyre.speedIndex };
     this.vehicle = withTyre({ ...car.vehicle }, this.tyreSetup);
-    this.tyreT = TYRE_AMBIENT_C;
+    this.tyreT = this.env.ambientC;
     this.clearTransient();
     this.spec = car.gearboxSpec ? { ...car.gearboxSpec, ratios: [...car.gearboxSpec.ratios] } : GEARBOXES[car.gearbox];
     Object.assign(this.st, this.fresh(car.gearbox, this.spec.finalDrive, car.speedLimitKmh), { maxSpeedKmh: 0, t0to100S: null });
   }
 
+  /** μ = tyre × surface × tread temperature × user/water-film factor × compound window × aquaplaning (issue #23). */
   private currentGrip(): number {
-    return tyreGrip(this.tyreSetup.type, this.surfaceKind, this.tyreT) * this.gripFactor;
+    const t = this.tyreSetup.type;
+    const aq = this.aquaplane ? aquaplaningFactor(t, this.roadKmh, this.tyreSetup.size.widthMm) : 1;
+    return tyreGrip(t, this.surfaceKind, this.tyreT) * this.gripFactor * compoundFactor(t, this.env.ambientC, this.surfaceKind) * aq;
   }
 
   private refreshTyreState() {
@@ -325,6 +397,8 @@ export class Drivetrain {
     this.shiftT = 0;
     this.pendingGear = 0;
     this.holdLaunch = 0;
+    this.tc.reset();
+    this.tcOut = { pedalCap: 1, torqueCut: 0, pedalFloor: 0 };
     this.resetGovernor();
   }
 
@@ -497,6 +571,7 @@ export class Drivetrain {
     let clutch: number;
     let torqueRatio = 1;
     let launchHoldRpm = 0;
+    s.launchArmed = false;
     // Engine not running (ignition off, stalled): the automatic clutch opens, so there is no engine braking
     // and the engine is not dragged along (simplification of an automated clutch, review #19).
     if (s.gear === 0 || !engine.running) {
@@ -505,6 +580,13 @@ export class Drivetrain {
       // manual: open; DSG: second clutch takes over, slip syncs within the shift; sequential: dog rings
       // disengaged (no torque) while the quickshifter cuts the ignition
       clutch = s.type === "dsg" ? 0.85 : 0;
+    } else if (this.assistSet.launchControl && brake > 0.05 && pedal > 0.5 && vRoad < 0.5 && s.type !== "sequential") {
+      // launch control (issue #23): at standstill with brake and throttle the clutch stays open and the ECU holds the
+      // launch speed (pedal cap below); releasing the brake starts the traction-dosed launch of the next branch [S]
+      this.holdLaunch = 0;
+      clutch = 0;
+      launchHoldRpm = this.launchRpm(pedal);
+      s.launchArmed = true;
     } else if (brake > 0.05 && pedal < 0.02 && inputRpm < idle * 1.4) {
       // braking down to a stop: the automatic clutch opens before the engine is dragged below idle.
       // With pedal AND brake (left-foot braking) the clutch stays engaged on purpose: the engine works against
@@ -572,13 +654,26 @@ export class Drivetrain {
 
     // --- tyres (issue #22): tread temperature, μ, wheel-spin indicator
     const slipMs = engine.wheelsLocked ? vRoad : Math.max(0, v - vRoad);
+    this.roadKmh = vRoad * 3.6;
     const mu = this.currentGrip();
-    this.tyreT = stepTyreTemp(this.tyreT, dt, (engine.tyreForceN ?? 0) / Math.max(1, mu * this.vehicle.massKg * 9.81), vRoad, slipMs, TYRE_AMBIENT_C);
+    this.tyreT = stepTyreTemp(this.tyreT, dt, (engine.tyreForceN ?? 0) / Math.max(1, mu * this.vehicle.massKg * 9.81), vRoad, slipMs, this.env.ambientC);
     s.tyreTempC = this.tyreT;
     s.grip = this.currentGrip();
     this.spinHold = engine.wheelSpin ? 0.3 : Math.max(0, this.spinHold - dt);
     s.wheelSpin = this.spinHold > 0;
     s.wheelsLocked = engine.wheelsLocked ?? false;
+    s.aquaplaning = this.aquaplane && aquaplaningFactor(this.tyreSetup.type, this.roadKmh, this.tyreSetup.size.widthMm) < 0.9;
+
+    // --- driver assistance (issue #23): ASR/MSR on the driven-wheel slip of the last step, lamps
+    const a = this.assistSet;
+    const tcr = this.tc.step(dt, engine.wheelSlip ?? 0, vRoad, pedal, this.cfg.fuel === "petrol", a, brake > 0.05);
+    this.tcOut = { pedalCap: tcr.pedalCap, torqueCut: tcr.torqueCut, pedalFloor: tcr.pedalFloor };
+    this.absHold = a.abs && engine.absActive ? ASSIST_LAMP_HOLD_S : Math.max(0, this.absHold - dt);
+    this.asrHold = tcr.asrActive ? ASSIST_LAMP_HOLD_S : Math.max(0, this.asrHold - dt);
+    this.espHold = tcr.msrActive || (a.esp && (tcr.asrActive || !!engine.absActive)) ? ASSIST_LAMP_HOLD_S : Math.max(0, this.espHold - dt);
+    s.absActive = this.absHold > 0;
+    s.asrActive = this.asrHold > 0;
+    s.espActive = this.espHold > 0;
 
     // --- measurements
     s.speedKmh = vRoad * 3.6;
@@ -608,6 +703,10 @@ export class Drivetrain {
       brake,
       grip: s.grip,
       ...(torqueRatio > 1 ? { torqueRatio } : {}),
+      abs: a.abs,
+      gradePct: this.env.gradePct,
+      airDensityKgM3: airDensity(altitudeToKpa(this.env.altitudeM), this.env.ambientC),
+      ...(tcr.torqueCut > 0 ? { torqueCut: tcr.torqueCut } : {}),
     };
   }
 
@@ -622,7 +721,8 @@ export class Drivetrain {
       return this.shiftDir > 0 ? 0 : Math.max(Math.min(pedal, this.govActive ? this.govCap : 1), 0.35);
     }
     if (this.st.type === "manual" && this.st.shifting) return 0;
-    const p = Math.min(pedal, this.launchCap);
+    // ASR pedal cap and MSR pedal floor (issue #23)
+    const p = Math.max(Math.min(pedal, this.launchCap, this.tcOut.pedalCap), this.tcOut.pedalFloor);
     return this.govActive ? Math.min(p, this.govCap) : p;
   }
 

@@ -9,6 +9,8 @@ export function driveCar(car: LibraryCar, seconds = 90, tcCut = 3, tcFloor = 0.5
   const sim = new EngineSimulator(cfg);
   const dt = new Drivetrain(cfg, summarize(cfg));
   dt.applyCar(car.setup);
+  // the test driver's own traction control below is the reference of PR #37; the real ASR (issue #23) stays off here
+  dt.setAssists({ asr: false, esp: false });
   if (gripFactor !== 1) dt.setSurface("dry", gripFactor);
   const inp = { ...defaultInputs(), ignition: true, starter: true, startWarm: true, dynoMode: "vehicle" as const };
   const h = 1 / 60;

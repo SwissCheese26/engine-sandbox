@@ -151,6 +151,46 @@ export function tyreTempFactor(type: TyreType, tempC: number): number {
 }
 
 /**
+ * Compound window over the outside temperature (issue #23) [S]: summer compounds harden below ≈ +7 °C (the
+ * 7 °C rule of thumb for winter tyres; ADAC/Continental tyre guidance, summer tyres brake ≈ 10 % longer near 0 °C):
+ * −0.6 %/K down to 0.88. Winter compounds get soft and smear on hot roads above ≈ 20 °C: −0.4 %/K down to 0.9
+ * (ADAC: winter tyres in summer brake ≈ 10–15 % longer). Road surfaces snow/ice: no effect (already in μ).
+ */
+export function compoundFactor(type: TyreType, ambientC: number, surface: RoadSurface = "dry"): number {
+  if (surface === "snow" || surface === "ice" || !Number.isFinite(ambientC)) return 1;
+  if (SUMMER_COMPOUND[type] && ambientC < 7) return Math.max(0.88, 1 - 0.006 * (7 - ambientC));
+  if (type === "winter" && ambientC > 20) return Math.max(0.9, 1 - 0.004 * (ambientC - 20));
+  return 1;
+}
+
+const SUMMER_COMPOUND: Record<TyreType, boolean> = {
+  standard: true, winter: false, uhp: true, "semi-slick": true, slick: true, offroad: false, motorcycle: true,
+};
+
+/**
+ * Speed at which a tyre starts to aquaplane on a water film of a few mm (heavy rain), km/h [S]. Passenger-car tyres
+ * with new tread aquaplane from ≈ 80–100 km/h in deep water (ADAC aquaplaning tests; Horne's hydroplaning speed
+ * v ≈ 6.36·√p[kPa] ≈ 95 km/h at 2.3 bar is the upper bound for a smooth tyre in deep water, NASA TN D-2056).
+ * Wide UHP tyres float earlier than narrow ones, slicks (no grooves) very early, the round motorcycle tyre late.
+ */
+export const AQUAPLANING_KMH: Record<TyreType, number> = {
+  standard: 85, winter: 85, uhp: 78, "semi-slick": 65, slick: 45, offroad: 80, motorcycle: 100,
+};
+
+/**
+ * Grip factor from the water film (issue #23): 1 below the aquaplaning speed, then the contact patch floats up and μ
+ * falls as 1/(1 + (Δv/30)²) to a floor of 0.1 (rolling on water) [S, see AQUAPLANING_KMH]. widthMm: wider tyres
+ * float earlier (≈ −0.15 km/h per mm above 205 mm).
+ */
+export function aquaplaningFactor(type: TyreType, speedKmh: number, widthMm = 205): number {
+  const vOn = AQUAPLANING_KMH[type] - 0.15 * Math.max(0, widthMm - 205);
+  const dv = Math.max(0, speedKmh - vOn);
+  if (!(dv > 0)) return 1;
+  const x = dv / 30;
+  return Math.max(0.1, 1 / (1 + x * x));
+}
+
+/**
  * Peak friction coefficient μ of a tyre on a surface (issue #22). This is the hook for issue #23 (nässe, schnee,
  * eis). tempC: tread temperature (default warm).
  */
