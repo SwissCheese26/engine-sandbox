@@ -722,7 +722,7 @@ function tiedStep(x: Internal, c: VehicleCoupling, engineTorqueNm: number, J: nu
   const brakeCapN = mu === undefined ? pedalB * 1.0 * veh.massKg * G : Math.min(pedalB * BRAKE_MAX_G, mu) * veh.massKg * G;
   const atRest = x.vSpeed <= 1e-3;
   // gradient (issue #23): at rest the car only starts to roll downhill or when the drive beats the slope; it never
-  // rolls backwards (vehicle speed ≥ 0: like a hill-hold assistant, see PR #23 decisions)
+  // rolls backwards (vehicle speed ≥ 0: like a hill-hold assistant, docs/research/vehicle.md §3, Issue #23)
   const gr = gradeOf(c);
   const fGrade = veh.massKg * G * gr.sin;
   const fRes = roadLoadN(veh, x.vSpeed, airRho(c), gr.cos) + fGrade + (atRest ? 0 : brakeCapN);

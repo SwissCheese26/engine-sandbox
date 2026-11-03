@@ -1,9 +1,55 @@
 // Umwelt- und Assistenz-Platte on the chassis dyno (issue #23): road surface, outside temperature, altitude, gradient,
 // ABS / ASR / ESP / launch control on/off – and the warning-lamp strip (Kontrollleuchten) for the Getriebe-Pult,
 // built so the cockpit (issue #26) can take the same element.
-// Unlike the vehicle data, everything here may change while driving (weather turns, ESP button in the car).
-import { WEATHER_LABELS, altitudeToKpa } from "../core/index.ts";
-import type { AssistSettings, Drivetrain, Weather } from "../core/index.ts";
+// Like the vehicle data, everything here can only be changed at standstill (review PR #39); the choice is kept per
+// browser in localStorage (pruefzelle.environment, pruefzelle.assists).
+import { DEFAULT_ASSISTS, WEATHER_LABELS, altitudeToKpa } from "../core/index.ts";
+import type { AssistSettings, Drivetrain, Environment, Weather } from "../core/index.ts";
+
+export const ENV_KEY = "pruefzelle.environment";
+export const ASSIST_KEY = "pruefzelle.assists";
+
+function readJson(key: string): unknown {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null; // storage blocked or garbage
+  }
+}
+
+function writeJson(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // storage blocked: the setting lasts for this session only
+  }
+}
+
+/** Validated environment from storage: unknown fields dropped, numbers finite and in the slider ranges. */
+export function parseEnvironment(v: unknown): Partial<Environment> {
+  if (!v || typeof v !== "object") return {};
+  const o = v as Record<string, unknown>;
+  const out: Partial<Environment> = {};
+  if (typeof o.weather === "string" && o.weather in WEATHER_LABELS) out.weather = o.weather as Weather;
+  const num = (x: unknown, lo: number, hi: number) => (typeof x === "number" && Number.isFinite(x) ? Math.min(hi, Math.max(lo, x)) : undefined);
+  const a = num(o.ambientC, -20, 40);
+  const h = num(o.altitudeM, 0, 3000);
+  const g = num(o.gradePct, -15, 15);
+  if (a !== undefined) out.ambientC = a;
+  if (h !== undefined) out.altitudeM = h;
+  if (g !== undefined) out.gradePct = g;
+  return out;
+}
+
+/** Validated assistant settings from storage (only booleans of known keys). */
+export function parseAssists(v: unknown): Partial<AssistSettings> {
+  if (!v || typeof v !== "object") return {};
+  const o = v as Record<string, unknown>;
+  const out: Partial<AssistSettings> = {};
+  for (const k of Object.keys(DEFAULT_ASSISTS) as (keyof AssistSettings)[]) if (typeof o[k] === "boolean") out[k] = o[k] as boolean;
+  return out;
+}
 
 const fmt = (n: number, d = 0) => n.toLocaleString("de-DE", { minimumFractionDigits: d, maximumFractionDigits: d });
 
@@ -98,6 +144,8 @@ export class EnvironmentPanel {
   private ranges = new Map<Range["key"], { input: HTMLInputElement; out: HTMLOutputElement }>();
   private checks = new Map<keyof AssistSettings, HTMLInputElement>();
   private airOut: HTMLElement;
+  private lockNote: HTMLElement;
+  private moving = false;
   /** Called after any change (the app updates the simulator ambient inputs from the drivetrain). */
   onChange: () => void = () => {};
 
@@ -118,6 +166,7 @@ export class EnvironmentPanel {
           </label>`).join("")}
       </div>
       <p class="vehicle__hint" data-out="air"></p>
+      <p class="vehicle__note" data-out="env-lock" hidden>Umwelt und Assistenten lassen sich nur im Stand ändern.</p>
       <fieldset class="environment__assists">
         <legend>Fahrassistenten</legend>
         ${ASSISTS.map((a) => `
@@ -129,6 +178,12 @@ export class EnvironmentPanel {
     this.el = el;
     this.weatherSel = el.querySelector("[data-control=weather]")!;
     this.airOut = el.querySelector("[data-out=air]")!;
+    this.lockNote = el.querySelector("[data-out=env-lock]")!;
+    // stored choice of this browser (validated; the defaults stay for anything missing or broken)
+    const env = parseEnvironment(readJson(ENV_KEY));
+    if (Object.keys(env).length) this.drivetrain.setEnvironment(env);
+    const as = parseAssists(readJson(ASSIST_KEY));
+    if (Object.keys(as).length) this.drivetrain.setAssists(as);
     for (const r of RANGES) {
       const input = el.querySelector<HTMLInputElement>(`[data-control=${r.key}]`)!;
       const out = input.parentElement!.querySelector("output")!;
@@ -139,7 +194,11 @@ export class EnvironmentPanel {
       const c = el.querySelector<HTMLInputElement>(`[data-control=assist-${a.key}]`)!;
       this.checks.set(a.key, c);
       c.addEventListener("change", () => {
+        if (this.moving) return this.sync();
         this.drivetrain.setAssists({ [a.key]: c.checked });
+        // stored as the car's choice (motorcycles switch ESP/ASR off by themselves)
+        if (this.drivetrain.kind === "car") writeJson(ASSIST_KEY, this.drivetrain.assists);
+        else if (a.key === "abs" || a.key === "launchControl") writeJson(ASSIST_KEY, { ...(parseAssists(readJson(ASSIST_KEY))), [a.key]: c.checked });
         this.onChange();
       });
     }
@@ -148,6 +207,7 @@ export class EnvironmentPanel {
   }
 
   private apply() {
+    if (this.moving) return this.sync();
     const v = (k: Range["key"]) => Number(this.ranges.get(k)!.input.value);
     this.drivetrain.setEnvironment({
       weather: this.weatherSel.value as Weather,
@@ -155,8 +215,20 @@ export class EnvironmentPanel {
       altitudeM: v("altitude"),
       gradePct: v("grade"),
     });
+    writeJson(ENV_KEY, this.drivetrain.environment);
     this.sync();
     this.onChange();
+  }
+
+  /** Per frame: controls locked while the vehicle moves (> 0,5 km/h), with a note. */
+  update(speedKmh: number) {
+    const moving = speedKmh > 0.5;
+    if (moving === this.moving) return;
+    this.moving = moving;
+    this.weatherSel.disabled = moving;
+    for (const { input } of this.ranges.values()) input.disabled = moving;
+    for (const c of this.checks.values()) c.disabled = moving;
+    this.lockNote.hidden = !moving;
   }
 
   /** Controls follow the drivetrain (after a vehicle change, motorcycles switch ESP/ASR off). */

@@ -220,6 +220,8 @@ export class Drivetrain {
   private env: Environment = { ...DEFAULT_ENVIRONMENT };
   private aquaplane = false;
   private assistSet: AssistSettings = { ...DEFAULT_ASSISTS };
+  /** Assistant choice of the car while a motorcycle is loaded (restored on the way back). */
+  private carAssists: AssistSettings = { ...DEFAULT_ASSISTS };
   private tc = new TractionControl();
   private tcOut = { pedalCap: 1, torqueCut: 0, pedalFloor: 0 };
   private absHold = 0;
@@ -346,10 +348,13 @@ export class Drivetrain {
   applyCar(car: CarSetup) {
     const wasCar = this.kind === "car";
     this.kind = car.kind ?? "car";
-    if (this.kind === "car" && !wasCar) this.setAssists({ asr: true, esp: true });
     // motorcycles (issue #25 presets: CBR1000RR-class superbike, tourer) have ABS but no ESP; traction control is
-    // off like on the non-electronic base bikes the presets are modelled on (issue #23 decision)
-    if (this.kind !== "car") this.setAssists({ asr: false, esp: false });
+    // off like on the non-electronic base bikes the presets are modelled on (issue #23 decision). The car's own
+    // choice is remembered and comes back when a car is loaded again (review PR #39).
+    if (this.kind !== "car") {
+      if (wasCar) this.carAssists = { ...this.assistSet };
+      this.setAssists({ asr: false, esp: false });
+    } else if (!wasCar) this.setAssists({ ...this.carAssists });
     this.tyreSetup = { type: car.tyre.type, size: { ...car.tyre.size }, speedIndex: car.tyre.speedIndex };
     this.vehicle = withTyre({ ...car.vehicle }, this.tyreSetup);
     this.tyreT = this.env.ambientC;

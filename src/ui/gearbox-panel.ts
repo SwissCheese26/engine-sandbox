@@ -290,6 +290,7 @@ export class GearboxPanel {
     if (s.wheelsLocked !== this.last.locked) this.lockEl.hidden = !(this.last.locked = s.wheelsLocked);
     this.vehiclePanel.update();
     this.lamps.update(d);
+    this.environmentPanel.update(s.speedKmh);
     this.gearEl.classList.toggle("is-braking", braking);
     // gearbox and final drive can only be changed at standstill (review #19)
     const moving = s.speedKmh > 0.5;

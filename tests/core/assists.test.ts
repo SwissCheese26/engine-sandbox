@@ -256,6 +256,14 @@ describe("ASR / ESP (issue #23)", () => {
     expect(r.dt.assists.esp).toBe(false);
     expect(r.dt.assists.asr).toBe(false);
     expect(r.dt.assists.abs).toBe(true);
+    // back to the car: the car's last choice returns (here: ESP OFF), not "everything on" (review PR #39)
+    r.dt.setVehicle("car");
+    expect(r.dt.assists).toEqual(DEFAULT_ASSISTS);
+    r.dt.setAssists({ esp: false });
+    r.dt.setVehicle("superbike");
+    r.dt.setVehicle("car");
+    expect(r.dt.assists.esp).toBe(false);
+    expect(r.dt.assists.asr).toBe(true);
   });
 });
 
