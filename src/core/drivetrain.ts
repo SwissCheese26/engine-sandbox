@@ -399,6 +399,16 @@ export class Drivetrain {
     s.shifting = true;
   }
 
+  /**
+   * Hard launch (issue #22): with the pedal beyond half the driver keeps the clutch slipping until the input shaft
+   * reaches ≈ 60 % of the launch speed, so a turbo engine is not pulled down into its boost lag [S].
+   */
+  private launchSyncRpm(pedal: number): number {
+    if (pedal < 0.5) return 0;
+    const idle = this.cfg.idleRpm;
+    return 0.6 * (idle + 200 + pedal * Math.max(900, 0.4 * this.cfg.revLimitRpm - idle - 200));
+  }
+
   /** Engine rpm the gear `g` would give at the current speed. */
   private rpmInGear(g: number, speedMs: number): number {
     const ratio = this.spec.ratios[g - 1] ?? 1;
@@ -482,7 +492,8 @@ export class Drivetrain {
       // the brake and can stall, like a real car (review #20).
       this.holdLaunch = 0;
       clutch = 0;
-    } else if (inputRpm < (s.type === "sequential" ? Math.max(idle * 1.05, 0.4 * limit) : Math.max(idle * 1.05, g.converterLockRpm ?? 0))) {
+    } else if (inputRpm < (s.type === "sequential" ? Math.max(idle * 1.05, 0.4 * limit)
+      : Math.max(idle * 1.05, g.converterLockRpm ?? 0, this.holdLaunch < 1 ? this.launchSyncRpm(pedal) : 0))) {
       // launch: engage with engine speed above idle (anti-stall), harder with pedal
       let want: number;
       if (s.type === "sequential") {

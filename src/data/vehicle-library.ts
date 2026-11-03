@@ -4,6 +4,7 @@ import type { CarSetup, GearboxSpec, TyreSetup, VehicleParams } from "../core/in
  * Ready-made cars (issue #22): engine from the engine library (#15) + gearbox with the car's own ratios + body,
  * chassis, tyres and top-speed governor. "Fertiges Auto laden" in the Fahrzeug plate loads all of it.
  *
+ * Manual gearboxes of the sports cars shift in 0.25 s (test-driver shift, as in magazine 0–100 runs) [S].
  * Simulation mass = kerb weight incl. 75 kg driver (EU definition; DIN kerb weight + 75 kg where only DIN is known).
  * Factory data (`factory`) are the test targets (tests/core/vehicle-library.test.ts: simulated 0–100 and Vmax within
  * ±12 %). Sources per car in `source`; values marked [S] are estimates from typical data of the class (cW, frontal
@@ -95,7 +96,7 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
       tyre: tyre("uhp", 255, 40, 18, "Y"),
       gearbox: "manual",
       // Getrag 420G 6-speed: 4.23/2.53/1.67/1.23/1.00/0.83, final 3.62 [BMW M3 E46 Technische Daten]
-      gearboxSpec: box([4.23, 2.53, 1.67, 1.23, 1.0, 0.83], 3.62, 0.92, 0.3),
+      gearboxSpec: box([4.23, 2.53, 1.67, 1.23, 1.0, 0.83], 3.62, 0.92, 0.25),
       speedLimitKmh: 250,
     },
     factory: { kerbKg: 1570, kerbNorm: "DIN", t0to100S: 5.2, vmaxKmh: 250, vmaxGoverned: true, cw: 0.32 },
@@ -108,7 +109,7 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
       tyre: tyre("uhp", 265, 40, 18, "Y"),
       gearbox: "manual",
       // Getrag 6-speed: 4.055/2.396/1.582/1.192/1.000/0.872, final 3.846 [BMW Technische Daten M3 Coupé]
-      gearboxSpec: box([4.055, 2.396, 1.582, 1.192, 1.0, 0.872], 3.846, 0.92, 0.3),
+      gearboxSpec: box([4.055, 2.396, 1.582, 1.192, 1.0, 0.872], 3.846, 0.92, 0.25),
       speedLimitKmh: 250,
     },
     factory: { kerbKg: 1655, kerbNorm: "EU", t0to100S: 4.8, vmaxKmh: 250, vmaxGoverned: true, cw: 0.31 },
@@ -121,7 +122,7 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
       tyre: tyre("uhp", 255, 40, 17, "W"),
       gearbox: "manual",
       // Getrag V160 6-speed: 3.827/2.360/1.685/1.312/1.000/0.793, final 3.133 [Toyota Supra Turbo 6MT, US-Spec]
-      gearboxSpec: box([3.827, 2.36, 1.685, 1.312, 1.0, 0.793], 3.133, 0.92, 0.35),
+      gearboxSpec: box([3.827, 2.36, 1.685, 1.312, 1.0, 0.793], 3.133, 0.92, 0.25),
       speedLimitKmh: 250,
     },
     factory: { kerbKg: 1570, kerbNorm: "DIN", t0to100S: 5.1, vmaxKmh: 250, vmaxGoverned: true, cw: 0.32 },
@@ -134,7 +135,7 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
       tyre: tyre("uhp", 245, 40, 18, "Y"),
       gearbox: "manual",
       // Getrag V160: 3.827/2.360/1.685/1.312/1.000/0.793, final 3.545; ATTESA E-TS modelled as permanent AWD
-      gearboxSpec: box([3.827, 2.36, 1.685, 1.312, 1.0, 0.793], 3.545, 0.88, 0.35),
+      gearboxSpec: box([3.827, 2.36, 1.685, 1.312, 1.0, 0.793], 3.545, 0.88, 0.25),
       // Japanese market: 180 km/h governor (JAMA agreement)
       speedLimitKmh: 180,
     },
@@ -148,7 +149,7 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
       tyre: tyre("uhp", 245, 40, 18, "W"),
       gearbox: "manual",
       // TY85 6-speed: 3.636/2.375/1.761/1.346/0.971/0.756, final 3.900, DCCD AWD
-      gearboxSpec: box([3.636, 2.375, 1.761, 1.346, 0.971, 0.756], 3.9, 0.88, 0.35),
+      gearboxSpec: box([3.636, 2.375, 1.761, 1.346, 0.971, 0.756], 3.9, 0.88, 0.25),
       speedLimitKmh: null,
     },
     factory: { kerbKg: 1505, kerbNorm: "EU", t0to100S: 5.2, vmaxKmh: 255, vmaxGoverned: false },
@@ -161,7 +162,7 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
       tyre: tyre("uhp", 215, 45, 17, "W"),
       gearbox: "manual",
       // 6-speed close ratio: 3.267/2.130/1.517/1.147/0.921/0.738, final 4.764 (JDM Type R) [S]
-      gearboxSpec: box([3.267, 2.13, 1.517, 1.147, 0.921, 0.738], 4.764, 0.93, 0.3),
+      gearboxSpec: box([3.267, 2.13, 1.517, 1.147, 0.921, 0.738], 4.764, 0.93, 0.25),
       speedLimitKmh: null,
     },
     factory: { kerbKg: 1170, kerbNorm: "DIN", t0to100S: 6.2, vmaxKmh: 240, vmaxGoverned: false },
@@ -174,7 +175,7 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
       tyre: tyre("uhp", 285, 35, 19, "(Y)"),
       gearbox: "manual",
       // Tremec TR6060: 2.66/1.78/1.30/1.00/0.74/0.50, final 3.42 [GM Corvette 2008 specifications]
-      gearboxSpec: box([2.66, 1.78, 1.3, 1.0, 0.74, 0.5], 3.42, 0.92, 0.35),
+      gearboxSpec: box([2.66, 1.78, 1.3, 1.0, 0.74, 0.5], 3.42, 0.92, 0.25),
       speedLimitKmh: null,
     },
     factory: { kerbKg: 1441, kerbNorm: "DIN", t0to100S: 4.3, vmaxKmh: 306, vmaxGoverned: false, cw: 0.28 },
