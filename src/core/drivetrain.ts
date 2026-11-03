@@ -47,6 +47,11 @@ export interface GearboxSpec {
   finalDrive: number;
   efficiency: number;
   shiftTimeS: number;
+  /**
+   * Torque-converter automatic (issue #22): input-shaft speed up to which the launch slips (converter) before the
+   * lock-up clutch closes, rpm. Torque multiplication of the converter is not modelled. Unset = clutch launch.
+   */
+  converterLockRpm?: number;
 }
 
 /** Typical ratios [S]: VW MQ350 6-speed manual, DQ381 7-speed DSG, generic chain CVT. */
@@ -462,6 +467,7 @@ export class Drivetrain {
     // --- clutch: automatic launch control and shift interruption
     const inputRpm = s.gear > 0 ? (v / this.vehicle.wheelRadiusM) * ratio * s.finalDrive * RAD_TO_RPM : 0;
     let clutch: number;
+    let torqueRatio = 1;
     // Engine not running (ignition off, stalled): the automatic clutch opens, so there is no engine braking
     // and the engine is not dragged along (simplification of an automated clutch, review #19).
     if (s.gear === 0 || !engine.running) {
@@ -476,7 +482,7 @@ export class Drivetrain {
       // the brake and can stall, like a real car (review #20).
       this.holdLaunch = 0;
       clutch = 0;
-    } else if (inputRpm < (s.type === "sequential" ? Math.max(idle * 1.05, 0.4 * limit) : idle * 1.05)) {
+    } else if (inputRpm < (s.type === "sequential" ? Math.max(idle * 1.05, 0.4 * limit) : Math.max(idle * 1.05, g.converterLockRpm ?? 0))) {
       // launch: engage with engine speed above idle (anti-stall), harder with pedal
       let want: number;
       if (s.type === "sequential") {
@@ -485,11 +491,23 @@ export class Drivetrain {
         const launchRpm = idle + pedal * (0.6 * limit - idle);
         want = pedal > 0.02 ? Math.min(1, Math.max(0, (rpm - 0.85 * launchRpm) / Math.max(1, 0.15 * launchRpm))) : 0;
       } else {
-        const launchRpm = idle + 200 + pedal * 900;
-        want = pedal > 0.02 ? Math.min(1, Math.max(0, (rpm - idle * 0.9) / Math.max(1, launchRpm - idle * 0.9))) : 0;
+        // launch speed rises with the pedal; full pedal ≈ 40 % of the limiter (test-driver launch, petrol sports
+        // cars 3000–4000 rpm; diesel ≈ 1900 rpm as before) [S] (issue #22)
+        // converter automatic: stall speed ≈ lock-up speed + 600 rpm at full pedal [S]
+        const launchRpm = g.converterLockRpm
+          ? idle + pedal * Math.max(300, g.converterLockRpm + 600 - idle)
+          : idle + 200 + pedal * Math.max(900, 0.4 * limit - idle - 200);
+        // quadratic engagement: the clutch bites gently near idle, so the engine (and the turbo) can rise towards
+        // the launch speed before the clutch carries the full torque (issue #22, launch with traction limit)
+        const x = Math.min(1, Math.max(0, (rpm - idle * 0.9) / Math.max(1, launchRpm - idle * 0.9)));
+        want = pedal > 0.02 ? x * x : 0;
       }
       this.holdLaunch += (want - this.holdLaunch) * Math.min(1, dt * 8);
       clutch = this.holdLaunch * 0.9;
+      // torque converter (issue #22): torque ratio ≈ 2.0 at stall falling linearly to 1 at speed ratio 0.85
+      // (coupling point), typical passenger-car converter characteristic (Naunheimer et al., Automotive
+      // Transmissions, ch. 9 "Hydrodynamic torque converter") [S]
+      if (g.converterLockRpm && rpm > 1) torqueRatio = 1 + Math.max(0, 1 - inputRpm / rpm / 0.85);
     } else {
       this.holdLaunch = 1;
       // sequential: dog engagement after the shift, only the slipper clutch smooths it (≈ 30 ms) [S]
@@ -541,6 +559,7 @@ export class Drivetrain {
       clutchCapacityNm: Math.max(250, this.summary.peakTorqueNm * 1.6),
       brake,
       grip: s.grip,
+      ...(torqueRatio > 1 ? { torqueRatio } : {}),
     };
   }
 

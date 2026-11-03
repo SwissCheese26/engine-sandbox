@@ -68,10 +68,11 @@ export const TYRE_TYPES: Record<TyreType, TyreTypeSpec> = {
     label: "Offroad (AT)", mu: { dry: 0.8, wet: 0.6, snow: 0.3, ice: 0.1, gravel: 0.7 },
     rollingResistance: 0.016, coldFactor: 1, warmC: 20, hint: "All-Terrain, μ ≈ 0,8 auf Asphalt, mehr Rollwiderstand.",
   },
-  // motorcycle sport tyre (issue #25 vehicles): round profile, longitudinal μ ≈ 1.1, f_R ≈ 0.015 [S]
+  // motorcycle sport tyre (issue #25 vehicles): soft compound, longitudinal μ ≈ 1.2–1.3 (sport bikes are wheelie-
+  // limited rather than traction-limited when accelerating on dry asphalt; Cossalter ch. 2), f_R ≈ 0.015 [S]
   motorcycle: {
-    label: "Motorrad (Sport)", mu: { dry: 1.1, wet: 0.7, snow: 0.15, ice: 0.06, gravel: 0.5 },
-    rollingResistance: 0.015, coldFactor: 0.9, warmC: 40, hint: "Motorrad-Sportreifen, μ ≈ 1,1 längs.",
+    label: "Motorrad (Sport)", mu: { dry: 1.25, wet: 0.8, snow: 0.15, ice: 0.06, gravel: 0.5 },
+    rollingResistance: 0.015, coldFactor: 1, warmC: 20, hint: "Motorrad-Sportreifen, μ ≈ 1,25 längs.",
   },
 };
 

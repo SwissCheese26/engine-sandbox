@@ -258,6 +258,8 @@ export interface VehicleCoupling {
    * friction ≈ 0.9·μ) and the service brake to μ·m·g (wheels lock above it). Unset = no traction limit, brake 1 g.
    */
   grip?: number;
+  /** Torque multiplication of a slipping torque converter (issue #22), ≥ 1; applies only while the clutch slips. */
+  torqueRatio?: number;
 }
 
 export type Severity = "info" | "warning" | "critical";

@@ -541,14 +541,14 @@ function stepVehicle(x: Internal, c: VehicleCoupling, engineTorqueNm: number, J:
       // slipping clutch and spinning wheels: small driven-side inertia, so the clutch torque is taken from an
       // implicit (backward Euler) estimate of the clutch slip to stay stable at h = 1 ms
       const A = engineTorqueNm / J + ((i / r) * fSlide) / mWheels;
-      const B = 1 / J + (i * i * eta) / (r * r * mWheels);
+      const B = 1 / J + (i * i * eta * Math.max(1, c.torqueRatio ?? 1)) / (r * r * mWheels);
       const k = Math.abs(slip) > 1e-6 ? (cap * Math.tanh(slip / 3)) / slip : cap / 3;
       const relNew = i > 0 ? (slip + h * A) / (1 + h * B * k) : 0;
       const tc = i > 0 ? k * relNew : 0;
       let wE = wEng + ((engineTorqueNm - tc) / J) * h;
       if (wE < 0) wE = 0;
       x.rpm = wE * RPM_PER_RADS;
-      x.vWheel += (((i > 0 ? (tc * i * eta) / r : 0) - fSlide) / mWheels) * h;
+      x.vWheel += (((i > 0 ? (tc * Math.max(1, c.torqueRatio ?? 1) * i * eta) / r : 0) - fSlide) / mWheels) * h;
     }
     if (x.vWheel <= x.vSpeed) {
       x.vWheel = x.vSpeed;
@@ -590,7 +590,8 @@ function stepVehicle(x: Internal, c: VehicleCoupling, engineTorqueNm: number, J:
   let wE = wEng + ((engineTorqueNm - tc) / J) * h;
   if (wE < 0) wE = 0;
   x.rpm = wE * RPM_PER_RADS;
-  const fDrive = i > 0 ? cut((tc * i * (tc >= 0 ? eta : 1 / eta)) / r) : 0;
+  const kConv = tc > 0 ? Math.max(1, c.torqueRatio ?? 1) : 1;
+  const fDrive = i > 0 ? cut((tc * kConv * i * (tc >= 0 ? eta : 1 / eta)) / r) : 0;
   if (canSpin && fDrive > fGrip) {
     x.spin = true;
     x.vSpeed = Math.max(0, x.vSpeed + (net(fSlide) / veh.massKg) * h);
