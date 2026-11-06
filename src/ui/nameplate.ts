@@ -5,6 +5,8 @@ import { fmt } from "./format.ts";
 import { FALLBACK_LIMITS } from "./limits-fallback.ts";
 import { layoutCode } from "./names.ts";
 import { setText } from "./dom.ts";
+import { fmtQ, toUnit } from "./units.ts";
+import { prefs } from "./settings.ts";
 
 export class Nameplate {
   readonly el: HTMLElement;
@@ -58,11 +60,14 @@ export class Nameplate {
     const fuel = cfg.fuel === "diesel" ? "DIESEL" : "OTTO";
     const asp = cfg.induction.aspiration === "naturally-aspirated" ? "SAUGER" : cfg.induction.aspiration.startsWith("super") ? "KOMPRESSOR" : "TURBO";
     setText(this.type, `TYP ${layoutCode(cfg).toUpperCase()} ${fmt(s.displacementL, 1)} ${fuel} ${asp}`);
-    set("disp", `${fmt(s.displacementL * 1000)} cm³`);
-    set("bxs", `${fmt(cfg.block.boreMm, 1)} × ${fmt(cfg.block.strokeMm, 1)} mm`);
+    // units follow the global setting (#24); the physics values stay SI
+    const p = prefs();
+    set("disp", fmtQ("volume", s.displacementL, p.volume === "l" ? 2 : 0));
+    const ld = p.length === "in" ? 2 : 1;
+    set("bxs", `${fmt(toUnit("length", cfg.block.boreMm), ld)} × ${fmt(toUnit("length", cfg.block.strokeMm), ld)} ${p.length}`);
     set("cr", `${fmt(cfg.block.compressionRatio, 1)} : 1`);
-    set("tq", `${fmt(s.peakTorqueNm)} Nm / ${fmt(s.peakTorqueRpm)}`);
-    set("pw", `${fmt(s.peakPowerKw)} kW / ${fmt(s.peakPowerRpm)}`);
+    set("tq", `${fmtQ("torque", s.peakTorqueNm)} / ${fmt(s.peakTorqueRpm)}`);
+    set("pw", `${fmtQ("power", s.peakPowerKw)} / ${fmt(s.peakPowerRpm)}`);
     const overRev = cfg.revLimitRpm > s.safeMaxRpm;
     set("rpm", `${fmt(Math.min(cfg.revLimitRpm, s.safeMaxRpm))} 1/min`, overRev);
     set("cm", `${fmt(s.maxMeanPistonSpeedMs, 1)} m/s`, s.maxMeanPistonSpeedMs > FALLBACK_LIMITS.meanPistonSpeedMaxMs);

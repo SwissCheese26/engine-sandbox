@@ -12,6 +12,8 @@ import { Recorder } from "./recorder.ts";
 import { Schematic } from "./schematic.ts";
 import { SOUND_AVAILABLE, createSound } from "./sound-bridge.ts";
 import { Workbench } from "./workbench.ts";
+import { onSettingsChange } from "./settings.ts";
+import { fmtQ } from "./units.ts";
 
 /** Largest simulation step per frame; longer frames (tab in background) are clamped. */
 const MAX_DT = 1 / 30;
@@ -49,6 +51,9 @@ export class App {
   private pendingCfg: EngineConfig | null = null;
   private disposed = false;
   private gearbox: GearboxPanel;
+  /** Menu or settings open (#42): loop stopped, keys ignored, sound silent. */
+  private paused = false;
+  private unsubscribeSettings: () => void;
 
   constructor(private root: HTMLElement) {
     this.cfg = defaultConfig("diesel");
@@ -64,6 +69,16 @@ export class App {
     this.layout();
     this.wire();
     this.applyConfig(this.cfg);
+    this.unsubscribeSettings = onSettingsChange(() => this.syncUnits());
+  }
+
+  /** Global unit setting changed or instrument overrides reset (#24): display only, the engine keeps running. */
+  syncUnits() {
+    if (this.disposed) return;
+    this.gauges.syncUnits();
+    this.nameplate.update(this.cfg, this.summary);
+    this.recorder.syncUnits();
+    this.gearbox.syncUnits();
   }
 
   private layout() {
@@ -73,6 +88,7 @@ export class App {
     const top = document.createElement("header");
     top.className = "cell__top";
     top.innerHTML = `
+      <a class="btn btn--small cell__menu" href="#menu" aria-keyshortcuts="Escape">Menü</a>
       <h1 class="cell__title">Prüfzelle</h1>
       <button type="button" class="btn bench-toggle" aria-expanded="false" aria-controls="werkbank">Werkbank öffnen</button>`;
     const toggle = top.querySelector<HTMLButtonElement>(".bench-toggle")!;
@@ -86,6 +102,8 @@ export class App {
       "keydown",
       (e) => {
         if (e.key === "Escape" && cell.classList.contains("bench-open")) {
+          // handled here: the router must not leave the sandbox on this Esc (#42)
+          e.preventDefault();
           setOpen(false);
           toggle.focus();
         }
@@ -152,11 +170,12 @@ export class App {
       // automatic runs follow every bench change: not announced, the screen reader would never stop
       if (auto) return;
       const r = this.recorder.latestRun;
-      if (r) this.announce(`Volllastkurve gemessen: ${fmt(r.peakTorque.torqueNm)} Newtonmeter bei ${fmt(r.peakTorque.rpm)}, ${fmt(r.peakPower.powerKw)} Kilowatt bei ${fmt(r.peakPower.rpm)} Umdrehungen pro Minute.`);
+      if (r) this.announce(`Volllastkurve gemessen: ${fmtQ("torque", r.peakTorque.torqueNm)} bei ${fmt(r.peakTorque.rpm)}, ${fmtQ("power", r.peakPower.powerKw)} bei ${fmt(r.peakPower.rpm)} Umdrehungen pro Minute.`);
     });
     document.addEventListener(
       "keydown",
       (e) => {
+        if (this.paused) return;
         if (this.gearbox.handleKey(e, true) || this.console.handleKey(e, true)) e.preventDefault();
       },
       { signal },
@@ -164,6 +183,7 @@ export class App {
     document.addEventListener(
       "keyup",
       (e) => {
+        if (this.paused) return;
         if (this.gearbox.handleKey(e, false) || this.console.handleKey(e, false)) e.preventDefault();
       },
       { signal },
@@ -236,8 +256,9 @@ export class App {
   }
 
   start() {
+    this.last = 0;
     const frame = (now: number) => {
-      if (this.disposed) return;
+      if (this.disposed || this.paused) return;
       const dt = this.last ? Math.min(MAX_DT, Math.max(0, (now - this.last) / 1000)) : 1 / 60;
       this.last = now;
       if (this.pendingCfg && !App.turning(this.sim.state)) {
@@ -274,12 +295,40 @@ export class App {
     this.rafId = requestAnimationFrame(frame);
   }
 
+  /**
+   * Leaving the sandbox for the menu (#42): the loop stops (rAF cancelled), held keys are released and the
+   * sound is muted. State, runs and the trip computer stay; resume() continues where it stopped.
+   */
+  pause() {
+    if (this.paused || this.disposed) return;
+    this.paused = true;
+    cancelAnimationFrame(this.rafId);
+    this.console.releaseAll();
+    this.gearbox.trip.save();
+    if (this.soundStarted) this.sound.setVolume(0);
+  }
+
+  resume() {
+    if (!this.paused || this.disposed) return;
+    this.paused = false;
+    if (this.soundStarted) this.sound.setVolume(this.console.muted ? 0 : this.console.volumeLevel);
+    // canvases may have been laid out while hidden
+    this.gauges.redraw();
+    this.recorder.redraw(this.sim.state.t);
+    this.start();
+  }
+
+  get isPaused(): boolean {
+    return this.paused;
+  }
+
   /** Stops the loop, removes all global listeners and silences the sound (tests, hot reload). */
   dispose() {
     this.recorder.dispose();
     this.gearbox.trip.dispose();
     if (this.disposed) return;
     this.disposed = true;
+    this.unsubscribeSettings();
     cancelAnimationFrame(this.rafId);
     cancelAnimationFrame(this.resizeRaf);
     this.abort.abort();

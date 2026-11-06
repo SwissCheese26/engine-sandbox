@@ -3,6 +3,8 @@
 // readouts on the chassis dyno. Data persists per browser (localStorage, best effort).
 import { TripComputer, averageKmh, averageL100 } from "../core/index.ts";
 import type { EngineState, TripCounter } from "../core/index.ts";
+import { prefs } from "./settings.ts";
+import { toUnit } from "./units.ts";
 
 const KEY = "pruefzelle.tripcomputer";
 const SAVE_EVERY_S = 2;
@@ -40,13 +42,13 @@ export class TripPanel {
       <dl class="trip__grid">
         <div class="trip__col">
           <dt>Gesamt</dt>
-          <dd class="num"><span data-trip="total-km">0</span> km</dd>
-          <dd class="num trip__sub"><abbr title="Durchschnitt">Ø</abbr> <span data-trip="total-avg">–</span> l/100 km</dd>
+          <dd class="num"><span data-trip="total-km">0</span> <span data-u="distance">km</span></dd>
+          <dd class="num trip__sub"><abbr title="Durchschnitt">Ø</abbr> <span data-trip="total-avg">–</span> <span data-u="fuel">l/100 km</span></dd>
         </div>
         <div class="trip__col">
           <dt>Trip A</dt>
-          <dd class="num"><span data-trip="a-km">0</span> km</dd>
-          <dd class="num trip__sub"><abbr title="Durchschnitt">Ø</abbr> <span data-trip="a-avg">–</span> l/100 km · <abbr title="Durchschnitt">Ø</abbr> <span data-trip="a-speed">–</span> km/h · <span data-trip="a-time">0 min</span></dd>
+          <dd class="num"><span data-trip="a-km">0</span> <span data-u="distance">km</span></dd>
+          <dd class="num trip__sub"><abbr title="Durchschnitt">Ø</abbr> <span data-trip="a-avg">–</span> <span data-u="fuel">l/100 km</span> · <abbr title="Durchschnitt">Ø</abbr> <span data-trip="a-speed">–</span> <span data-u="speed">km/h</span> · <span data-trip="a-time">0 min</span></dd>
         </div>
       </dl>
       <button type="button" class="btn btn--small trip__reset" data-control="trip-reset">Trip A zurücksetzen</button>`;
@@ -60,6 +62,13 @@ export class TripPanel {
     const signal = this.abort.signal;
     addEventListener("pagehide", () => this.save(), { signal });
     document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && this.save(), { signal });
+    this.syncUnits();
+  }
+
+  /** Distance, consumption and speed in the globally chosen units (#24); the counters stay in km and litres. */
+  syncUnits() {
+    const p = prefs();
+    this.el.querySelectorAll<HTMLElement>("[data-u]").forEach((n) => (n.textContent = p[n.dataset.u as "distance" | "fuel" | "speed"]));
     this.render(true);
   }
 
@@ -80,14 +89,14 @@ export class TripPanel {
   private render(force: boolean) {
     const { total, tripA } = this.computer.data;
     const avg = (c: TripCounter) => {
-      const v = averageL100(c);
+      const v = toUnit("fuel", averageL100(c));
       return Number.isFinite(v) ? f1.format(v) : "–";
     };
-    const sp = averageKmh(tripA);
+    const sp = toUnit("speed", averageKmh(tripA));
     const vals: Record<string, string> = {
-      "total-km": f0.format(Math.floor(total.km)),
+      "total-km": f0.format(Math.floor(toUnit("distance", total.km))),
       "total-avg": avg(total),
-      "a-km": fmtKm(tripA.km),
+      "a-km": fmtKm(toUnit("distance", tripA.km)),
       "a-avg": avg(tripA),
       "a-speed": Number.isFinite(sp) ? f0.format(sp) : "–",
       "a-time": fmtTime(tripA.timeS),
