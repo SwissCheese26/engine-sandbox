@@ -1730,3 +1730,59 @@ kbd {
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Tempomat-Leiste (issue #30): stalk functions as small buttons, status lamps from the cluster ───────── */
+.cruise {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border-radius: var(--radius-plate);
+  background: var(--hammer-deep);
+}
+.cruise__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1);
+}
+.cruise .lamp {
+  --lamp-green: #5fd068;
+  --lamp-dark: #6b746f;
+  background: #141a18;
+}
+.cruise__set {
+  min-width: 5.5em;
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-16);
+  font-weight: 600;
+  text-align: right;
+}
+.cruise__set.is-off {
+  color: var(--alu-shade);
+  font-weight: 400;
+}
+.cruise select {
+  min-width: 6.5em;
+  min-height: 32px;
+  padding: 2px 8px;
+  border-radius: 2px;
+  border: 1px solid var(--alu-shade);
+  background: var(--hammer);
+  color: inherit;
+  font: inherit;
+}
+.cruise__notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+.cruise__notes:not(:has(> :not([hidden]))) {
+  display: none;
+}
+.cruise__notes .note {
+  margin: 0;
+}
+.cruise__notes .note[hidden] {
+  display: none;
+}

@@ -105,6 +105,9 @@ export class CruiseControl {
   private limI = 0;
   private limCap = 1;
   private kickT = 0;
+  /** The current full-pedal press started at the limit (kickdown candidate). */
+  private kickArmed = false;
+  private lastDriverPedal = 0;
   private lastKmh: number | null = null;
   /** Smoothed acceleration, km/h per s. */
   private accKmhS = 0;
@@ -268,7 +271,13 @@ export class CruiseControl {
     if (!s.limiterOn) return;
     const lim = s.limitKmh;
     // kickdown: pedal through the detent for > 0.5 s overrides until the speed is back below the limit
-    this.kickT = x.driverPedal >= KICKDOWN_PEDAL ? this.kickT + dt : 0;
+    // A press counts as kickdown only when it reaches full pedal while the car is already at the limit (inside the
+    // window): floor it from standstill and the limiter still holds; at the limit, a fresh push through overrides.
+    // (The keyboard W is a full-throttle key – without this it would always be a kickdown.)
+    const full = x.driverPedal >= KICKDOWN_PEDAL;
+    if (full && this.lastDriverPedal < KICKDOWN_PEDAL) this.kickArmed = lim - x.speedKmh - LIM_LEAD_S * Math.max(0, this.accKmhS) <= LIM_WINDOW_KMH;
+    this.lastDriverPedal = x.driverPedal;
+    this.kickT = full && this.kickArmed ? this.kickT + dt : 0;
     if (this.kickT > KICKDOWN_S && !s.kickdown) {
       s.kickdown = true;
       this.limActive = false;

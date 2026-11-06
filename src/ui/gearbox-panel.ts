@@ -8,6 +8,7 @@ import { Drivetrain, GEARBOXES, VEHICLES, theoreticalVmax, dynoSweep, SPEED_LIMI
 import type { EngineConfig, EngineSummary, GearboxType, VehicleKind } from "../core/index.ts";
 import { EnvironmentPanel, WarningLamps } from "./environment-panel.ts";
 import { VehiclePanel } from "./vehicle-panel.ts";
+import { CruisePanel } from "./cruise-panel.ts";
 
 const TYPE_LABEL: Record<GearboxType, string> = {
   manual: "Handschalter, 6 Gänge",
@@ -53,6 +54,8 @@ export class GearboxPanel {
   readonly vehiclePanel: VehiclePanel;
   readonly environmentPanel: EnvironmentPanel;
   readonly lamps = new WarningLamps();
+  /** Tempomat-Leiste (issue #30). */
+  readonly cruise: CruisePanel;
   private cfg: EngineConfig;
   private summary: EngineSummary;
   private last = { gear: "", speed: "", vmax: "", t100: "", vmaxNote: false, gov: false, tyre: false, wheelie: false, spin: false, locked: false, tyreRating: 0 };
@@ -149,6 +152,8 @@ export class GearboxPanel {
     this.environmentPanel = new EnvironmentPanel(this.drivetrain);
     el.append(this.environmentPanel.el);
     q(".gearbox__gear").after(this.lamps.el);
+    this.cruise = new CruisePanel(this.drivetrain);
+    q(".gearbox__shift").after(this.cruise.el);
 
     this.vehicleSel.addEventListener("change", () => {
       this.drivetrain.setVehicle(this.vehicleSel.value as VehicleKind);
@@ -215,6 +220,7 @@ export class GearboxPanel {
     if (this.el.hidden || e.ctrlKey || e.metaKey || e.altKey) return false;
     const tag = (e.target as HTMLElement | null)?.tagName;
     if (tag === "SELECT" || tag === "TEXTAREA" || (tag === "INPUT" && (e.target as HTMLInputElement).type === "text")) return false;
+    if (this.cruise.handleKey(e, down)) return true;
     const key = e.key.toLowerCase();
     if (key !== "q" && key !== "e") return false;
     if (down && !e.repeat) this.drivetrain.shift(key === "e" ? 1 : -1);
@@ -296,6 +302,7 @@ export class GearboxPanel {
     if (s.wheelsLocked !== this.last.locked) this.lockEl.hidden = !(this.last.locked = s.wheelsLocked);
     this.vehiclePanel.update();
     this.lamps.update(d);
+    this.cruise.update();
     this.environmentPanel.update(s.speedKmh);
     this.gearEl.classList.toggle("is-braking", braking);
     // gearbox and final drive can only be changed at standstill (review #19)

@@ -200,6 +200,15 @@ describe("speed limiter (issue #30)", () => {
     expect(min).toBeGreaterThan(128.5);
   });
 
+  test("full pedal from standstill is no kickdown: the limiter holds at 60", () => {
+    const r = cruiseRig(TDI, "dsg");
+    r.dt.cruise.setLimit(60);
+    r.dt.cruise.toggleLimiter();
+    const { max } = r.run(30, 1);
+    expect(r.dt.state.cruise!.kickdown).toBe(false);
+    expect(max).toBeLessThan(61.5);
+  });
+
   test("kickdown (100 % for > 0.5 s) overrides, the limiter is back once below the limit", () => {
     const r = cruiseRig(GTI);
     r.dt.cruise.setLimit(80);
