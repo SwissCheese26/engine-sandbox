@@ -277,7 +277,7 @@ export class App {
   /** Stops the loop, removes all global listeners and silences the sound (tests, hot reload). */
   dispose() {
     this.recorder.dispose();
-    this.gearbox.trip.save();
+    this.gearbox.trip.dispose();
     if (this.disposed) return;
     this.disposed = true;
     cancelAnimationFrame(this.rafId);

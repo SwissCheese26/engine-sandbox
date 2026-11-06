@@ -12,7 +12,7 @@ const f0 = nf(0);
 const f1 = nf(1);
 
 function fmtKm(km: number): string {
-  // odometer style: whole km for the total, one decimal below 1000 km for the trip
+  // trip display: one decimal below 1000 km, whole km above (the total always shows whole km)
   return km < 1000 ? f1.format(km) : f0.format(km);
 }
 
@@ -28,6 +28,8 @@ export class TripPanel {
   private out: Record<string, HTMLElement> = {};
   private last: Record<string, string> = {};
   private sinceSave = 0;
+  private dirty = false;
+  private abort = new AbortController();
 
   constructor() {
     this.computer = TripPanel.load();
@@ -39,12 +41,12 @@ export class TripPanel {
         <div class="trip__col">
           <dt>Gesamt</dt>
           <dd class="num"><span data-trip="total-km">0</span> km</dd>
-          <dd class="num trip__sub">Ø <span data-trip="total-avg">–</span> l/100 km</dd>
+          <dd class="num trip__sub"><abbr title="Durchschnitt">Ø</abbr> <span data-trip="total-avg">–</span> l/100 km</dd>
         </div>
         <div class="trip__col">
           <dt>Trip A</dt>
           <dd class="num"><span data-trip="a-km">0</span> km</dd>
-          <dd class="num trip__sub">Ø <span data-trip="a-avg">–</span> l/100 km · Ø <span data-trip="a-speed">–</span> km/h · <span data-trip="a-time">0 min</span></dd>
+          <dd class="num trip__sub"><abbr title="Durchschnitt">Ø</abbr> <span data-trip="a-avg">–</span> l/100 km · <abbr title="Durchschnitt">Ø</abbr> <span data-trip="a-speed">–</span> km/h · <span data-trip="a-time">0 min</span></dd>
         </div>
       </dl>
       <button type="button" class="btn btn--small trip__reset" data-control="trip-reset">Trip A zurücksetzen</button>`;
@@ -55,17 +57,22 @@ export class TripPanel {
       this.save();
       this.render(true);
     });
-    addEventListener("pagehide", () => this.save());
+    const signal = this.abort.signal;
+    addEventListener("pagehide", () => this.save(), { signal });
+    document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && this.save(), { signal });
     this.render(true);
   }
 
   /** Per frame on the chassis dyno. */
   step(dt: number, s: EngineState, driving: boolean) {
+    const before = this.computer.data.total.timeS;
     this.computer.step(dt, s, driving);
+    if (this.computer.data.total.timeS !== before) this.dirty = true;
     this.sinceSave += dt;
     if (this.sinceSave >= SAVE_EVERY_S) {
       this.sinceSave = 0;
-      this.save();
+      // only write when something was counted since the last save
+      if (this.dirty) this.save();
     }
     this.render(false);
   }
@@ -93,7 +100,14 @@ export class TripPanel {
     }
   }
 
+  /** Saves once more and removes the page listeners (App.dispose). */
+  dispose() {
+    this.save();
+    this.abort.abort();
+  }
+
   save() {
+    this.dirty = false;
     try {
       localStorage.setItem(KEY, JSON.stringify(this.computer.toJSON()));
     } catch {
