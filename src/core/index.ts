@@ -53,3 +53,7 @@ export { DEFAULT_ASSISTS, ASSIST_LAMP_HOLD_S, TractionControl } from "./assists.
 export type { AssistSettings, TractionOutput } from "./assists.ts";
 export { TripComputer, averageKmh, averageL100, MIN_KM_FOR_AVERAGE } from "./trip-computer.ts";
 export type { TripComputerData, TripCounter } from "./trip-computer.ts";
+
+// issue #30: cruise control and driver speed limiter
+export { CruiseControl, CRUISE_MIN_KMH, LIMITER_OPTIONS, KICKDOWN_S } from "./cruise.ts";
+export type { CruiseState, CruiseMode } from "./cruise.ts";

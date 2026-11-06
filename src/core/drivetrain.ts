@@ -16,6 +16,8 @@
  * (environment.ts) and ABS / ASR / ESP / launch control (assists.ts), lamps in DrivetrainState.
  * Pure TypeScript, no DOM.
  */
+import { CruiseControl } from "./cruise.ts";
+import type { CruiseState } from "./cruise.ts";
 import { DEFAULT_ASSISTS, ASSIST_LAMP_HOLD_S, TractionControl } from "./assists.ts";
 import type { AssistSettings } from "./assists.ts";
 import { DEFAULT_ENVIRONMENT, airDensity, altitudeToKpa, iceWarning, weatherSurface } from "./environment.ts";
@@ -161,6 +163,8 @@ export interface DrivetrainState {
   launchArmed?: boolean;
   iceWarning?: boolean;
   aquaplaning?: boolean;
+  /** Issue #30: cruise control and driver speed limiter (optional for older consumers). */
+  cruise?: Readonly<CruiseState>;
 }
 
 /** A complete vehicle setup (issue #22, src/data/vehicle-library.ts): kind, body, tyre, gearbox, governor. */
@@ -230,6 +234,9 @@ export class Drivetrain {
   private roadKmh = 0;
   private lastEffPedal = 0;
   private tcCutting = false;
+  /** Cruise control and driver speed limiter (issue #30). */
+  private cc = new CruiseControl();
+  private ccDownT = 0;
 
   constructor(
     private cfg: EngineConfig,
@@ -251,7 +258,7 @@ export class Drivetrain {
       wheelSpin: false, wheelsLocked: false, tyreTempC: this.tyreT, grip: this.currentGrip(),
       tyreRatingKmh: speedRatingKmh(this.tyreSetup.speedIndex),
       assists: { ...this.assistSet }, absActive: false, asrActive: false, espActive: false, launchArmed: false,
-      iceWarning: iceWarning(this.env.ambientC), aquaplaning: false,
+      iceWarning: iceWarning(this.env.ambientC), aquaplaning: false, cruise: this.cc.state,
     };
   }
 
@@ -403,6 +410,7 @@ export class Drivetrain {
 
   /** Shift timer, pending gear and launch-clutch memory back to rest (review #19). */
   private clearTransient() {
+    this.cc.reset();
     this.shiftT = 0;
     this.pendingGear = 0;
     this.holdLaunch = 0;
@@ -458,6 +466,22 @@ export class Drivetrain {
     this.govCap = Math.min(1, Math.max(0, GOV_KP * e + this.govI));
     s.limiting = this.govCap < pedal - 0.01;
     this.wheelieHold = 0;
+  }
+
+  /**
+   * Cruise control and speed limiter (issue #30): set/off, resume, ±, limiter. The UI calls these; the controller
+   * runs inside inputs() and its pedal is combined with the driver pedal in inputs() and effectivePedal().
+   */
+  get cruise(): CruiseControl {
+    return this.cc;
+  }
+
+  /** Steady-state pedal estimate for the cruise control (issue #30): p · (F − m·a) / F with F the drive force. */
+  private holdPedal(engine: EngineState, pedal: number, ratio: number): number | null {
+    const f = (engine.torqueNm * ratio * this.st.finalDrive * this.spec.efficiency) / this.vehicle.wheelRadiusM;
+    if (!(f > 200) || this.st.shifting || pedal < 0.05) return null;
+    const share = (f - this.vehicle.massKg * (engine.accelMs2 ?? 0)) / f;
+    return Number.isFinite(share) ? Math.min(1, Math.max(0, pedal * share)) : null;
   }
 
   /** Driver shift request: +1 up, −1 down. Ignored for CVT. */
@@ -516,8 +540,11 @@ export class Drivetrain {
    * Called once per frame BEFORE simulator.step(): updates shift logic, clutch and CVT ratio from the last engine
    * state and returns the coupling for this frame.
    */
-  inputs(dt: number, engine: EngineState, pedal: number, brake = 0): VehicleCoupling {
+  inputs(dt: number, engine: EngineState, driverPedal: number, brake = 0): VehicleCoupling {
     const s = this.st;
+    // cruise control / limiter (issue #30): from here on "pedal" is the commanded pedal (shift schedule, CVT target,
+    // launch, ASR and the governor all see what the engine is asked for)
+    const pedal = this.cc.command(driverPedal);
     const g = this.spec;
     // the gearbox sees the driven wheels; they run ahead of the road speed while spinning (issue #22)
     const vRoad = engine.vehicleSpeedMs ?? 0;
@@ -529,6 +556,7 @@ export class Drivetrain {
 
     // --- shift execution
     this.gearDwell = Math.max(0, this.gearDwell - dt);
+    this.ccDownT = Math.max(0, this.ccDownT - dt);
     if (s.shifting) {
       this.shiftT -= dt;
       if (this.shiftT <= 0) {
@@ -551,6 +579,13 @@ export class Drivetrain {
       if (!s.manualMode) {
         if (this.gearDwell <= 0 && rpm > upRpm && s.gear < s.gearCount && this.rpmInGear(s.gear + 1, v) > idle * 1.25) this.beginShift(s.gear + 1);
         else if (rpm < downRpm && s.gear > 1 && this.rpmInGear(s.gear - 1, v) < limit * 0.9) this.beginShift(s.gear - 1);
+        // cruise control (issue #30): speed not holdable at full pedal → one gear down if the engine then runs closer
+        // to its power peak (like a kickdown), at most every 3 s so it cannot hunt
+        else if (this.cc.state.notHoldable && this.ccDownT <= 0 && s.gear > 1 && rpm < this.summary.peakPowerRpm
+          && this.rpmInGear(s.gear - 1, v) < Math.min(limit * 0.9, this.summary.peakPowerRpm * 1.15)) {
+          this.beginShift(s.gear - 1);
+          this.ccDownT = 3;
+        }
       } else if (rpm < idle * 1.1 && s.gear > 1) {
         // M mode still protects against stalling
         this.beginShift(s.gear - 1);
@@ -707,6 +742,11 @@ export class Drivetrain {
     // --- measurements
     s.speedKmh = vRoad * 3.6;
     this.governor(dt, s.speedKmh, pedal);
+    this.cc.update(dt, {
+      speedKmh: s.speedKmh, driverPedal, brake, running: engine.running, gear: s.gear,
+      clutchOpen: s.type === "manual" && s.shifting, manual: s.type === "manual", rpm, idleRpm: idle,
+      governorKmh: s.speedLimitKmh, holdPedal: this.holdPedal(engine, pedal, ratio),
+    });
     if (s.speedKmh > s.maxSpeedKmh) {
       s.maxSpeedKmh = s.speedKmh;
       s.maxSpeedLimited = this.govActive && s.speedLimitKmh !== null && s.speedKmh >= s.speedLimitKmh - 3;
@@ -744,7 +784,8 @@ export class Drivetrain {
    * flare to the limiter; DSG/CVT pass the pedal through (the ECU blips/cuts torque internally).
    * The top-speed governor (issue #32) caps the pedal; the cap is updated in inputs().
    */
-  effectivePedal(pedal: number): number {
+  effectivePedal(driverPedal: number): number {
+    const pedal = this.cc.command(driverPedal);
     if (this.st.type === "sequential" && this.st.shifting) {
       // quickshifter: ignition cut on the upshift (rider keeps the throttle open); blipper opens on the downshift
       return this.shiftDir > 0 ? 0 : Math.max(Math.min(pedal, this.govActive ? this.govCap : 1), 0.35);
