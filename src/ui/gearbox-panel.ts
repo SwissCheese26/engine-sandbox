@@ -209,6 +209,7 @@ export class GearboxPanel {
     this.last.tyreRating = -1;
     this.syncSetup();
     this.trip.syncUnits();
+    this.vehiclePanel.syncUnits();
   }
 
   private spd(kmh: number): string {

@@ -124,6 +124,11 @@ class RoundGauge {
   }
 
   draw() {
+    // hidden (menu open, #42): nothing to lay out; draw on the next visible frame
+    if (!this.canvas.clientWidth) {
+      this.dirty = true;
+      return;
+    }
     const { ctx, w, h } = fitCanvas(this.canvas);
     this.dirty = false;
     const t = tokens();

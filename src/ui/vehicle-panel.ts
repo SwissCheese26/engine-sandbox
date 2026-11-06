@@ -4,6 +4,11 @@
 import { SPEED_INDEX, TYRE_TYPES, formatTyreSize, frontAxleShare, parseTyreSize, speedRatingKmh, tyreRadii } from "../core/index.ts";
 import type { Drivetrain, DriveLayout, SpeedIndex, TyreSetup, TyreType, VehicleParams } from "../core/index.ts";
 import { VEHICLE_LIBRARY, type LibraryCar } from "../data/vehicle-library.ts";
+import { prefs } from "./settings.ts";
+import { toUnit } from "./units.ts";
+
+/** Speed in the globally chosen unit (#24), e.g. "250 km/h" or "155 mph". */
+const spd = (kmh: number) => `${Math.round(toUnit("speed", kmh)).toLocaleString("de-DE")} ${prefs().speed}`;
 
 const LAYOUT_LABEL: Record<DriveLayout, string> = { fwd: "Frontantrieb (FWD)", rwd: "Heckantrieb (RWD)", awd: "Allrad (AWD)" };
 /** Speed indices offered in the list (passenger cars and motorcycles). */
@@ -85,7 +90,7 @@ export class VehiclePanel {
         </label>
         <label class="vehicle__num"><span>Index</span>
           <select data-control="speed-index">${INDEX_CHOICES
-            .map((k) => `<option value="${k}">${k} (${k === "(Y)" ? "> 300" : SPEED_INDEX[k]} km/h)</option>`).join("")}</select>
+            .map((k) => `<option value="${k}">${k}</option>`).join("")}</select>
         </label>
       </div>
       <p class="vehicle__tyre num" data-out="tyre" id="tyre-size-help"></p>
@@ -134,7 +139,7 @@ export class VehiclePanel {
     }
     this.drivetrain.applyCar(structuredClone(car.setup));
     const f = car.factory;
-    this.carNote.textContent = `${car.name}: Werk ${fmt(f.t0to100S, 1)} s auf 100, Vmax ${f.vmaxKmh} km/h${f.vmaxGoverned ? " (abgeregelt)" : ""}, ${f.kerbKg} kg (${f.kerbNorm}).`;
+    this.carNote.textContent = `${car.name}: Werk ${fmt(f.t0to100S, 1)} s auf 100 km/h, Vmax ${spd(f.vmaxKmh)}${f.vmaxGoverned ? " (abgeregelt)" : ""}, ${f.kerbKg} kg (${f.kerbNorm}).`;
     this.sync();
     this.onChange();
   }
@@ -173,6 +178,15 @@ export class VehiclePanel {
   }
 
   /** Fills all controls from the drivetrain (after a load, a vehicle-kind change or an edit). */
+  /** Speed-index labels in the chosen unit (#24); called by the gearbox panel on a settings change. */
+  syncUnits() {
+    for (const o of this.indexSel.options) {
+      const k = o.value as SpeedIndex;
+      o.textContent = `${k} (${k === "(Y)" ? `> ${spd(300)}` : spd(SPEED_INDEX[k as keyof typeof SPEED_INDEX])})`;
+    }
+    this.sync();
+  }
+
   sync() {
     const v = this.drivetrain.vehicle;
     const t = this.drivetrain.tyre;
@@ -190,7 +204,7 @@ export class VehiclePanel {
     this.sizeInput.removeAttribute("aria-invalid");
     this.indexSel.value = t.speedIndex;
     const r = tyreRadii(t.size);
-    this.tyreOut.textContent = `Dynamischer Radius ${fmt(r.dynamicM * 1000, 0)} mm, Abrollumfang ${fmt(2 * Math.PI * r.dynamicM, 2)} m, Freigabe bis ${t.speedIndex === "(Y)" ? "über 300" : speedRatingKmh(t.speedIndex)} km/h.`;
+    this.tyreOut.textContent = `Dynamischer Radius ${fmt(r.dynamicM * 1000, 0)} mm, Abrollumfang ${fmt(2 * Math.PI * r.dynamicM, 2)} m, Freigabe bis ${t.speedIndex === "(Y)" ? `über ${spd(300)}` : spd(speedRatingKmh(t.speedIndex))}.`;
     this.lastTemp = "";
     this.updateTyreHint();
     this.setLocked(this.moving);
@@ -202,8 +216,8 @@ export class VehiclePanel {
     const temp = `${Math.round(s.tyreTempC)}|${s.grip.toFixed(2)}`;
     if (temp === this.lastTemp) return;
     this.lastTemp = temp;
-    const cold = t.coldFactor < 0.9 && s.tyreTempC < t.warmC - 5 ? ` Noch kalt: ${fmt(s.tyreTempC, 0)} °C, warmfahren (Burnout) bringt Grip.` : "";
-    this.tyreHint.textContent = `${t.hint} Jetzt μ ${fmt(s.grip, 2)}, Lauffläche ${fmt(s.tyreTempC, 0)} °C.${cold}`;
+    const cold = t.coldFactor < 0.9 && s.tyreTempC < t.warmC - 5 ? ` Noch kalt: ${fmt(toUnit("temp", s.tyreTempC), 0)} ${prefs().temp}, warmfahren (Burnout) bringt Grip.` : "";
+    this.tyreHint.textContent = `${t.hint} Jetzt μ ${fmt(s.grip, 2)}, Lauffläche ${fmt(toUnit("temp", s.tyreTempC), 0)} ${prefs().temp}.${cold}`;
   }
 
   private setLocked(moving: boolean) {
