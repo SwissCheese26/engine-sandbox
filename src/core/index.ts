@@ -51,3 +51,5 @@ export {
 export type { Environment, Weather } from "./environment.ts";
 export { DEFAULT_ASSISTS, ASSIST_LAMP_HOLD_S, TractionControl } from "./assists.ts";
 export type { AssistSettings, TractionOutput } from "./assists.ts";
+export { TripComputer, averageKmh, averageL100, MIN_KM_FOR_AVERAGE } from "./trip-computer.ts";
+export type { TripComputerData, TripCounter } from "./trip-computer.ts";

@@ -3,6 +3,7 @@
 // Issue #22: Fahrzeug-Platte (vehicle-panel.ts), wheel-spin / locked-wheel indicator, tyre warning from the
 // fitted tyre's speed index.
 // Issue #23: Umwelt- und Assistenz-Platte (environment-panel.ts) and the warning-lamp strip under the gear indicator.
+import { TripPanel } from "./trip-panel.ts";
 import { Drivetrain, GEARBOXES, VEHICLES, theoreticalVmax, dynoSweep, SPEED_LIMIT_OPTIONS } from "../core/index.ts";
 import type { EngineConfig, EngineSummary, GearboxType, VehicleKind } from "../core/index.ts";
 import { EnvironmentPanel, WarningLamps } from "./environment-panel.ts";
@@ -26,6 +27,8 @@ const fmt0 = (n: number) => Math.round(n).toLocaleString("de-DE");
 
 export class GearboxPanel {
   readonly el: HTMLElement;
+  /** Bordcomputer (#40, #41). */
+  readonly trip: TripPanel;
   readonly drivetrain: Drivetrain;
   private typeSel: HTMLSelectElement;
   private vehicleSel: HTMLSelectElement;
@@ -105,12 +108,15 @@ export class GearboxPanel {
         <div><dt>Vmax gemessen</dt><dd class="num"><span data-out="vmax">0</span> km/h<small class="gearbox__vmax-note" hidden> (abgeregelt)</small></dd></div>
         <div><dt>0–100 km/h</dt><dd class="num"><span data-out="t100">–</span> s</dd></div>
       </dl>
+      <div data-slot="trip"></div>
       <div class="gearbox__notes" aria-live="polite">
         <p class="note note--info" data-out="governor" hidden>Abgeregelt: Der Vmax-Begrenzer nimmt das Gas zurück.</p>
         <p class="note note--warning" data-out="tyre" hidden></p>
       </div>
       </div>`;
     this.el = el;
+    this.trip = new TripPanel();
+    el.querySelector("[data-slot=trip]")!.replaceWith(this.trip.el);
     const q = <T extends Element>(s: string) => el.querySelector<T>(s)!;
     this.typeSel = q("[data-control=gearbox]");
     this.vehicleSel = q("[data-control=vehicle]");

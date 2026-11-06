@@ -266,6 +266,8 @@ export class App {
       this.recorder.update(s, dt);
       this.console.update(s);
       if (this.inputs.dynoMode === "vehicle") this.gearbox.update(this.console.brakeHeld);
+      // board computer counts only while the car drives on the chassis dyno (#40, #41)
+      this.gearbox.trip.step(dt, s, this.inputs.dynoMode === "vehicle");
       if (this.soundStarted) this.sound.update(s, this.inputs.pedal);
       this.rafId = requestAnimationFrame(frame);
     };
@@ -275,6 +277,7 @@ export class App {
   /** Stops the loop, removes all global listeners and silences the sound (tests, hot reload). */
   dispose() {
     this.recorder.dispose();
+    this.gearbox.trip.save();
     if (this.disposed) return;
     this.disposed = true;
     cancelAnimationFrame(this.rafId);
