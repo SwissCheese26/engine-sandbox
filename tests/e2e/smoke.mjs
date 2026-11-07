@@ -225,6 +225,17 @@ async function layouts(page, label) {
   else await page.keyboard.up("s");
   console.log(`${label}: Bremse ${fmt(b0)} → ${fmt(b1)}`);
   if (!(b0 > 5 && Number.isFinite(b1) && b1 < b0 - 3)) failures.push(`${label}: Bremse bremst nicht (${b0} → ${b1})`);
+  // on the chassis dyno the gas lever springs back when it is let go (else the car drives on by itself)
+  const tr = await page.locator(".pedal__track").boundingBox();
+  await page.mouse.move(tr.x + tr.width / 2, tr.y + tr.height * 0.9);
+  await page.mouse.down();
+  await page.mouse.move(tr.x + tr.width / 2, tr.y + tr.height * 0.4, { steps: 4 });
+  const held = await page.locator(".pedal__value").textContent();
+  await page.mouse.up();
+  await page.waitForTimeout(100);
+  const after = (await page.locator(".pedal__value").textContent())?.trim();
+  if (!(parseInt(held ?? "0", 10) >= 30)) failures.push(`${label}: Gashebel lässt sich nicht ziehen (${held})`);
+  if (after !== "0 %") failures.push(`${label}: Gashebel federt auf der Rolle nicht zurück (${held} → ${after})`);
   await page.keyboard.down("w");
   for (const id of ["race", "compact"]) {
     await page.selectOption('select[data-control="layout"]', id);
