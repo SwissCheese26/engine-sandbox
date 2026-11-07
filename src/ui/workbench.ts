@@ -11,6 +11,25 @@ import { FIELDS, GROUPS, getPath, isVisible, setPath } from "./fields.ts";
 import type { Field } from "./fields.ts";
 import { clamp, fmt, parseNumber, snap } from "./format.ts";
 import { autoName } from "./names.ts";
+import { prefs, type Quantity } from "./settings.ts";
+import { fmtQ, fromUnit, toUnit } from "./units.ts";
+
+/** How a number field is shown and typed: in the globally chosen unit (#24), stored in its own unit (SI). */
+interface View {
+  unit: string;
+  decimals: number;
+  show: (v: number) => number;
+  read: (shown: number) => number;
+}
+
+function view(f: { unit: string; decimals: number; scale?: number; q?: Quantity }): View {
+  const sc = f.scale ?? 1;
+  const u = f.q ? prefs()[f.q] : f.unit;
+  if (!f.q || u === f.unit) return { unit: f.unit, decimals: f.decimals, show: (v) => v * sc, read: (x) => x / sc };
+  const q = f.q;
+  const decimals = u === "in" ? Math.max(2, f.decimals + 1) : u === "psi" ? Math.max(0, f.decimals - 1) : u === "kPa" ? Math.max(0, f.decimals - 2) : u === "kpm" ? 1 : f.decimals;
+  return { unit: u, decimals, show: (v) => toUnit(q, v, u), read: (x) => fromUnit(q, x, u) };
+}
 
 type Listener = (cfg: EngineConfig) => void;
 
@@ -82,9 +101,7 @@ export class Workbench {
         return;
       }
       this.loadLibrary(e.config.id);
-      const kw = Math.round(e.expected.peakPowerKw);
-      const ps = Math.round(e.expected.peakPowerKw * 1.35962);
-      libInfo.textContent = `${e.maker}, ${e.years}: ${e.cars}. Werk: ${kw} kW (${ps} PS), ${Math.round(e.expected.peakTorqueNm)} Nm. Alle Werte sind danach frei veränderbar.`;
+      libInfo.textContent = `${e.maker}, ${e.years}: ${e.cars}. Werk: ${fmtQ("power", e.expected.peakPowerKw)}, ${fmtQ("torque", e.expected.peakTorqueNm)}. Alle Werte sind danach frei veränderbar.`;
       libInfo.hidden = false;
       lib.value = "";
     });
@@ -177,6 +194,12 @@ export class Workbench {
       .join(";");
   }
 
+  /** Global unit setting changed (#24): rebuild the plates so units, ranges and values follow. */
+  syncUnits() {
+    this.signature = "";
+    this.render();
+  }
+
   private render() {
     for (const r of this.fuelInputs) r.checked = r.value === this.cfg.fuel;
     const sig = this.sig();
@@ -240,7 +263,7 @@ export class Workbench {
     switch (f.kind) {
       case "number": {
         const r = f.range(this.cfg);
-        const sc = f.scale ?? 1;
+        const vw = view(f);
         const slider = document.createElement("input");
         slider.type = "range";
         slider.id = id;
@@ -254,23 +277,23 @@ export class Workbench {
         val.inputMode = "decimal";
         val.className = "num field__num";
         val.dataset.role = "value";
-        val.setAttribute("aria-label", `${f.label} in ${f.unit || "Einheiten"}`);
+        val.setAttribute("aria-label", `${f.label} in ${vw.unit || "Einheiten"}`);
         const unit = document.createElement("span");
         unit.className = "field__unit";
-        unit.textContent = f.unit;
+        unit.textContent = vw.unit;
         slider.addEventListener("input", () => this.set(f.path, Number(slider.value)));
         const commit = () => {
           const rr = f.range(this.cfg);
-          const raw = parseNumber(val.value, { min: rr.min * sc, max: rr.max * sc });
+          const raw = parseNumber(val.value, { min: vw.show(rr.min), max: vw.show(rr.max) });
           if (!Number.isFinite(raw)) {
             this.sync();
             return;
           }
-          const next = snap(clamp(raw / sc, rr.min, rr.max), rr.min, rr.step);
+          // typed in the shown unit, stored in the field's own unit
+          const next = snap(clamp(vw.read(raw), rr.min, rr.max), rr.min, rr.step);
           this.set(f.path, next);
           // show the accepted value in the field's own format, also while it keeps focus
-          const cur = (getPath(this.cfg, f.path) as number) * sc;
-          val.value = fmt(cur, f.decimals);
+          val.value = fmt(vw.show(getPath(this.cfg, f.path) as number), vw.decimals);
         };
         val.addEventListener("change", commit);
         val.addEventListener("keydown", (e) => {
@@ -282,7 +305,7 @@ export class Workbench {
         const range = document.createElement("span");
         range.className = "field__range num";
         range.setAttribute("aria-hidden", "true");
-        range.textContent = `${fmt(r.min * sc, f.decimals)} – ${fmt(r.max * sc, f.decimals)}`;
+        range.textContent = `${fmt(vw.show(r.min), vw.decimals)} – ${fmt(vw.show(r.max), vw.decimals)}`;
         row.append(label, valWrap, slider, range, effect, warn);
         break;
       }
@@ -310,17 +333,18 @@ export class Workbench {
         val.inputMode = "decimal";
         val.className = "num field__num";
         val.dataset.role = "value";
-        val.setAttribute("aria-label", `${f.label} in ${f.unit}`);
+        const vw = view(f);
+        val.setAttribute("aria-label", `${f.label} in ${vw.unit}`);
         const unit = document.createElement("span");
         unit.className = "field__unit";
-        unit.textContent = f.unit;
+        unit.textContent = vw.unit;
         on.addEventListener("change", () => this.set(f.path, on.checked ? f.defaultOn(this.cfg) : undefined));
         slider.addEventListener("input", () => this.set(f.path, Number(slider.value)));
         const commit = () => {
           const rr = f.range(this.cfg);
-          const raw = parseNumber(val.value, { min: rr.min, max: rr.max });
+          const raw = parseNumber(val.value, { min: vw.show(rr.min), max: vw.show(rr.max) });
           if (!Number.isFinite(raw)) return this.sync();
-          this.set(f.path, snap(clamp(raw, rr.min, rr.max), rr.min, rr.step));
+          this.set(f.path, snap(clamp(vw.read(raw), rr.min, rr.max), rr.min, rr.step));
         };
         val.addEventListener("change", commit);
         val.addEventListener("keydown", (e) => {
@@ -530,12 +554,12 @@ export class Workbench {
       if (!f) continue;
       const v = getPath(this.cfg, f.path);
       if (f.kind === "number") {
-        const sc = f.scale ?? 1;
+        const vw = view(f);
         const slider = row.querySelector<HTMLInputElement>('input[type="range"]')!;
         const val = row.querySelector<HTMLInputElement>(".field__num")!;
         slider.value = String(v);
-        slider.setAttribute("aria-valuetext", `${fmt((v as number) * sc, f.decimals)} ${f.unit}`.trim());
-        if (document.activeElement !== val) val.value = fmt((v as number) * sc, f.decimals);
+        slider.setAttribute("aria-valuetext", `${fmt(vw.show(v as number), vw.decimals)} ${vw.unit}`.trim());
+        if (document.activeElement !== val) val.value = fmt(vw.show(v as number), vw.decimals);
         const r = f.range(this.cfg);
         row.style.setProperty("--p", String(((v as number) - r.min) / (r.max - r.min)));
       } else if (f.kind === "choice-number") {
@@ -553,8 +577,9 @@ export class Workbench {
         (row.querySelector<HTMLElement>(".field__value")!).hidden = !on;
         if (on) {
           slider.value = String(v);
-          slider.setAttribute("aria-valuetext", `${fmt(v as number, f.decimals)} ${f.unit}`);
-          if (document.activeElement !== val) val.value = fmt(v as number, f.decimals);
+          const vw = view(f);
+          slider.setAttribute("aria-valuetext", `${fmt(vw.show(v as number), vw.decimals)} ${vw.unit}`);
+          if (document.activeElement !== val) val.value = fmt(vw.show(v as number), vw.decimals);
           const r = f.range(this.cfg);
           row.style.setProperty("--p", String(((v as number) - r.min) / (r.max - r.min)));
         }

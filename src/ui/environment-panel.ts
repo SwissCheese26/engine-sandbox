@@ -5,6 +5,8 @@
 // browser in localStorage (pruefzelle.environment, pruefzelle.assists).
 import { DEFAULT_ASSISTS, WEATHER_LABELS, altitudeToKpa } from "../core/index.ts";
 import type { AssistSettings, Drivetrain, Environment, Weather } from "../core/index.ts";
+import { prefs } from "./settings.ts";
+import { toUnit } from "./units.ts";
 
 export const ENV_KEY = "pruefzelle.environment";
 export const ASSIST_KEY = "pruefzelle.assists";
@@ -124,7 +126,7 @@ export class WarningLamps {
     this.set("esp", esp, esp === "blink" ? "ESP/ASR greift ein" : "ESP/ASR bereit");
     this.offText.textContent = offLabel || "ESP OFF";
     this.set("off", offLabel ? "on" : "off", offLabel ? `${offLabel}: ausgeschaltet` : "ESP und ASR eingeschaltet");
-    this.set("ice", ice, ice === "on" ? "Glättegefahr: unter 3 °C Außentemperatur" : "Keine Glättewarnung");
+    this.set("ice", ice, ice === "on" ? `Glättegefahr: unter ${fmt(toUnit("temp", 3))} ${prefs().temp} Außentemperatur` : "Keine Glättewarnung");
     this.lamps.launch.hidden = !a.launchControl;
     this.set("launch", launch, launch === "on" ? "Launch Control bereit: Bremse lösen" : "Launch Control");
   }
@@ -240,7 +242,12 @@ export class EnvironmentPanel {
       const { input, out } = this.ranges.get(r.key)!;
       input.value = String(val[r.key]);
       const n = val[r.key];
-      out.textContent = `${r.key === "grade" && n > 0 ? "+" : ""}${fmt(n)} ${r.unit}`;
+      // the outside temperature follows the global unit (#24); the slider itself stays in °C steps
+      const text = r.key === "ambient"
+        ? `${fmt(toUnit("temp", n))} ${prefs().temp}`
+        : `${r.key === "grade" && n > 0 ? "+" : ""}${fmt(n)} ${r.unit}`;
+      out.textContent = text;
+      input.setAttribute("aria-valuetext", text);
     }
     const kpa = altitudeToKpa(e.altitudeM);
     const gr = e.gradePct === 0 ? "eben" : e.gradePct > 0 ? `${fmt(e.gradePct)} % bergauf` : `${fmt(-e.gradePct)} % bergab`;
