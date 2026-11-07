@@ -3,7 +3,7 @@
 import { beforeEach, expect, test } from "bun:test";
 import { DEFAULT_SETTINGS, LAYOUTS, getSettings, resetSettingsCache, setSettings, validateSettings } from "../../src/ui/settings.ts";
 import {
-  BULB_CHECK_S, avgL100, clusterLamps, dialAngle, glowTimeS, ledColors, limitZoneRpm, shiftLights, shiftPoints, speedoMax,
+  BULB_CHECK_S, avgL100, fuelScale, tachoZones, clusterLamps, dialAngle, glowTimeS, ledColors, limitZoneRpm, shiftLights, shiftPoints, speedoMax,
   speedoTicks, tachoMax, torqueAt, type LampInput,
 } from "../../src/ui/layouts/logic.ts";
 
@@ -164,4 +164,18 @@ test("lamps: diesel pre-glow only while cold and before the start", () => {
 test("average consumption needs 0,1 km", () => {
   expect(Number.isNaN(avgL100(0.05, 0.01))).toBe(true);
   expect(avgL100(10, 0.6)).toBeCloseTo(6, 9);
+});
+
+test("rev counter zones: yellow pre-warning, red from the limiter", () => {
+  expect(tachoZones(6500, 7200)).toEqual({ warnFrom: 6000, redFrom: 6500 });
+  expect(tachoZones(6500, 5900)).toEqual({ warnFrom: 5750, redFrom: 6500 });
+  expect(tachoZones(4800, Number.NaN)).toEqual({ warnFrom: 4250, redFrom: 4800 });
+});
+
+test("consumption dial follows the chosen unit", () => {
+  expect(fuelScale("l/100 km", true)).toEqual({ unit: "l/100 km", max: 30, major: 10 });
+  expect(fuelScale("mpg", true).unit).toBe("mpg");
+  expect(fuelScale("km/l", true).max).toBe(40);
+  expect(fuelScale("mpg", false).unit).toBe("gal/h");
+  expect(fuelScale("km/l", false).unit).toBe("l/h");
 });

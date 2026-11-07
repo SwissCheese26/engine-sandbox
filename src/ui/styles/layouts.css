@@ -394,13 +394,6 @@
   background: var(--rd-blue);
   box-shadow: 0 0 12px var(--rd-blue);
 }
-.rd__shift {
-  min-height: 0;
-  margin: -6px 0 0;
-  font-size: var(--fs-12);
-  text-align: center;
-  color: var(--rd-blue);
-}
 .rd__grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);

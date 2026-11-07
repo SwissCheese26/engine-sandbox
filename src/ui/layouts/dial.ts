@@ -14,6 +14,10 @@ export interface DialScale {
   labelDiv?: number;
   /** Limit zone (signal yellow, design.md "Gelb heißt Grenze"), in display units. */
   zone?: { from: number; to: number };
+  /** Red zone from the limiter on (cockpit rev counter only). */
+  red?: { from: number; to: number };
+  /** Small instruments: print min and max at the ends of the arc. */
+  ends?: boolean;
   /** Short caption under the hub, e.g. "km/h" or "1/min × 1000". */
   caption: string;
   start?: number;
@@ -27,6 +31,7 @@ interface Palette {
   dim: string;
   needle: string;
   zone: string;
+  red: string;
   hub: string;
   font: string;
 }
@@ -41,6 +46,7 @@ function palette(el: Element): Palette {
     dim: v("--ck-dim", "#7c8075"),
     needle: v("--ck-needle", "#ff5326"),
     zone: v("--signal", "#f6a800"),
+    red: v("--ck-redline", "#d8321f"),
     hub: v("--ck-hub", "#0e1312"),
     font: v("--font-num", "system-ui"),
   };
@@ -140,11 +146,12 @@ export class Dial {
     ctx.stroke();
     const rr = r * (small ? 0.86 : 0.9);
     // limit zone on the outer edge
-    if (s.zone && s.zone.to > s.zone.from) {
+    for (const [z, col] of [[s.zone, p.zone], [s.red, p.red]] as const) {
+      if (!z || !(z.to > z.from)) continue;
       ctx.beginPath();
-      ctx.arc(cx, cy, rr - (small ? 3 : 5), this.angle(s.zone.from), this.angle(s.zone.to));
+      ctx.arc(cx, cy, rr - (small ? 3 : 5), this.angle(z.from), this.angle(z.to));
       ctx.lineWidth = small ? 5 : 9;
-      ctx.strokeStyle = p.zone;
+      ctx.strokeStyle = col;
       ctx.globalAlpha = 0.9;
       ctx.stroke();
       ctx.globalAlpha = 1;
@@ -178,7 +185,20 @@ export class Dial {
       ctx.fillText(label, cx + Math.cos(a) * lr, cy + Math.sin(a) * lr);
       ctx.shadowBlur = 0;
     }
-    if (small) return c;
+    if (small) {
+      if (s.ends) {
+        ctx.fillStyle = p.dim;
+        ctx.font = `500 ${Math.max(9, Math.round(r * 0.26))}px ${p.font}`;
+        ctx.textBaseline = "middle";
+        const y = cy + r * 0.62;
+        const f = (v: number) => String(Math.round(v * 10) / 10).replace(".", ",");
+        ctx.textAlign = "left";
+        ctx.fillText(f(s.min), cx - r * 0.5, y);
+        ctx.textAlign = "right";
+        ctx.fillText(f(s.max), cx + r * 0.5, y);
+      }
+      return c;
+    }
     // caption
     ctx.fillStyle = p.dim;
     ctx.font = `500 ${Math.round(small ? r * 0.22 : r * 0.085)}px ${p.font}`;

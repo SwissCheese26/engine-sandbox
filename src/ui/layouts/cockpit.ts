@@ -7,7 +7,7 @@ import { prefs } from "../settings.ts";
 import { toUnit } from "../units.ts";
 import { Dial, type DialScale } from "./dial.ts";
 import { BASE_ICON, ICON2 } from "./icons.ts";
-import { avgL100, clusterLamps, limitZoneRpm, speedoMax, speedoTicks, tachoMax, type Lamp, type LampSet } from "./logic.ts";
+import { avgL100, clusterLamps, fuelScale, speedoMax, speedoTicks, tachoMax, tachoZones, type Lamp, type LampSet } from "./logic.ts";
 import type { DriveInfo, Frame, LayoutView } from "./view.ts";
 
 type LampKey = keyof LampSet;
@@ -48,6 +48,8 @@ export class CockpitView implements LayoutView {
   private summary!: EngineSummary;
   private info!: DriveInfo;
   private speedMax = 0;
+  /** Unit and range the consumption dial is drawn with (changes when the car starts or stops moving). */
+  private fuelKey = "";
   /** Set by the app: switches the console to the chassis dyno. */
   onWantVehicle: () => void = () => {};
 
@@ -113,7 +115,12 @@ export class CockpitView implements LayoutView {
     const rmax = tachoMax(cfg.revLimitRpm);
     this.tacho.setScale({
       min: 0, max: rmax, major: 1000, minor: rmax > 9000 ? 500 : 250, labelDiv: 1000,
-      zone: { from: limitZoneRpm(cfg.revLimitRpm, summary.safeMaxRpm), to: rmax }, caption: "1/min × 1000",
+      // yellow pre-warning (Gelb heißt Grenze), red from the limiter on like in a real car (design.md "Cockpit-Layout")
+      ...(() => {
+        const z = tachoZones(cfg.revLimitRpm, summary.safeMaxRpm);
+        return { zone: { from: z.warnFrom, to: z.redFrom }, red: { from: z.redFrom, to: rmax } };
+      })(),
+      caption: "1/min × 1000",
     });
     this.speedMax = 0;
     this.syncUnits();
@@ -144,7 +151,7 @@ export class CockpitView implements LayoutView {
       this.setMini("boost", "Ladedruck", u.pressure, { min: 0, max: bMax, major: bMax / 2, minor: bMax / 4, zone: { from: P(L.boostMaxBar), to: bMax }, caption: u.pressure });
     }
     // momentary consumption: l/100 km (or mpg) while driving, l/h at standstill like a real board computer
-    this.setMini("fuel", "Verbrauch", u.fuel, { min: 0, max: 30, major: 10, minor: 5, caption: "l/100 km" });
+    this.fuelKey = "";
     this.out["speed-unit"]!.textContent = this.out["speed-unit2"]!.textContent = u.speed;
     this.speedMax = 0;
     for (const k of Object.keys(this.last)) this.last[k] = "";
@@ -156,7 +163,8 @@ export class CockpitView implements LayoutView {
     const m = this.minis[k];
     m.cap.textContent = cap;
     m.unit.textContent = unit;
-    m.dial.setScale(scale);
+    m.dial.setScale({ ...scale, ends: true });
+    m.wrap.title = `${cap}, Skala ${fmt(scale.min)} bis ${fmt(scale.max)} ${unit}`;
   }
 
   redraw() {
@@ -224,14 +232,21 @@ export class CockpitView implements LayoutView {
     this.mini("oilP", P(s.oilPressureBar), fmt(P(s.oilPressureBar), pd), dt);
     if (!this.minis.boost.wrap.hidden) this.mini("boost", P(Math.max(0, s.boostBar)), fmt(P(Math.max(0, s.boostBar)), pd), dt);
     const kmh = vehicle ? ds.speedKmh : 0;
-    const l100 = kmh > 5 && s.running ? (s.fuelFlowLh / kmh) * 100 : Number.NaN;
-    const fuelUnit = kmh > 5 ? u.fuel : u.fuel === "mpg" ? "gal/h" : "l/h";
-    if (this.minis.fuel.unit.textContent !== fuelUnit) this.minis.fuel.unit.textContent = fuelUnit;
-    const fuelText = kmh > 5
-      ? (Number.isFinite(toUnit("fuel", l100, u.fuel)) ? fmt(toUnit("fuel", l100, u.fuel), 1) : "–")
-      : fmt(u.fuel === "mpg" ? s.fuelFlowLh / 3.785411784 : s.fuelFlowLh, 1);
-    // needle: l/100 km while driving (clamped), l/h at standstill (same 0 … 30 scale, like many clusters)
-    this.mini("fuel", Number.isFinite(l100) ? l100 : s.fuelFlowLh, fuelText, dt);
+    // momentary consumption in the chosen unit: per distance while driving, per hour at standstill (#26 review)
+    const moving = kmh > 5;
+    const fs = fuelScale(u.fuel, moving);
+    const key = `${fs.unit}|${fs.max}`;
+    if (key !== this.fuelKey) {
+      this.fuelKey = key;
+      this.setMini("fuel", "Verbrauch", fs.unit, { min: 0, max: fs.max, major: fs.major, minor: fs.major / 2, caption: fs.unit });
+      this.minis.fuel.last = "";
+      this.minis.fuel.dial.draw(true);
+    }
+    const l100 = moving && s.running ? (s.fuelFlowLh / kmh) * 100 : Number.NaN;
+    const fuelVal = moving ? (s.running ? toUnit("fuel", l100, u.fuel) : Number.NaN) : u.fuel === "mpg" ? s.fuelFlowLh / 3.785411784 : s.fuelFlowLh;
+    const fuelText = Number.isFinite(fuelVal) ? fmt(fuelVal, 1) : "–";
+    // km/l and mpg: coasting with no fuel reads off the scale end; unknown values rest at 0
+    this.mini("fuel", Number.isFinite(fuelVal) ? fuelVal : moving && u.fuel !== "l/100 km" && s.running ? fs.max : 0, fuelText, dt);
 
     this.updateLamps(f);
   }

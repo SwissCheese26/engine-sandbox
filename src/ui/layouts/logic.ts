@@ -30,6 +30,16 @@ export function limitZoneRpm(revLimitRpm: number, safeMaxRpm: number): number {
   return Math.floor(r / 250) * 250;
 }
 
+/**
+ * Rev-counter zones of the cockpit: yellow pre-warning (design.md "Gelb heißt Grenze") from 500 rpm below the limiter
+ * or from the mechanically safe rpm if that is lower, red from the limiter on (usual vehicle convention, see
+ * design.md "Cockpit-Layout").
+ */
+export function tachoZones(revLimitRpm: number, safeMaxRpm: number): { warnFrom: number; redFrom: number } {
+  const safe = Number.isFinite(safeMaxRpm) && safeMaxRpm > 0 ? safeMaxRpm : revLimitRpm;
+  return { warnFrom: Math.floor(Math.min(revLimitRpm - 500, safe) / 250) * 250, redFrom: revLimitRpm };
+}
+
 /** Canvas angle (rad) of value v on a dial 0 … max; clamped to the scale. */
 export function dialAngle(v: number, max: number, start = START_DEG, sweep = SWEEP_DEG): number {
   const f = max > 0 && Number.isFinite(v) ? Math.min(1, Math.max(0, v / max)) : 0;
@@ -177,6 +187,17 @@ export function clusterLamps(x: LampInput): LampSet {
   }
   l.ice = x.ice ? "on" : "off";
   return l;
+}
+
+/**
+ * Scale of the momentary-consumption instrument in the chosen unit (#26 review): per distance while driving
+ * (l/100 km, km/l or mpg), per hour at standstill (l/h or gal/h), like the board computer of a real car.
+ */
+export function fuelScale(unit: string, moving: boolean): { unit: string; max: number; major: number } {
+  if (!moving) return unit === "mpg" ? { unit: "gal/h", max: 5, major: 1 } : { unit: "l/h", max: 20, major: 5 };
+  if (unit === "mpg") return { unit, max: 80, major: 20 };
+  if (unit === "km/l") return { unit, max: 40, major: 10 };
+  return { unit: "l/100 km", max: 30, major: 10 };
 }
 
 /** Average consumption in l/100 km, NaN below 0,1 km (not meaningful). */

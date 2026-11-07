@@ -12,6 +12,7 @@ import type { DriveInfo, Frame, LayoutView } from "./view.ts";
 const LEDS = 12;
 /** Flash rate of the blue shift light, Hz (typical motorsport dashes: 5 … 10 Hz). */
 const FLASH_HZ = 8;
+const SHIFT_HYST_RPM = 150;
 
 export class RaceView implements LayoutView {
   readonly el: HTMLElement;
@@ -26,6 +27,10 @@ export class RaceView implements LayoutView {
   private best: number | null = null;
   private lastRun: number | null = null;
   private litKey = "";
+  /** Shift flash held until the rpm drops this far below the shift point (no flicker at the threshold). */
+  private flashing = false;
+  /** Gear the "Schalten" hint was announced in; announced once per gear (#26 review). */
+  private announcedGear = -1;
 
   constructor() {
     const el = document.createElement("section");
@@ -33,7 +38,7 @@ export class RaceView implements LayoutView {
     el.setAttribute("aria-label", "Renn-Display");
     el.innerHTML = `
       <div class="rd__leds" aria-hidden="true">${ledColors(LEDS).map((c) => `<span class="rd-led" data-color="${c}"></span>`).join("")}</div>
-      <p class="rd__shift" data-rd="shift" role="status"></p>
+      <p class="sr-only" data-rd="shift" role="status"></p>
       <div class="rd__grid">
         <div class="rd__cell rd__cell--speed"><span class="rd__lab" data-rd="speed-unit">km/h</span><b class="num rd__big" data-rd="speed">–</b></div>
         <div class="rd__gear num"><span class="sr-only">Gang </span><b data-rd="gear">N</b></div>
@@ -95,7 +100,11 @@ export class RaceView implements LayoutView {
 
     // shift lights: on the chassis dyno at the gear's optimal shift point, on the engine dyno at peak power
     const shiftRpm = vehicle && ds.gear > 0 && ds.type !== "cvt" && ds.gear < ds.gearCount ? this.info.shiftRpm(ds.gear) : vehicle ? this.cfg.revLimitRpm : this.summary.peakPowerRpm;
-    const { lit, flash } = shiftLights(s.running ? s.rpm : 0, shiftRpm, LEDS);
+    const sl = shiftLights(s.running ? s.rpm : 0, shiftRpm, LEDS);
+    const lit = sl.lit;
+    // hysteresis: once flashing, keep flashing until 150 rpm below the shift point
+    this.flashing = sl.flash || (this.flashing && s.running && s.rpm > shiftRpm - SHIFT_HYST_RPM);
+    const flash = this.flashing;
     const on = flash ? reducedMotion() || Math.floor(s.t * FLASH_HZ * 2) % 2 === 0 : true;
     const key = `${lit}|${flash}|${on}`;
     if (key !== this.litKey) {
@@ -104,8 +113,16 @@ export class RaceView implements LayoutView {
         l.dataset.on = String(flash ? on : i < lit);
         l.classList.toggle("is-shift", flash);
       });
-      this.put("shift", flash ? "Schalten" : "");
     }
+    // screen readers hear "Schalten" once per gear, not with every flash
+    const gear = vehicle ? ds.gear : 0;
+    if (flash && gear !== this.announcedGear) {
+      this.announcedGear = gear;
+      this.put("shift", vehicle ? `Schalten, ${fmt(shiftRpm)} 1/min` : "Spitzenleistung erreicht");
+    } else if (!flash && gear !== this.announcedGear && this.last.shift) {
+      this.put("shift", "");
+    }
+    if (!flash && gear !== this.announcedGear) this.announcedGear = -1;
     this.bar.style.setProperty("--rpm", `${Math.min(100, (s.rpm / this.rpmMax) * 100).toFixed(1)}%`);
     this.bar.style.setProperty("--mark", `${((shiftRpm / this.rpmMax) * 100).toFixed(1)}%`);
 
@@ -116,7 +133,9 @@ export class RaceView implements LayoutView {
       this.lastRun = done;
       const prev = this.best;
       this.best = prev === null ? done : Math.min(prev, done);
-      this.put("delta", prev === null ? "±0,00" : `${done - prev > 0 ? "+" : "−"}${fmt(Math.abs(done - prev), 2)}`);
+      const diff = prev === null ? 0 : done - prev;
+      // a tie (rounded to 1/100 s) reads ±0,00
+      this.put("delta", Math.abs(diff) < 0.005 ? "±0,00" : `${diff > 0 ? "+" : "−"}${fmt(Math.abs(diff), 2)}`);
     }
     this.put("sprint", run !== null ? fmt(run, 1) : done !== null ? fmt(done, 2) : "–");
 

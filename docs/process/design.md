@@ -70,7 +70,8 @@ Neben der Prüfzelle gibt es drei weitere Ansichten (Einstellungen → Ansicht, 
 └─────────────────────────────────────────────────────────────┘
   Rollenprüfstand-Pult darunter, Werkbank als Lade, Bedienpult unten
 ```
-- **Gelb heißt Grenze** gilt weiter: Der Grenzbereich im Drehzahlmesser (ab dem niedrigeren Wert von Begrenzer und mechanisch sicherer Drehzahl) und die Grenzbereiche der kleinen Instrumente sind Signalgelb, nicht rot.
+- **Gelb heißt Grenze** gilt weiter: Der Drehzahlmesser zeigt Gelb als Vorwarnung ab 500 1/min unter dem Begrenzer oder ab der mechanisch sicheren Drehzahl, wenn diese niedriger ist. Die Grenzbereiche der kleinen Instrumente sind ebenfalls Signalgelb.
+- **Rote Zone ab dem Drehzahlbegrenzer** (nur im Drehzahlmesser des Cockpits): Jeder Fahrer kennt den roten Bereich aus dem Auto. Im Kombiinstrument ist er die übliche Konvention, und ein gelber Bereich allein würde dort wie ein Fehler wirken. Die Arbeitsteilung bleibt eindeutig: Gelb heißt „du näherst dich der Grenze“, Rot heißt „hier regelt der Begrenzer ab“. Rot kommt sonst nur bei den Kontrollleuchten vor.
 - **Kontrollleuchten** dürfen die Fahrzeugfarben nach ISO 2575 tragen: Rot für Ladekontrolle, Öldruck und Kühlmittel, Bernstein für Motorkontrolle, Vorglühen, ABS und ESP, Weiß für Glätte und Grün für den Tempomat. Die Logik ist realistisch: Lampentest für 2 s nach „Zündung an“; bei stehendem Motor leuchten Ladekontrolle, Öldruck und Motorkontrolle; ESP blinkt, solange ASR oder ESP eingreifen.
 - Im **Motorprüfstand-Modus** ruht der Tacho gedimmt, das Mitteldisplay zeigt „–“ und bietet „Auf die Rolle“ an.
 - Mobil (< 900 px): Die beiden Rundinstrumente stehen nebeneinander, das Mitteldisplay liegt quer darunter.
