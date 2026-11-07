@@ -39,7 +39,8 @@ test("speedometer scale: about 1,2 × Vmax, at least 200 km/h / 120 mph", () => 
   expect(speedoMax(Number.NaN, "km/h")).toBe(200);
   expect(speedoMax(130, "mph")).toBe(160);
   expect(speedoMax(1000, "km/h")).toBe(400);
-  expect(speedoTicks(260, "km/h")).toEqual({ major: 20, minor: 10 });
+  expect(speedoTicks(200, "km/h")).toEqual({ major: 20, minor: 10 });
+  expect(speedoTicks(260, "km/h")).toEqual({ major: 40, minor: 10 });
   expect(speedoTicks(360, "km/h").major).toBe(40);
 });
 

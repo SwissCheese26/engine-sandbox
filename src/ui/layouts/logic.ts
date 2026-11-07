@@ -13,10 +13,10 @@ export function speedoMax(vmaxShown: number, unit: string): number {
   return steps.find((s) => s >= want) ?? steps[steps.length - 1]!;
 }
 
-/** Labelled and minor tick spacing of the speedometer: 20/10 km/h, 20/10 mph (40/10 for very wide scales). */
+/** Labelled and minor tick spacing of the speedometer: at most ~11 numerals on the 270° arc, like real clusters. */
 export function speedoTicks(max: number, unit: string): { major: number; minor: number } {
   if (unit === "mph") return { major: 20, minor: 10 };
-  return { major: max > 300 ? 40 : 20, minor: max > 300 ? 20 : 10 };
+  return max > 220 ? { major: 40, minor: max > 300 ? 20 : 10 } : { major: 20, minor: 10 };
 }
 
 /** Full scale of the rev counter: the limiter plus at least 500 rpm head room, rounded up to 1000. */

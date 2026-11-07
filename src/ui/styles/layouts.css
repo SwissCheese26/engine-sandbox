@@ -322,6 +322,13 @@
     font-size: var(--fs-14);
     bottom: 10%;
   }
+  .ck__lamps {
+    gap: 0 2px;
+  }
+  .ck-lamp svg {
+    width: 26px;
+    height: 18px;
+  }
   .ck-mini .dial {
     width: 64px;
     height: 64px;
@@ -571,6 +578,7 @@
 .layout-tile {
   position: relative;
   display: grid;
+  align-content: start;
   gap: 2px;
   padding: var(--space-2) var(--space-2) var(--space-3);
   border: 2px solid rgba(35, 41, 42, 0.2);
@@ -656,6 +664,11 @@
     gap: var(--space-2);
   }
   .cell__layout select {
-    width: 112px;
+    width: 128px;
+  }
+  .cell__top .bench-toggle {
+    min-height: 32px;
+    padding: 0 var(--space-3);
+    font-size: var(--fs-14);
   }
 }
