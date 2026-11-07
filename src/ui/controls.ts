@@ -32,9 +32,11 @@ export class ControlPanel {
   private starterKey = false;
   /** S held (keyboard) or the brake pedal pressed (touch/mouse): brake on the chassis dyno. */
   private brakeKey = false;
-  private brakePointer = false;
+  /** Fingers/pointers on the brake pedal, and Enter/Space while it has focus. */
+  private brakePointers = new Set<number>();
+  private brakeBtnKey = false;
   get brakeHeld(): boolean {
-    return this.brakeKey || this.brakePointer;
+    return this.brakeKey || this.brakeBtnKey || this.brakePointers.size > 0;
   }
   /** Brake pedal next to the gas lever, shown on touch screens (phones have no S key). */
   readonly brakeEl: HTMLButtonElement;
@@ -142,27 +144,38 @@ export class ControlPanel {
     this.brakeEl.className = "brakepedal";
     this.brakeEl.setAttribute("aria-pressed", "false");
     this.brakeEl.innerHTML = `<span class="brakepedal__plate" aria-hidden="true"></span><span class="brakepedal__label">Bremse</span>`;
-    const brake = (on: boolean) => {
-      this.brakePointer = on;
-      this.renderBrake();
-    };
     this.brakeEl.addEventListener("pointerdown", (e) => {
       this.brakeEl.setPointerCapture?.(e.pointerId);
-      brake(true);
+      this.brakePointers.add(e.pointerId);
+      this.renderBrake();
       e.preventDefault();
     });
-    for (const ev of ["pointerup", "pointercancel", "lostpointercapture"] as const) this.brakeEl.addEventListener(ev, () => brake(false));
+    // the brake is released only when the last finger leaves it
+    for (const ev of ["pointerup", "pointercancel", "lostpointercapture"] as const) {
+      this.brakeEl.addEventListener(ev, (e) => {
+        this.brakePointers.delete(e.pointerId);
+        this.renderBrake();
+      });
+    }
+    const brakeKey = (on: boolean) => {
+      this.brakeBtnKey = on;
+      this.renderBrake();
+    };
     this.brakeEl.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") {
-        if (!e.repeat) brake(true);
+        if (!e.repeat) brakeKey(true);
         e.preventDefault();
         e.stopPropagation();
       }
     });
     this.brakeEl.addEventListener("keyup", (e) => {
-      if (e.key === "Enter" || e.key === " ") brake(false);
+      if (e.key === "Enter" || e.key === " ") {
+        brakeKey(false);
+        e.stopPropagation();
+      }
     });
-    this.brakeEl.addEventListener("blur", () => this.brakePointer && brake(false));
+    // focus moving away (e.g. a finger on the gas lever) ends only the keyboard brake, not a finger on the pedal
+    this.brakeEl.addEventListener("blur", () => this.brakeBtnKey && brakeKey(false));
     this.brakeEl.addEventListener("contextmenu", (e) => e.preventDefault());
     this.pedalsEl = document.createElement("div");
     this.pedalsEl.className = "pedals";
@@ -356,7 +369,8 @@ export class ControlPanel {
     this.gasLevel = 0;
     this.starterKey = false;
     this.brakeKey = false;
-    this.brakePointer = false;
+    this.brakePointers.clear();
+    this.brakeBtnKey = false;
     this.renderBrake();
     this.starterPointer = false;
     this.updateStarter();

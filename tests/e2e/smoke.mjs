@@ -224,7 +224,7 @@ async function layouts(page, label) {
   if (brakeShown) await page.mouse.up();
   else await page.keyboard.up("s");
   console.log(`${label}: Bremse ${fmt(b0)} → ${fmt(b1)}`);
-  if (!(b1 < b0 - 3 || b1 === 0 || !Number.isFinite(b1))) failures.push(`${label}: Bremse bremst nicht (${b0} → ${b1})`);
+  if (!(b0 > 5 && Number.isFinite(b1) && b1 < b0 - 3)) failures.push(`${label}: Bremse bremst nicht (${b0} → ${b1})`);
   await page.keyboard.down("w");
   for (const id of ["race", "compact"]) {
     await page.selectOption('select[data-control="layout"]', id);
