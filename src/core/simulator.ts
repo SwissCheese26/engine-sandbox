@@ -344,7 +344,9 @@ export class EngineSimulator {
         x.dynoI = 0;
         brake = 0;
       }
-      const veh = input.dynoMode === "vehicle" ? input.vehicle : undefined;
+      // cranking a dead engine: the driver holds the clutch pedal down (the drivetrain sees the starter one frame late)
+      const coupling = input.dynoMode === "vehicle" ? input.vehicle : undefined;
+      const veh = coupling && starter && !x.running && coupling.clutch > 0 ? { ...coupling, clutch: 0 } : coupling;
       if (veh) {
         // ASR ignition retard (issue #23): petrol engines lose torque within one firing when the spark is retarded
         // (≈ 3–4 %/°CA, up to ≈ 60 % with 15–20 °CA retard; Bosch, Gasoline Engine Management, "torque-based ECU") [S]

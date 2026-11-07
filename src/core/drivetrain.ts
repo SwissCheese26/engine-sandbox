@@ -620,9 +620,17 @@ export class Drivetrain {
     let launchHoldRpm = 0;
     s.launchArmed = false;
     let tractionLimited = false;
-    // Engine not running (ignition off, stalled): the automatic clutch opens, so there is no engine braking
-    // and the engine is not dragged along (simplification of an automated clutch, review #19).
-    if (s.gear === 0 || !engine.running) {
+    // Engine not running (ignition off, stalled). Manual and sequential: a gear is engaged and the clutch pedal is
+    // released, so the rolling car drags the engine along (friction and pumping work brake the car, like rolling
+    // downhill in gear with the ignition off; parked in gear on a slope the engine's compression holds the car).
+    // DSG, converter, CVT: without a running engine there is no oil pressure, the
+    // clutches open (review #19). A destroyed engine is declutched by the driver.
+    const dragged = !engine.running && !engine.destroyed && s.gear > 0 && (s.type === "manual" || s.type === "sequential")
+      && !s.shifting && !engine.starterEngaged; // cranking: the driver holds the clutch pedal down
+    if (dragged) {
+      this.holdLaunch = 0;
+      clutch = 1;
+    } else if (s.gear === 0 || !engine.running) {
       clutch = 0;
     } else if (s.shifting) {
       // manual: open; DSG: second clutch takes over, slip syncs within the shift; sequential: dog rings
