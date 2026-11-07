@@ -206,6 +206,11 @@ export class App {
       this.announce(`${car.name} geladen.`);
       return true;
     };
+    // a production engine picked on the bench brings its car along (gearbox, body, tyres), if the library has it
+    this.bench.onLibraryLoad = (id) => {
+      const car = this.gearbox.vehiclePanel.selectCarForEngine(id);
+      if (car) this.announce(`Fahrzeug passend zum Motor: ${car.name}.`);
+    };
     this.console.onModeChange = (mode) => this.gearbox.setVisible(mode === "vehicle");
     this.console.onIgnition = (on) => {
       if (on) void this.ensureSound();

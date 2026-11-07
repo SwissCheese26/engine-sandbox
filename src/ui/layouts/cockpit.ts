@@ -3,11 +3,11 @@
 // strip. Built for the chassis dyno; on the engine dyno the speedometer rests and reads "–".
 import type { EngineConfig, EngineSummary } from "../../core/index.ts";
 import { fmt } from "../format.ts";
-import { prefs } from "../settings.ts";
+import { getSettings, prefs, setSettings } from "../settings.ts";
 import { toUnit } from "../units.ts";
 import { Dial, type DialScale } from "./dial.ts";
 import { BASE_ICON, ICON2 } from "./icons.ts";
-import { avgL100, clusterLamps, fuelScale, speedoMax, speedoTicks, tachoMax, tachoZones, type Lamp, type LampSet } from "./logic.ts";
+import { avgL100, clusterLamps, fuelScale, SPEEDO_SCALES, clampSpeedoKmh, isSpeedoScale, speedoScaleMax, speedoTicks, tachoMax, tachoZones, type Lamp, type LampSet } from "./logic.ts";
 import type { DriveInfo, Frame, LayoutView } from "./view.ts";
 
 type LampKey = keyof LampSet;
@@ -48,6 +48,9 @@ export class CockpitView implements LayoutView {
   private summary!: EngineSummary;
   private info!: DriveInfo;
   private speedMax = 0;
+  private scaleSel: HTMLSelectElement;
+  private customIn: HTMLInputElement;
+  private scaleKey = "";
   /** Unit and range the consumption dial is drawn with (changes when the car starts or stops moving). */
   private fuelKey = "";
   /** Set by the app: switches the console to the chassis dyno. */
@@ -64,6 +67,14 @@ export class CockpitView implements LayoutView {
       <div class="ck__main">
         <div class="ck__dial ck__dial--speed" data-slot="speed">
           <p class="ck__read num" aria-live="off"><span data-ck="speed">–</span> <small data-ck="speed-unit">km/h</small></p>
+          <div class="ck__scale">
+            <label><span>Skala</span>
+              <select data-control="speedo-scale">${SPEEDO_SCALES.map((o) => `<option value="${o.id}">${o.label}${o.kmh ? ` · ${o.kmh} km/h` : ""}</option>`).join("")}</select>
+            </label>
+            <label data-ck-custom hidden><span class="sr-only">Eigene Skala</span>
+              <input type="number" data-control="speedo-custom" min="100" max="600" step="20" inputmode="numeric" /> <small>km/h</small>
+            </label>
+          </div>
         </div>
         <div class="ck__mfd" role="group" aria-label="Mitteldisplay">
           <p class="ck__gear num"><span class="sr-only">Gang </span><span data-ck="gear">N</span></p>
@@ -92,6 +103,11 @@ export class CockpitView implements LayoutView {
     this.speedo = new Dial(blank, { label: "Tacho" });
     this.tacho = new Dial(blank, { label: "Drehzahlmesser" });
     el.querySelector("[data-slot=speed]")!.prepend(this.speedo.canvas);
+    // speedometer scale (stored in the settings, also choosable on the settings screen)
+    this.scaleSel = el.querySelector<HTMLSelectElement>("[data-control=speedo-scale]")!;
+    this.customIn = el.querySelector<HTMLInputElement>("[data-control=speedo-custom]")!;
+    this.scaleSel.addEventListener("change", () => isSpeedoScale(this.scaleSel.value) && setSettings({ speedo: this.scaleSel.value }));
+    this.customIn.addEventListener("change", () => setSettings({ speedoCustomKmh: clampSpeedoKmh(this.customIn.valueAsNumber) }));
     el.querySelector("[data-slot=rpm]")!.prepend(this.tacho.canvas);
 
     const host = el.querySelector(".ck__minis")!;
@@ -192,9 +208,17 @@ export class CockpitView implements LayoutView {
     const d = f.drivetrain;
     const ds = d.state;
     const vehicle = f.mode === "vehicle";
-    // speed scale follows the car's top speed (a 300 km/h car gets a 320 dial, a city car 200)
+    // speed scale: the chosen one (Standard 240 … Vmax-Killer 500, own) or, on "auto", the car's top speed
+    const st = getSettings();
+    const sKey = `${st.speedo}|${st.speedoCustomKmh}`;
+    if (sKey !== this.scaleKey) {
+      this.scaleKey = sKey;
+      this.scaleSel.value = st.speedo;
+      if (document.activeElement !== this.customIn) this.customIn.value = String(st.speedoCustomKmh);
+      (this.customIn.closest("[data-ck-custom]") as HTMLElement).hidden = st.speedo !== "custom";
+    }
     const vmaxShown = toUnit("speed", this.info.vmaxKmh, u.speed);
-    const smax = speedoMax(vmaxShown, u.speed);
+    const smax = speedoScaleMax(st.speedo, st.speedoCustomKmh, vmaxShown, u.speed);
     if (smax !== this.speedMax) {
       this.speedMax = smax;
       const t = speedoTicks(smax, u.speed);

@@ -42,6 +42,10 @@ export class MainMenu {
       </nav>
       <footer class="hall__floor">
         <p>Mit <kbd>Tab</kbd> wählen, mit <kbd>Enter</kbd> öffnen. <kbd>Esc</kbd> führt aus jedem Bereich zurück hierher.</p>
+        <p class="hall__credit">
+          Gebaut von <a href="https://github.com/SwissCheese26" rel="author noopener" target="_blank">Arthur Reznikov (@SwissCheese26)</a>
+          · <a href="https://github.com/SwissCheese26/engine-sandbox" rel="noopener" target="_blank">Quellcode auf GitHub</a>
+        </p>
       </footer>`;
     this.el = el;
     this.heading = el.querySelector(".hall__name")!;

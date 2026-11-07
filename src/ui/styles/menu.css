@@ -570,3 +570,39 @@
     justify-content: flex-start;
   }
 }
+
+/* speedometer scale of the cockpit (settings → Ansicht) */
+.office__speedo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+.office__opt {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--fs-14);
+}
+.office__opt select,
+.office__opt input {
+  font: inherit;
+  min-height: 36px;
+  padding: 0 var(--space-2);
+}
+.office__opt input {
+  width: 8em;
+}
+
+/* maker's plate on the hall floor: link to the author (GitHub) */
+.hall__floor .hall__credit {
+  margin-top: var(--space-2);
+}
+.hall__credit a {
+  color: var(--alu);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.hall__credit a:hover,
+.hall__credit a:focus-visible {
+  color: #fff;
+}

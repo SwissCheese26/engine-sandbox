@@ -3,7 +3,7 @@
 import { beforeEach, expect, test } from "bun:test";
 import { DEFAULT_SETTINGS, LAYOUTS, getSettings, resetSettingsCache, setSettings, validateSettings } from "../../src/ui/settings.ts";
 import {
-  BULB_CHECK_S, avgL100, fuelScale, tachoZones, clusterLamps, dialAngle, glowTimeS, ledColors, limitZoneRpm, shiftLights, shiftPoints, speedoMax,
+  BULB_CHECK_S, avgL100, fuelScale, tachoZones, clusterLamps, dialAngle, glowTimeS, ledColors, limitZoneRpm, shiftLights, shiftPoints, speedoMax, speedoScaleMax, clampSpeedoKmh,
   speedoTicks, tachoMax, torqueAt, type LampInput,
 } from "../../src/ui/layouts/logic.ts";
 
@@ -178,4 +178,40 @@ test("consumption dial follows the chosen unit", () => {
   expect(fuelScale("km/l", true).max).toBe(40);
   expect(fuelScale("mpg", false).unit).toBe("gal/h");
   expect(fuelScale("km/l", false).unit).toBe("l/h");
+});
+
+test("speedometer scale presets: Standard 240 … Vmax-Killer 500, own scale, auto (after #26)", () => {
+  expect(speedoScaleMax("standard", 0, 100, "km/h")).toBe(240);
+  expect(speedoScaleMax("sporty", 0, 100, "km/h")).toBe(280);
+  expect(speedoScaleMax("rs", 0, 100, "km/h")).toBe(320);
+  expect(speedoScaleMax("hyper", 0, 100, "km/h")).toBe(400);
+  expect(speedoScaleMax("killer", 0, 100, "km/h")).toBe(500);
+  expect(speedoScaleMax("custom", 333, 100, "km/h")).toBe(340);
+  expect(speedoScaleMax("custom", 5000, 100, "km/h")).toBe(600);
+  expect(speedoScaleMax("auto", 0, 212, "km/h")).toBe(speedoMax(212, "km/h"));
+  // in mph the km/h scale is converted and rounded up to 10
+  expect(speedoScaleMax("standard", 0, 100, "mph")).toBe(150);
+  expect(speedoScaleMax("killer", 0, 100, "mph")).toBe(320);
+  expect(clampSpeedoKmh(Number.NaN)).toBe(240);
+  expect(clampSpeedoKmh(10)).toBe(100);
+  // every scale gets ticks that end on the scale end and at most 12 numerals
+  for (const unit of ["km/h", "mph"]) {
+    for (const id of ["standard", "sporty", "rs", "hyper", "killer"] as const) {
+      const max = speedoScaleMax(id, 0, 0, unit);
+      const t = speedoTicks(max, unit);
+      expect(max % t.minor).toBe(0);
+      expect(max / t.major).toBeLessThanOrEqual(12.5);
+    }
+  }
+  expect(speedoTicks(500, "km/h")).toEqual({ major: 50, minor: 25 });
+  for (let kmh = 100; kmh <= 600; kmh += 20) {
+    const max = speedoScaleMax("custom", kmh, 0, "km/h");
+    expect(max % speedoTicks(max, "km/h").minor).toBe(0);
+  }
+});
+
+test("settings: speedometer scale defaults to Standard and is validated", () => {
+  expect(DEFAULT_SETTINGS.speedo).toBe("standard");
+  expect(validateSettings({ speedo: "warp", speedoCustomKmh: "x" })).toMatchObject({ speedo: "standard", speedoCustomKmh: 240 });
+  expect(validateSettings({ speedo: "killer", speedoCustomKmh: 451 })).toMatchObject({ speedo: "killer", speedoCustomKmh: 460 });
 });
