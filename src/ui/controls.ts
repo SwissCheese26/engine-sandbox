@@ -30,8 +30,18 @@ export class ControlPanel {
   private gasLevel = 0;
   private gasHeld = false;
   private starterKey = false;
-  /** S held: brake (chassis dyno). */
-  brakeHeld = false;
+  /** S held (keyboard) or the brake pedal pressed (touch/mouse): brake on the chassis dyno. */
+  private brakeKey = false;
+  /** Fingers/pointers on the brake pedal, and Enter/Space while it has focus. */
+  private brakePointers = new Set<number>();
+  private brakeBtnKey = false;
+  get brakeHeld(): boolean {
+    return this.brakeKey || this.brakeBtnKey || this.brakePointers.size > 0;
+  }
+  /** Brake pedal next to the gas lever, shown on touch screens (phones have no S key). */
+  readonly brakeEl: HTMLButtonElement;
+  /** Gas lever and brake pedal side by side, as placed in the deck. */
+  readonly pedalsEl: HTMLElement;
   private starterPointer = false;
   private lastMsgKey = "";
   private lastStatus = "";
@@ -128,6 +138,48 @@ export class ControlPanel {
       <output class="num pedal__value">0 %</output>
       <span class="pedal__hint">Leertaste oder <kbd>W</kbd> halten</span>`;
     this.pedalFill = this.pedalEl.querySelector(".pedal__fill")!;
+    // brake pedal: held while pressed (pointer or Enter/Space), like the starter button
+    this.brakeEl = document.createElement("button");
+    this.brakeEl.type = "button";
+    this.brakeEl.className = "brakepedal";
+    this.brakeEl.setAttribute("aria-pressed", "false");
+    this.brakeEl.innerHTML = `<span class="brakepedal__plate" aria-hidden="true"></span><span class="brakepedal__label">Bremse</span>`;
+    this.brakeEl.addEventListener("pointerdown", (e) => {
+      this.brakeEl.setPointerCapture?.(e.pointerId);
+      this.brakePointers.add(e.pointerId);
+      this.renderBrake();
+      e.preventDefault();
+    });
+    // the brake is released only when the last finger leaves it
+    for (const ev of ["pointerup", "pointercancel", "lostpointercapture"] as const) {
+      this.brakeEl.addEventListener(ev, (e) => {
+        this.brakePointers.delete(e.pointerId);
+        this.renderBrake();
+      });
+    }
+    const brakeKey = (on: boolean) => {
+      this.brakeBtnKey = on;
+      this.renderBrake();
+    };
+    this.brakeEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        if (!e.repeat) brakeKey(true);
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    });
+    this.brakeEl.addEventListener("keyup", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        brakeKey(false);
+        e.stopPropagation();
+      }
+    });
+    // focus moving away (e.g. a finger on the gas lever) ends only the keyboard brake, not a finger on the pedal
+    this.brakeEl.addEventListener("blur", () => this.brakeBtnKey && brakeKey(false));
+    this.brakeEl.addEventListener("contextmenu", (e) => e.preventDefault());
+    this.pedalsEl = document.createElement("div");
+    this.pedalsEl.className = "pedals";
+    this.pedalsEl.append(this.brakeEl, this.pedalEl);
     this.pedalOut = this.pedalEl.querySelector(".pedal__value")!;
 
     this.wire();
@@ -285,7 +337,10 @@ export class ControlPanel {
       return true;
     }
     if (key === "s") {
-      if (!e.repeat) this.brakeHeld = down;
+      if (!e.repeat) {
+        this.brakeKey = down;
+        this.renderBrake();
+      }
       return true;
     }
     if (key === "w" || (key === " " && !activatable)) {
@@ -302,12 +357,21 @@ export class ControlPanel {
     return false;
   }
 
+  private renderBrake() {
+    const on = this.brakeHeld;
+    this.brakeEl.classList.toggle("is-held", on);
+    this.brakeEl.setAttribute("aria-pressed", String(on));
+  }
+
   /** Releases held keys when the window loses focus, so the throttle never sticks open. */
   releaseAll() {
     this.gasHeld = false;
     this.gasLevel = 0;
     this.starterKey = false;
-    this.brakeHeld = false;
+    this.brakeKey = false;
+    this.brakePointers.clear();
+    this.brakeBtnKey = false;
+    this.renderBrake();
     this.starterPointer = false;
     this.updateStarter();
     this.renderPedal();

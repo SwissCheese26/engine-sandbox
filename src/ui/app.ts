@@ -183,7 +183,7 @@ export class App {
 
     const deck = document.createElement("footer");
     deck.className = "deck";
-    deck.append(this.console.el, this.console.pedalEl);
+    deck.append(this.console.el, this.console.pedalsEl);
 
     cell.append(top, this.bench.el, stage, deck, this.announcer);
     this.root.replaceChildren(cell);

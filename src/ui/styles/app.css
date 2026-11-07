@@ -1031,6 +1031,56 @@ kbd {
   box-shadow: inset 0 0 0 2px var(--alu);
 }
 
+/* gas lever and brake pedal side by side; the brake pedal only on touch screens (keyboard: S) */
+.pedals {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-3);
+}
+.brakepedal {
+  display: none;
+  align-self: flex-end;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: var(--fs-12);
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+@media (pointer: coarse), (hover: none) {
+  .brakepedal {
+    display: inline-flex;
+  }
+}
+.brakepedal__plate {
+  /* a wide rubber pad with ribs, like the brake pedal of a car (wider than the gas lever) */
+  width: 76px;
+  height: 64px;
+  border-radius: 8px;
+  background: repeating-linear-gradient(0deg, #2b3632 0 5px, #1f2925 5px 10px);
+  box-shadow: inset 0 0 0 2px #56655e, 0 4px 0 #111a17;
+  transition: transform 60ms linear, box-shadow 60ms linear;
+}
+.brakepedal.is-held .brakepedal__plate {
+  transform: translateY(4px);
+  box-shadow: inset 0 0 0 2px var(--alu), 0 0 0 #111a17;
+}
+.brakepedal:focus-visible {
+  outline: none;
+}
+.brakepedal:focus-visible .brakepedal__plate {
+  box-shadow: inset 0 0 0 2px #56655e, 0 0 0 3px var(--alu);
+}
+
 /* ── Medium: stack the stage blocks ─────────────────────────────────────── */
 @media (max-width: 1360px) {
   .instruments {
@@ -1219,6 +1269,25 @@ kbd {
   }
   .pedal__hint {
     display: none;
+  }
+  /* phones: gas value above its lever, brake pedal next to it; together narrow enough for the console */
+  .pedals {
+    gap: var(--space-2);
+  }
+  .pedal {
+    grid-template-areas: "value" "track";
+    grid-template-columns: auto;
+    row-gap: var(--space-1);
+    justify-items: center;
+  }
+  .pedal__value {
+    font-size: var(--fs-14);
+    min-width: 0;
+    text-align: center;
+  }
+  .brakepedal__plate {
+    width: 64px;
+    height: 72px;
   }
 }
 .console__more {
