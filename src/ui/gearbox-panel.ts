@@ -210,6 +210,7 @@ export class GearboxPanel {
     this.syncSetup();
     this.trip.syncUnits();
     this.vehiclePanel.syncUnits();
+    this.environmentPanel.sync();
   }
 
   private spd(kmh: number): string {

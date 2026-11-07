@@ -107,6 +107,18 @@ export class EngineSound {
     this.post({ type: "volume", value: this.volume });
   }
 
+  /** Pauses the audio clock (menu open, #42): the DSP stops and uses no CPU. Resumable with resume(). */
+  suspend(): Promise<void> {
+    const ctx = this.ctx;
+    return ctx && ctx.state === "running" ? ctx.suspend().catch(() => {}) : Promise.resolve();
+  }
+
+  /** Continues after suspend(). Browsers allow it without a new gesture once the context has run. */
+  resume(): Promise<void> {
+    const ctx = this.ctx;
+    return ctx && ctx.state === "suspended" ? ctx.resume().catch(() => {}) : Promise.resolve();
+  }
+
   /**
    * Fades out over ≈ 60 ms (output gain, time constant 20 ms), then disconnects and closes an owned
    * context. Safe to call during a pending start(): that start() aborts and leaves no nodes behind.

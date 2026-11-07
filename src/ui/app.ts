@@ -76,6 +76,7 @@ export class App {
   syncUnits() {
     if (this.disposed) return;
     this.gauges.syncUnits();
+    this.bench.syncUnits();
     this.nameplate.update(this.cfg, this.summary);
     this.recorder.syncUnits();
     this.gearbox.syncUnits();
@@ -305,13 +306,23 @@ export class App {
     cancelAnimationFrame(this.rafId);
     this.console.releaseAll();
     this.gearbox.trip.save();
-    if (this.soundStarted) this.sound.setVolume(0);
+    if (this.soundStarted) {
+      // silence first (smoothed in the DSP), then stop the audio clock
+      this.sound.setVolume(0);
+      const sound = this.sound;
+      setTimeout(() => {
+        if (this.paused) void sound.suspend();
+      }, 80);
+    }
   }
 
   resume() {
     if (!this.paused || this.disposed) return;
     this.paused = false;
-    if (this.soundStarted) this.sound.setVolume(this.console.muted ? 0 : this.console.volumeLevel);
+    if (this.soundStarted) {
+      void this.sound.resume();
+      this.sound.setVolume(this.console.muted ? 0 : this.console.volumeLevel);
+    }
     // canvases may have been laid out while hidden
     this.gauges.redraw();
     this.recorder.redraw(this.sim.state.t);

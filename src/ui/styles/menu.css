@@ -185,7 +185,23 @@
 }
 /* closed bays: lacquered shutter, plate dimmed */
 .door.is-closed {
-  cursor: default;
+  cursor: not-allowed;
+}
+.door.is-closed:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+.door.is-closed:focus-visible .door__lintel,
+.door.is-closed:focus-visible .door__opening {
+  box-shadow: var(--focus);
+}
+.hall__wall {
+  position: relative;
+}
+/* phones: settings at the top (the side door sits far down there) */
+.hall__settings-top {
+  display: none;
+  text-decoration: none;
 }
 .door.is-closed .door__shutter {
   background:
@@ -299,8 +315,8 @@
 }
 @media (max-width: 700px) {
   .hall__wall {
-    padding-top: var(--space-6);
-    padding-bottom: var(--space-5);
+    padding-top: var(--space-7);
+    padding-bottom: var(--space-4);
   }
   .hall__sub {
     font-size: var(--fs-16);
@@ -309,15 +325,32 @@
     grid-template-columns: 1fr;
     gap: var(--space-4);
   }
+  .hall__settings-top {
+    display: inline-flex;
+    position: absolute;
+    top: var(--space-4);
+    right: 16px;
+  }
+  .hall__side {
+    display: none;
+  }
+  /* compact doors: a strip of shutter above the sign, height follows the sign */
   .door {
-    grid-template-rows: auto 196px;
+    grid-template-rows: auto auto;
+  }
+  .door__opening {
+    padding: 26px 10px 10px;
   }
   .door__plate {
-    left: 12px;
-    right: 12px;
-    bottom: 12px;
+    position: relative;
+    left: auto;
+    right: auto;
+    bottom: auto;
     min-height: 0;
-    padding: var(--space-3);
+    padding: var(--space-2) var(--space-3);
+  }
+  .door__text {
+    font-size: var(--fs-12);
   }
   .door__title {
     font-size: var(--fs-20);

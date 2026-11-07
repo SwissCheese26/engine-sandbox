@@ -25,6 +25,7 @@ export class MainMenu {
     el.innerHTML = `
       <header class="hall__wall">
         <h1 class="hall__name" tabindex="-1">Prüfzelle</h1>
+        <a class="btn btn--small hall__settings-top" href="#settings">Einstellungen</a>
         <p class="hall__sub">Motorenprüfstand und Werkstatt. Motor bauen, auf den Prüfstand stellen, Gas geben.</p>
       </header>
       <nav class="hall__front" aria-label="Hauptmenü">
@@ -44,6 +45,8 @@ export class MainMenu {
       </footer>`;
     this.el = el;
     this.heading = el.querySelector(".hall__name")!;
+    // a locked door does nothing; the sign says why
+    el.querySelectorAll<HTMLButtonElement>(".door.is-closed").forEach((b) => b.addEventListener("click", (e) => e.preventDefault()));
   }
 
   private static door(d: Door): string {
@@ -58,6 +61,8 @@ export class MainMenu {
         </span>`;
     return d.href
       ? `<li class="hall__bay"><a class="door" href="${d.href}" data-mode="${d.title.toLowerCase()}">${inner}</a></li>`
-      : `<li class="hall__bay"><button type="button" class="door is-closed" disabled>${inner}</button></li>`;
+      // locked bays stay focusable (aria-disabled, not disabled), so keyboard and screen reader users find
+      // them; "kommt bald" is part of the accessible name
+      : `<li class="hall__bay"><button type="button" class="door is-closed" aria-disabled="true">${inner}</button></li>`;
   }
 }

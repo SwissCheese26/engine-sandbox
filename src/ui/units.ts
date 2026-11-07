@@ -4,7 +4,7 @@
 // overrides that one instrument. The shared conversions below are used by every panel that shows units.
 import type { EngineState } from "../core/index.ts";
 import { fmt } from "./format.ts";
-import { prefs, type Quantity, type UnitPrefs } from "./settings.ts";
+import { UNIT_OVERRIDES_KEY, getSettings, prefs, type Quantity, type UnitPrefs } from "./settings.ts";
 
 export interface UnitOpt {
   unit: string;
@@ -106,9 +106,10 @@ export function defaultUnitIndex(units: readonly UnitOpt[], p: UnitPrefs = prefs
   return i < 0 ? 0 : i;
 }
 
-const KEY = "pruefzelle.units";
+const KEY = UNIT_OVERRIDES_KEY;
 
 function load(): Record<string, number> {
+  getSettings(); // runs the one-time migration of old overrides before they are read
   try {
     return JSON.parse(localStorage.getItem(KEY) ?? "{}") as Record<string, number>;
   } catch {
@@ -131,10 +132,12 @@ export function clearUnitOverrides() {
   }
 }
 
-export function saveUnit(id: string, index: number) {
+/** Stores an instrument's own unit; a choice equal to the global default is no override and is removed. */
+export function saveUnit(id: string, units: readonly UnitOpt[], index: number) {
   try {
     const all = load();
-    all[id] = index;
+    if (index === defaultUnitIndex(units)) delete all[id];
+    else all[id] = index;
     localStorage.setItem(KEY, JSON.stringify(all));
   } catch {
     /* storage unavailable: choice lasts for this visit only */

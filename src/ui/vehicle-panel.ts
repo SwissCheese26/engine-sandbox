@@ -139,7 +139,7 @@ export class VehiclePanel {
     }
     this.drivetrain.applyCar(structuredClone(car.setup));
     const f = car.factory;
-    this.carNote.textContent = `${car.name}: Werk ${fmt(f.t0to100S, 1)} s auf 100 km/h, Vmax ${spd(f.vmaxKmh)}${f.vmaxGoverned ? " (abgeregelt)" : ""}, ${f.kerbKg} kg (${f.kerbNorm}).`;
+    this.carNote.textContent = `${car.name}: Werk ${fmt(f.t0to100S, 1)} s ${prefs().speed === "mph" ? "von 0 auf 62 mph (100 km/h, Werksangabe)" : "von 0 auf 100 km/h"}, Vmax ${spd(f.vmaxKmh)}${f.vmaxGoverned ? " (abgeregelt)" : ""}, ${f.kerbKg} kg (${f.kerbNorm}).`;
     this.sync();
     this.onChange();
   }

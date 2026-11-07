@@ -64,7 +64,7 @@ class RoundGauge {
       this.unitEl.textContent = units[this.unitIdx]!.unit;
       makeSwitchable(this.el, def.label, () => {
         this.unitIdx = (this.unitIdx + 1) % units.length;
-        saveUnit(def.id, this.unitIdx);
+        saveUnit(def.id, units, this.unitIdx);
         this.unitEl.textContent = units[this.unitIdx]!.unit;
         this.dirty = true;
         if (this.lastState) this.readout.textContent = this.fmtShown(this.def.value(this.lastState), this.lastState);
@@ -262,7 +262,7 @@ class Meter {
       unitEl.textContent = units[this.unitIdx]!.unit;
       makeSwitchable(this.el, def.label, () => {
         this.unitIdx = (this.unitIdx + 1) % units.length;
-        saveUnit(def.id, this.unitIdx);
+        saveUnit(def.id, units, this.unitIdx);
         unitEl.textContent = units[this.unitIdx]!.unit;
         if (this.lastState) this.update(this.lastState, 0, new Set());
       });

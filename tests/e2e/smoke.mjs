@@ -110,7 +110,7 @@ async function run(label, viewport) {
   // main menu (#42) and settings (#24), then into the sandbox through Tor 1
   if (!(await page.$(".hall"))) failures.push(`${label}: Hauptmenü fehlt`);
   await page.screenshot({ path: join(outDir, `smoke-${label}-menu.png`) });
-  await page.click('a[href="#settings"]');
+  await page.click('a[href="#settings"]:visible');
   await page.waitForSelector('[data-screen="settings"]:not([hidden]) input[name="preset"]');
   await page.screenshot({ path: join(outDir, `smoke-${label}-settings.png`), fullPage: true });
   await page.click('.office__top a[href="#menu"]');

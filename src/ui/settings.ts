@@ -69,10 +69,22 @@ function storage(): Storage | null {
   }
 }
 
+/** Per-instrument unit choices (#21), owned by units.ts; named here for the one-time migration. */
+export const UNIT_OVERRIDES_KEY = "pruefzelle.units";
+
 export function loadSettings(): Settings {
+  const st = storage();
   try {
-    const raw = storage()?.getItem(SETTINGS_KEY);
-    return validateSettings(raw ? JSON.parse(raw) : null);
+    const raw = st?.getItem(SETTINGS_KEY);
+    if (raw) return validateSettings(JSON.parse(raw));
+    // first visit with settings (#24): unit clicks from before #21 were chosen without a global default
+    // and would hide the new setting, so they are dropped once; storing the settings marks it as done
+    const s = validateSettings(null);
+    if (st) {
+      st.removeItem(UNIT_OVERRIDES_KEY);
+      st.setItem(SETTINGS_KEY, JSON.stringify(s));
+    }
+    return s;
   } catch {
     return validateSettings(null);
   }
