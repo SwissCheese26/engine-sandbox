@@ -168,6 +168,42 @@
   /* the digital speed sits in the centre display; this one is for screen readers and small screens */
   visibility: hidden;
 }
+/* speedometer scale choice, quietly under the dial (like a trip-reset knob) */
+.ck__scale {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+  font-size: var(--fs-12);
+  color: var(--ck-dim);
+}
+.ck__scale label {
+  display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
+  min-width: 0;
+  align-items: center;
+  gap: var(--space-1);
+}
+.ck__scale select,
+.ck__scale input {
+  font: inherit;
+  color: var(--ck-light);
+  background: transparent;
+  border: 1px solid var(--ck-dim);
+  border-radius: 3px;
+  padding: 2px var(--space-1);
+  min-height: 32px;
+  max-width: 100%;
+  min-width: 0;
+}
+.ck__scale select option {
+  color: initial;
+}
+.ck__scale input {
+  width: 5.5em;
+}
 .ck.is-engine-dyno .ck__dial--speed .dial {
   opacity: 0.55;
 }

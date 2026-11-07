@@ -46,6 +46,8 @@ export class Workbench {
   private locked = false;
   /** True once the user typed an own name; until then the name follows the configuration. */
   private customName = false;
+  /** Set by the app: a production engine was picked from the library select (#15) – the matching car follows. */
+  onLibraryLoad: (id: string) => void = () => {};
   private lockNote: HTMLElement;
   /** Tuning (#16): production config the stages are computed from (null while at "Serie"). */
   private tuneBase: { cfg: EngineConfig; customName: boolean } | null = null;
@@ -101,6 +103,7 @@ export class Workbench {
         return;
       }
       this.loadLibrary(e.config.id);
+      this.onLibraryLoad(e.config.id);
       libInfo.textContent = `${e.maker}, ${e.years}: ${e.cars}. Werk: ${fmtQ("power", e.expected.peakPowerKw)}, ${fmtQ("torque", e.expected.peakTorqueNm)}. Alle Werte sind danach frei veränderbar.`;
       libInfo.hidden = false;
       lib.value = "";

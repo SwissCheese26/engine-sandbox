@@ -1,6 +1,7 @@
 // Einstellungen (#24): global unit preset, custom units per quantity and the reset of the per-instrument
 // choices (#21). Changes apply at once (no save button) and reach the running sandbox through
 // onSettingsChange().
+import { SPEEDO_SCALES, clampSpeedoKmh, isSpeedoScale } from "./layouts/logic.ts";
 import { LAYOUTS, PRESETS, QUANTITIES, getSettings, setSettings, unitsOf, type LayoutId, type PresetId, type Quantity } from "./settings.ts";
 import { clearUnitOverrides, fmtQ, overrideCount } from "./units.ts";
 
@@ -65,6 +66,14 @@ export class SettingsScreen {
               <span class="layout-tile__hint">${l.hint}</span>
             </label>`).join("")}
           </fieldset>
+          <div class="office__speedo">
+            <label class="office__opt"><span>Tacho-Skala im Cockpit</span>
+              <select data-control="speedo-scale">${SPEEDO_SCALES.map((o) => `<option value="${o.id}">${o.label}${o.kmh ? ` · ${o.kmh} km/h` : ""}</option>`).join("")}</select>
+            </label>
+            <label class="office__opt" data-speedo-custom><span>Eigene Skala (km/h)</span>
+              <input type="number" data-control="speedo-custom" min="100" max="600" step="20" inputmode="numeric" />
+            </label>
+          </div>
         </section>
         <section class="plate office__plate" aria-labelledby="set-units">
           <span class="screw screw--tl" aria-hidden="true"></span><span class="screw screw--tr" aria-hidden="true"></span>
@@ -130,6 +139,16 @@ export class SettingsScreen {
         if (r.checked) setSettings({ layout: r.value as LayoutId });
       }),
     );
+    const scaleSel = el.querySelector<HTMLSelectElement>("[data-control=speedo-scale]")!;
+    scaleSel.addEventListener("change", () => {
+      if (isSpeedoScale(scaleSel.value)) setSettings({ speedo: scaleSel.value });
+      this.sync();
+    });
+    const customIn = el.querySelector<HTMLInputElement>("[data-control=speedo-custom]")!;
+    customIn.addEventListener("change", () => {
+      setSettings({ speedoCustomKmh: clampSpeedoKmh(customIn.valueAsNumber) }); // sync() shows the stored value
+      this.sync();
+    });
     el.querySelectorAll<HTMLInputElement>("input[data-q]").forEach((r) =>
       r.addEventListener("change", () => {
         if (!r.checked) return;
@@ -157,6 +176,9 @@ export class SettingsScreen {
     const u = unitsOf(s);
     this.el.querySelectorAll<HTMLInputElement>("input[name=preset]").forEach((r) => (r.checked = r.value === s.preset));
     this.el.querySelectorAll<HTMLInputElement>("input[name=layout]").forEach((r) => (r.checked = r.value === s.layout));
+    this.el.querySelector<HTMLSelectElement>("[data-control=speedo-scale]")!.value = s.speedo;
+    this.el.querySelector<HTMLInputElement>("[data-control=speedo-custom]")!.value = String(s.speedoCustomKmh);
+    this.el.querySelector<HTMLElement>("[data-speedo-custom]")!.hidden = s.speedo !== "custom";
     this.el.querySelectorAll<HTMLInputElement>("input[data-q]").forEach((r) => (r.checked = u[r.dataset.q as Quantity] === r.value));
     const n = overrideCount();
     this.overridesText.textContent = n === 0

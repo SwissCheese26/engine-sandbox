@@ -1,5 +1,6 @@
 // Global settings (issue #24): unit preset for the whole game. Stored per browser in localStorage
 // (`pruefzelle.settings`), validated on load. No DOM here, so the module runs in unit tests.
+import { clampSpeedoKmh, isSpeedoScale, type SpeedoScale } from "./layouts/logic.ts";
 
 /** Quantities the player can choose a unit for. The physics stays SI; this is display only. */
 export type Quantity = "power" | "torque" | "pressure" | "temp" | "fuel" | "speed" | "distance" | "length" | "volume";
@@ -53,9 +54,12 @@ export interface Settings {
   custom: UnitPrefs;
   /** View of the sandbox (#26). */
   layout: LayoutId;
+  /** Full scale of the cockpit speedometer, and the value of the "Eigene" scale in km/h. */
+  speedo: SpeedoScale;
+  speedoCustomKmh: number;
 }
 
-export const DEFAULT_SETTINGS: Settings = { preset: "metric-kw", custom: { ...METRIC }, layout: "pruefzelle" };
+export const DEFAULT_SETTINGS: Settings = { preset: "metric-kw", custom: { ...METRIC }, layout: "pruefzelle", speedo: "standard", speedoCustomKmh: 240 };
 
 export const SETTINGS_KEY = "pruefzelle.settings";
 
@@ -70,7 +74,8 @@ export function validateSettings(raw: unknown): Settings {
     if (typeof v === "string" && units.includes(v)) custom[q] = v;
   }
   const layout = isLayoutId(r.layout) ? r.layout : DEFAULT_SETTINGS.layout;
-  return { preset, custom, layout };
+  const speedo = isSpeedoScale(r.speedo) ? r.speedo : DEFAULT_SETTINGS.speedo;
+  return { preset, custom, layout, speedo, speedoCustomKmh: clampSpeedoKmh(r.speedoCustomKmh) };
 }
 
 /** The units in effect for these settings. */

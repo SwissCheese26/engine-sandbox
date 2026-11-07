@@ -13,10 +13,57 @@ export function speedoMax(vmaxShown: number, unit: string): number {
   return steps.find((s) => s >= want) ?? steps[steps.length - 1]!;
 }
 
-/** Labelled and minor tick spacing of the speedometer: at most ~11 numerals on the 270° arc, like real clusters. */
+/** Speedometer scales the player can pick for the cockpit (Arthur's request after #26). */
+export type SpeedoScale = "standard" | "sporty" | "rs" | "hyper" | "killer" | "custom" | "auto";
+
+export const SPEEDO_SCALES: readonly { id: SpeedoScale; label: string; kmh?: number }[] = [
+  { id: "standard", label: "Standard", kmh: 240 },
+  { id: "sporty", label: "Sportlich", kmh: 280 },
+  { id: "rs", label: "RS", kmh: 320 },
+  { id: "hyper", label: "Hypercar", kmh: 400 },
+  { id: "killer", label: "Vmax-Killer", kmh: 500 },
+  { id: "custom", label: "Eigene" },
+  { id: "auto", label: "Automatisch (nach Vmax)" },
+];
+
+export function isSpeedoScale(v: unknown): v is SpeedoScale {
+  return typeof v === "string" && SPEEDO_SCALES.some((s) => s.id === v);
+}
+
+export const SPEEDO_CUSTOM_MIN_KMH = 100;
+export const SPEEDO_CUSTOM_MAX_KMH = 600;
+
+/** A custom full scale in km/h: within 100–600 and on a 20 km/h step, so the minor ticks end on the scale end. */
+export function clampSpeedoKmh(v: unknown): number {
+  const n = typeof v === "number" && Number.isFinite(v) ? v : 240;
+  return Math.min(SPEEDO_CUSTOM_MAX_KMH, Math.max(SPEEDO_CUSTOM_MIN_KMH, Math.round(n / 20) * 20));
+}
+
+/**
+ * Full scale for the chosen speedometer (in the display unit). Fixed scales are given in km/h; in mph they are
+ * converted and rounded up to 10 (240 km/h → 150 mph, 500 km/h → 320 mph). "auto" follows the car's Vmax.
+ */
+export function speedoScaleMax(scale: SpeedoScale, customKmh: number, vmaxShown: number, unit: string): number {
+  if (scale === "auto") return speedoMax(vmaxShown, unit);
+  const kmh = scale === "custom" ? clampSpeedoKmh(customKmh) : SPEEDO_SCALES.find((s) => s.id === scale)?.kmh ?? 240;
+  const shown = unit === "mph" ? kmh * 0.621371 : kmh;
+  return Math.ceil(shown / 10 - 1e-9) * 10;
+}
+
+/** Labelled and minor tick spacing of the speedometer: at most ~12 numerals on the 270° arc, like real clusters. */
 export function speedoTicks(max: number, unit: string): { major: number; minor: number } {
-  if (unit === "mph") return { major: 20, minor: 10 };
-  return max > 220 ? { major: 40, minor: max > 300 ? 20 : 10 } : { major: 20, minor: 10 };
+  if (max <= 220) {
+    // the last numeral sits on the scale end (150 mph → every 30, not 20 with an unlabelled end)
+    const major = max % 20 === 0 ? 20 : max % 30 === 0 ? 30 : 25;
+    return { major, minor: major % 10 === 0 && max % 10 === 0 ? 10 : 5 };
+  }
+  // prefer a spacing whose last numeral sits on the scale end
+  const cands = unit === "mph" ? [20, 40, 50, 60, 80, 100] : [40, 50, 60, 80, 100];
+  const major = cands.find((m) => max % m === 0 && max / m <= 12) ?? cands.find((m) => max / m <= 12) ?? 100;
+  // minor ticks must divide both the numeral spacing and the scale end (else the last tick misses the end)
+  const opts = max > 300 ? [major / 2, 20, major / 5, 10] : [major / 4, major / 5, 10];
+  const minor = opts.find((m) => Number.isInteger(m) && major % m === 0 && max % m === 0) ?? 10;
+  return { major, minor };
 }
 
 /** Full scale of the rev counter: the limiter plus at least 500 rpm head room, rounded up to 1000. */

@@ -137,6 +137,22 @@ export class VehiclePanel {
       this.carNote.textContent = "Erst den Motor abstellen, dann lässt sich ein fertiges Auto laden.";
       return;
     }
+    this.applyCar(car);
+  }
+
+  /**
+   * A production engine was loaded on the bench: picks the car that engine came in (first match in the
+   * vehicle library) and sets its gearbox, body and tyres. The engine itself is already loaded.
+   */
+  selectCarForEngine(engineId: string): LibraryCar | null {
+    const car = VEHICLE_LIBRARY.find((c) => c.engineId === engineId);
+    if (!car || this.moving) return null;
+    this.carSel.value = car.id;
+    this.applyCar(car);
+    return car;
+  }
+
+  private applyCar(car: LibraryCar) {
     this.drivetrain.applyCar(structuredClone(car.setup));
     const f = car.factory;
     this.carNote.textContent = `${car.name}: Werk ${fmt(f.t0to100S, 1)} s ${prefs().speed === "mph" ? "von 0 auf 62 mph (100 km/h, Werksangabe)" : "von 0 auf 100 km/h"}, Vmax ${spd(f.vmaxKmh)}${f.vmaxGoverned ? " (abgeregelt)" : ""}, ${f.kerbKg} kg (${f.kerbNorm}).`;
