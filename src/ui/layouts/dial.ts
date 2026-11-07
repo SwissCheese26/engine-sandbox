@@ -12,8 +12,6 @@ export interface DialScale {
   minor: number;
   /** Numerals are value / labelDiv (rev counter: 1000). */
   labelDiv?: number;
-  /** Only label min and max (small instruments). */
-  endsOnly?: boolean;
   /** Limit zone (signal yellow, design.md "Gelb heißt Grenze"), in display units. */
   zone?: { from: number; to: number };
   /** Short caption under the hub, e.g. "km/h" or "1/min × 1000". */
@@ -159,23 +157,28 @@ export class Dial {
       const v = s.min + i * s.minor;
       const major = i % majorEvery === 0;
       const a = this.angle(v);
-      const len = major ? rr * (small ? 0.2 : 0.13) : rr * (small ? 0.1 : 0.065);
+      const len = major ? rr * (small ? 0.22 : 0.13) : rr * (small ? 0.12 : 0.065);
       ctx.beginPath();
       ctx.moveTo(cx + Math.cos(a) * rr, cy + Math.sin(a) * rr);
       ctx.lineTo(cx + Math.cos(a) * (rr - len), cy + Math.sin(a) * (rr - len));
       ctx.lineWidth = major ? (small ? 2 : 3) : 1.2;
       ctx.strokeStyle = major ? p.light : p.dim;
       ctx.stroke();
-      if (!major) continue;
-      if (s.endsOnly && i !== 0 && i !== n) continue;
+      // small instruments carry no numerals: their value is read out in text right below
+      if (!major || small) continue;
       const label = String(Math.round((v / (s.labelDiv ?? 1)) * 10) / 10).replace(".", ",");
       const lr = rr - len - (small ? r * 0.2 : r * 0.14);
       ctx.fillStyle = p.light;
+      // Nachtbeleuchtung: numerals glow faintly like backlit print
+      ctx.shadowColor = p.light;
+      ctx.shadowBlur = 5;
       ctx.font = `500 ${Math.round(small ? r * 0.26 : r * 0.13)}px ${p.font}`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(label, cx + Math.cos(a) * lr, cy + Math.sin(a) * lr);
+      ctx.shadowBlur = 0;
     }
+    if (small) return c;
     // caption
     ctx.fillStyle = p.dim;
     ctx.font = `500 ${Math.round(small ? r * 0.22 : r * 0.085)}px ${p.font}`;

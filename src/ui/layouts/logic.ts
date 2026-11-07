@@ -7,8 +7,9 @@ export const SWEEP_DEG = 270;
 
 /** Full scale of the speedometer for a car that reaches `vmaxShown` (in the display unit). */
 export function speedoMax(vmaxShown: number, unit: string): number {
-  const steps = unit === "mph" ? [100, 120, 140, 160, 180, 200, 220] : [160, 200, 240, 260, 280, 300, 320, 360, 400];
-  const want = Number.isFinite(vmaxShown) ? vmaxShown * 1.08 : 0;
+  // real clusters leave head room: scale ≈ 1,2 × Vmax, never below 200 km/h (120 mph) for a car
+  const steps = unit === "mph" ? [120, 140, 160, 180, 200, 220] : [200, 220, 240, 260, 280, 300, 320, 360, 400];
+  const want = Number.isFinite(vmaxShown) ? vmaxShown * 1.2 : 0;
   return steps.find((s) => s >= want) ?? steps[steps.length - 1]!;
 }
 
@@ -40,9 +41,10 @@ export interface CurvePoint {
   torqueNm: number;
 }
 
-/** Linear interpolation of the full-load torque; 0 outside the measured range. */
+/** Linear interpolation of the full-load torque, held at the end values outside the measured range (0 without curve). */
 export function torqueAt(curve: readonly CurvePoint[], rpm: number): number {
-  if (curve.length === 0 || rpm < curve[0]!.rpm || rpm > curve[curve.length - 1]!.rpm) return 0;
+  if (curve.length === 0) return 0;
+  if (rpm <= curve[0]!.rpm) return curve[0]!.torqueNm;
   for (let i = 1; i < curve.length; i++) {
     const a = curve[i - 1]!;
     const b = curve[i]!;

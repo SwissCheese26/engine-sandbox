@@ -68,7 +68,7 @@ export class CockpitView implements LayoutView {
           <p class="ck__speed num"><span data-ck="speed-big">–</span><small data-ck="speed-unit2">km/h</small></p>
           <p class="ck__dyno" data-ck="dyno" hidden>Motorprüfstand: kein Tempo.
             <button type="button" class="ck__btn" data-ck="to-vehicle">Auf die Rolle</button></p>
-          <p class="ck__cruise num" data-ck="cruise" hidden></p>
+          <p class="ck__cruise num" data-ck="cruise" data-state="off" hidden>${ICON2.cruise}<span data-ck="cruise-text"></span></p>
           <dl class="ck__trip num">
             <div><dt>Außen</dt><dd><span data-ck="ambient">–</span></dd></div>
             <div><dt>Gesamt</dt><dd><span data-ck="total">0</span></dd></div>
@@ -131,20 +131,20 @@ export class CockpitView implements LayoutView {
       const a = T(lo);
       const b = T(hi);
       const step = (b - a) / 4;
-      return { min: a, max: b, major: step, minor: step / 2, endsOnly: true, zone: { from: T(zone), to: b }, caption: u.temp };
+      return { min: a, max: b, major: step, minor: step / 2, zone: { from: T(zone), to: b }, caption: u.temp };
     };
     this.setMini("coolant", air ? "Zyl.-Kopf" : "Kühlmittel", u.temp, tScale(air ? 60 : 50, hot, Math.min(hot, air ? 220 : L.coolantMaxC)));
     this.setMini("oilT", "Öl", u.temp, tScale(50, 150, Math.min(150, L.oilMaxC)));
     const pMax = P(6);
-    this.setMini("oilP", "Öldruck", u.pressure, { min: 0, max: pMax, major: pMax / 3, minor: pMax / 6, endsOnly: true, zone: { from: 0, to: P(L.oilPressureMinBar) }, caption: u.pressure });
+    this.setMini("oilP", "Öldruck", u.pressure, { min: 0, max: pMax, major: pMax / 3, minor: pMax / 6, zone: { from: 0, to: P(L.oilPressureMinBar) }, caption: u.pressure });
     const turbo = L.boostMaxBar > 0;
     this.minis.boost.wrap.hidden = !turbo;
     if (turbo) {
       const bMax = P(Math.max(1, Math.ceil(L.boostMaxBar * 1.25 * 2) / 2));
-      this.setMini("boost", "Ladedruck", u.pressure, { min: 0, max: bMax, major: bMax / 2, minor: bMax / 4, endsOnly: true, zone: { from: P(L.boostMaxBar), to: bMax }, caption: u.pressure });
+      this.setMini("boost", "Ladedruck", u.pressure, { min: 0, max: bMax, major: bMax / 2, minor: bMax / 4, zone: { from: P(L.boostMaxBar), to: bMax }, caption: u.pressure });
     }
     // momentary consumption: l/100 km (or mpg) while driving, l/h at standstill like a real board computer
-    this.setMini("fuel", "Verbrauch", u.fuel, { min: 0, max: 30, major: 10, minor: 5, endsOnly: true, caption: "l/100 km" });
+    this.setMini("fuel", "Verbrauch", u.fuel, { min: 0, max: 30, major: 10, minor: 5, caption: "l/100 km" });
     this.out["speed-unit"]!.textContent = this.out["speed-unit2"]!.textContent = u.speed;
     this.speedMax = 0;
     for (const k of Object.keys(this.last)) this.last[k] = "";
@@ -236,14 +236,25 @@ export class CockpitView implements LayoutView {
     this.updateLamps(f);
   }
 
+  /** Tempomat and limiter (#30): set speed and state in the centre display, like the cruise line of a real MFD. */
   private updateCruise(d: Frame["drivetrain"]) {
-    // Tempomat (#30, PR #46): shown when the drivetrain exposes a cruise state; absent before that PR lands
-    const c = (d as unknown as { cruise?: { state?: { mode?: string; setKmh?: number | null } } }).cruise?.state;
-    const text = c && c.mode && c.mode !== "off" && c.setKmh != null ? `Tempomat ${fmt(toUnit("speed", c.setKmh))} ${prefs().speed}` : "";
-    if (text === this.last.cruise) return;
+    const c = d.state.cruise;
+    const sp = (kmh: number) => `${fmt(toUnit("speed", kmh))} ${prefs().speed}`;
+    let text = "";
+    let state = "off";
+    if (c?.limiterOn) {
+      text = `Limiter ${sp(c.limitKmh)}${c.kickdown ? " · Kickdown" : c.limiting ? " · begrenzt" : ""}`;
+      state = c.limiting ? "active" : "ready";
+    } else if (c && c.setKmh !== null) {
+      text = `Tempomat ${sp(c.setKmh)} · ${c.mode === "active" ? "aktiv" : c.mode === "override" ? "übersteuert" : "bereit"}`;
+      state = c.mode === "off" ? "ready" : "active";
+    }
+    if (text === this.last.cruise && state === this.last.cruiseState) return;
     this.last.cruise = text;
-    this.out.cruise!.textContent = text;
+    this.last.cruiseState = state;
+    this.out["cruise-text"]!.textContent = text;
     this.out.cruise!.hidden = !text;
+    this.out.cruise!.dataset.state = state;
   }
 
   private updateLamps(f: Frame) {
