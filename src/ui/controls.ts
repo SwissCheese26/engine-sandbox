@@ -224,6 +224,11 @@ export class ControlPanel {
 
     this.mode.addEventListener("change", () => {
       this.inputs.dynoMode = this.mode.value as SimInputs["dynoMode"];
+      // a hand-throttle setting from the engine dyno must not drive the car away
+      if (this.inputs.dynoMode === "vehicle" && this.lever > 0) {
+        this.lever = 0;
+        this.renderPedal();
+      }
       this.syncTarget();
       this.onModeChange?.(this.inputs.dynoMode);
     });
@@ -301,6 +306,16 @@ export class ControlPanel {
     track.addEventListener("pointermove", (e) => {
       if (track.hasPointerCapture?.(e.pointerId)) fromPointer(e);
     });
+    // on the chassis dyno the lever is the car's gas pedal: it springs back when the finger/mouse lets go.
+    // On the engine dyno it stays where it was put (hand throttle for steady points).
+    const springBack = () => {
+      if (this.inputs.dynoMode !== "vehicle" || this.lever === 0) return;
+      this.lever = 0;
+      this.renderPedal();
+    };
+    track.addEventListener("pointerup", springBack);
+    track.addEventListener("pointercancel", springBack);
+    track.addEventListener("lostpointercapture", springBack);
     track.addEventListener("keydown", (e) => {
       const map: Record<string, number> = { ArrowUp: PEDAL_STEP, ArrowRight: PEDAL_STEP, ArrowDown: -PEDAL_STEP, ArrowLeft: -PEDAL_STEP, PageUp: 0.25, PageDown: -0.25 };
       if (e.key in map) {

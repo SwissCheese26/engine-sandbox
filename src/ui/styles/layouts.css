@@ -255,6 +255,12 @@
   outline: none;
   box-shadow: var(--focus);
 }
+/* active hill (Umwelt → Steigung): amber like a state to keep in mind */
+.ck__grade {
+  text-align: center;
+  font-size: var(--fs-14);
+  color: var(--ck-amber);
+}
 .ck__cruise {
   display: flex;
   align-items: center;
@@ -346,7 +352,8 @@
   .ck__dyno {
     grid-column: 1 / -1;
   }
-  .ck__cruise {
+  .ck__cruise,
+  .ck__grade {
     grid-column: 1 / -1;
   }
   .ck__trip {

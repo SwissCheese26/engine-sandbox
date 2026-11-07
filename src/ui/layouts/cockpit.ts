@@ -82,6 +82,7 @@ export class CockpitView implements LayoutView {
           <p class="ck__dyno" data-ck="dyno" hidden>Motorprüfstand: kein Tempo.
             <button type="button" class="ck__btn" data-ck="to-vehicle">Auf die Rolle</button></p>
           <p class="ck__cruise num" data-ck="cruise" data-state="off" hidden>${ICON2.cruise}<span data-ck="cruise-text"></span></p>
+          <p class="ck__grade num" data-ck="grade-row" hidden><span data-ck="grade"></span></p>
           <dl class="ck__trip num">
             <div><dt>Außen</dt><dd><span data-ck="ambient">–</span></dd></div>
             <div><dt>Gesamt</dt><dd><span data-ck="total">0</span></dd></div>
@@ -247,6 +248,11 @@ export class CockpitView implements LayoutView {
     // board computer: odometer whole km, trip one decimal, average of trip A
     const { total, tripA } = f.trip;
     this.put("ambient", `${fmt(toUnit("temp", d.environment.ambientC, u.temp))} ${u.temp}`);
+    // a gradient set under Umwelt is driven as a hill: shown here so a car rolling away in N is explained
+    const g = d.environment.gradePct;
+    const gradeRow = this.el.querySelector<HTMLElement>('[data-ck="grade-row"]')!;
+    if (gradeRow.hidden !== (g === 0)) gradeRow.hidden = g === 0;
+    if (g !== 0) this.put("grade", `${g > 0 ? "Steigung" : "Gefälle"} ${fmt(Math.abs(g))} % (Umwelt)`);
     this.put("total", `${fmt(Math.floor(toUnit("distance", total.km, u.distance)))} ${u.distance}`);
     this.put("trip", `${fmt(toUnit("distance", tripA.km, u.distance), 1)} ${u.distance}`);
     const avg = toUnit("fuel", avgL100(tripA.km, tripA.fuelL), u.fuel);
