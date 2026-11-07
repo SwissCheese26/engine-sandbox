@@ -1,7 +1,7 @@
 // Einstellungen (#24): global unit preset, custom units per quantity and the reset of the per-instrument
 // choices (#21). Changes apply at once (no save button) and reach the running sandbox through
 // onSettingsChange().
-import { PRESETS, QUANTITIES, getSettings, setSettings, unitsOf, type PresetId, type Quantity } from "./settings.ts";
+import { LAYOUTS, PRESETS, QUANTITIES, getSettings, setSettings, unitsOf, type LayoutId, type PresetId, type Quantity } from "./settings.ts";
 import { clearUnitOverrides, fmtQ, overrideCount } from "./units.ts";
 
 const PRESET_IDS: PresetId[] = ["metric-kw", "metric-ps", "imperial", "custom"];
@@ -17,6 +17,21 @@ const SAMPLE: [Quantity, number, string][] = [
   ["distance", 42.5, "Trip A"],
   ["volume", 1.968, "Hubraum"],
 ];
+
+/** Miniatures of the sandbox views (#26) for the preview tiles; colours come from CSS (currentColor + classes). */
+const THUMB: Record<LayoutId, string> = {
+  pruefzelle: `<rect x="2" y="2" width="22" height="56" rx="1" class="t-alu"/><rect x="28" y="2" width="70" height="20" rx="1" class="t-deep"/>
+    <circle cx="38" cy="32" r="6" class="t-ring"/><circle cx="54" cy="32" r="6" class="t-ring"/><circle cx="70" cy="32" r="6" class="t-ring"/><circle cx="86" cy="32" r="6" class="t-ring"/>
+    <rect x="28" y="42" width="70" height="16" rx="1" class="t-paper"/><path d="M30 54l10-6 8 3 10-8 12 4 26-5" class="t-ink"/>`,
+  cockpit: `<rect x="2" y="2" width="96" height="56" rx="6" class="t-night"/><circle cx="24" cy="32" r="18" class="t-ring"/><circle cx="76" cy="32" r="18" class="t-ring"/>
+    <path d="M24 32l-10 8M76 32l9-12" class="t-needle"/><path d="M88 22a18 18 0 0 1 4 14" class="t-zone"/>
+    <rect x="44" y="18" width="12" height="28" rx="1" class="t-lcd"/><circle cx="12" cy="8" r="2" class="t-amber"/><circle cx="88" cy="8" r="2" class="t-red"/>`,
+  race: `<rect x="2" y="2" width="96" height="56" rx="3" class="t-night"/>
+    ${[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((i) => `<circle cx="${14 + i * 8}" cy="9" r="2.6" class="${i < 4 ? "t-green" : i < 7 ? "t-amber" : "t-red"}"/>`).join("")}
+    <text x="50" y="44" text-anchor="middle" class="t-gear">4</text><rect x="8" y="50" width="60" height="4" class="t-lcd"/><rect x="8" y="50" width="40" height="4" class="t-light"/>`,
+  compact: `<rect x="30" y="2" width="40" height="56" rx="4" class="t-deep"/><rect x="35" y="8" width="30" height="8" class="t-light"/><rect x="35" y="20" width="30" height="8" class="t-light"/>
+    <rect x="35" y="32" width="13" height="8" class="t-light"/><rect x="52" y="32" width="13" height="8" class="t-light"/><rect x="58" y="44" width="7" height="11" rx="1" class="t-alu"/>`,
+};
 
 export class SettingsScreen {
   readonly el: HTMLElement;
@@ -35,6 +50,22 @@ export class SettingsScreen {
         <h1 class="office__title" tabindex="-1">Einstellungen</h1>
       </header>
       <main class="office__body">
+        <section class="plate office__plate" aria-labelledby="set-layout">
+          <span class="screw screw--tl" aria-hidden="true"></span><span class="screw screw--tr" aria-hidden="true"></span>
+          <span class="screw screw--bl" aria-hidden="true"></span><span class="screw screw--br" aria-hidden="true"></span>
+          <h2 class="plate__title" id="set-layout">Ansicht</h2>
+          <p class="plate__effect">Wie die Sandbox ihre Werte zeigt. Der Motor läuft weiter, nur die Anzeige wechselt. In der Sandbox lässt sich die Ansicht auch oben in der Kopfleiste umschalten.</p>
+          <fieldset class="layouts">
+            <legend class="sr-only">Ansicht der Sandbox</legend>
+            ${LAYOUTS.map((l) => `
+            <label class="layout-tile">
+              <input type="radio" name="layout" value="${l.id}" />
+              <svg class="layout-tile__thumb" viewBox="0 0 100 60" aria-hidden="true">${THUMB[l.id]}</svg>
+              <span class="layout-tile__name">${l.label}</span>
+              <span class="layout-tile__hint">${l.hint}</span>
+            </label>`).join("")}
+          </fieldset>
+        </section>
         <section class="plate office__plate" aria-labelledby="set-units">
           <span class="screw screw--tl" aria-hidden="true"></span><span class="screw screw--tr" aria-hidden="true"></span>
           <span class="screw screw--bl" aria-hidden="true"></span><span class="screw screw--br" aria-hidden="true"></span>
@@ -90,8 +121,13 @@ export class SettingsScreen {
       r.addEventListener("change", () => {
         if (!r.checked) return;
         const s = getSettings();
-        setSettings({ ...s, preset: r.value as PresetId });
+        setSettings({ preset: r.value as PresetId });
         this.sync();
+      }),
+    );
+    el.querySelectorAll<HTMLInputElement>("input[name=layout]").forEach((r) =>
+      r.addEventListener("change", () => {
+        if (r.checked) setSettings({ layout: r.value as LayoutId });
       }),
     );
     el.querySelectorAll<HTMLInputElement>("input[data-q]").forEach((r) =>
@@ -120,6 +156,7 @@ export class SettingsScreen {
     const s = getSettings();
     const u = unitsOf(s);
     this.el.querySelectorAll<HTMLInputElement>("input[name=preset]").forEach((r) => (r.checked = r.value === s.preset));
+    this.el.querySelectorAll<HTMLInputElement>("input[name=layout]").forEach((r) => (r.checked = r.value === s.layout));
     this.el.querySelectorAll<HTMLInputElement>("input[data-q]").forEach((r) => (r.checked = u[r.dataset.q as Quantity] === r.value));
     const n = overrideCount();
     this.overridesText.textContent = n === 0

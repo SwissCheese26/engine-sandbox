@@ -33,13 +33,29 @@ export const PRESETS: Record<Exclude<PresetId, "custom">, { label: string; hint:
   },
 };
 
+/** Sandbox views (#26). Only the display changes; the simulation and its data are shared. */
+export type LayoutId = "pruefzelle" | "cockpit" | "race" | "compact";
+
+export const LAYOUTS: readonly { id: LayoutId; label: string; hint: string }[] = [
+  { id: "pruefzelle", label: "Prüfzelle", hint: "Schnittbild, Instrumententafel und Linienschreiber" },
+  { id: "cockpit", label: "Cockpit", hint: "Kombiinstrument mit Tacho, Drehzahlmesser und Kontrollleuchten" },
+  { id: "race", label: "Renn-Dash", hint: "Digitales Display mit Schaltblitz und großer Gangzahl" },
+  { id: "compact", label: "Kompakt", hint: "Wenige große Werte, gut fürs Handy" },
+];
+
+export function isLayoutId(v: unknown): v is LayoutId {
+  return typeof v === "string" && LAYOUTS.some((l) => l.id === v);
+}
+
 export interface Settings {
   preset: PresetId;
   /** Units of the custom preset (kept while another preset is active, so switching back restores them). */
   custom: UnitPrefs;
+  /** View of the sandbox (#26). */
+  layout: LayoutId;
 }
 
-export const DEFAULT_SETTINGS: Settings = { preset: "metric-kw", custom: { ...METRIC } };
+export const DEFAULT_SETTINGS: Settings = { preset: "metric-kw", custom: { ...METRIC }, layout: "pruefzelle" };
 
 export const SETTINGS_KEY = "pruefzelle.settings";
 
@@ -53,7 +69,8 @@ export function validateSettings(raw: unknown): Settings {
     const v = c[q];
     if (typeof v === "string" && units.includes(v)) custom[q] = v;
   }
-  return { preset, custom };
+  const layout = isLayoutId(r.layout) ? r.layout : DEFAULT_SETTINGS.layout;
+  return { preset, custom, layout };
 }
 
 /** The units in effect for these settings. */
@@ -105,8 +122,8 @@ export function prefs(): UnitPrefs {
 }
 
 /** Stores the settings (best effort) and tells every listener. */
-export function setSettings(s: Settings) {
-  current = validateSettings(s);
+export function setSettings(s: Partial<Settings>) {
+  current = validateSettings({ ...getSettings(), ...s });
   currentUnits = null;
   try {
     storage()?.setItem(SETTINGS_KEY, JSON.stringify(current));

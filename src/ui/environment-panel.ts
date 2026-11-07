@@ -78,7 +78,7 @@ const ASSISTS: { key: keyof AssistSettings; label: string; hint: string }[] = [
 ];
 
 // ISO 2575 style symbols, simplified (stroke drawings, colour from currentColor)
-const ICON = {
+export const ICON = {
   abs: `<svg viewBox="0 0 40 28" aria-hidden="true"><path d="M7 4a14 14 0 0 0 0 20M33 4a14 14 0 0 1 0 20" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="20" cy="14" r="10" fill="none" stroke="currentColor" stroke-width="2.2"/><text x="20" y="17.6" text-anchor="middle" font-size="9.5" font-weight="700" fill="currentColor">ABS</text></svg>`,
   esp: `<svg viewBox="0 0 40 28" aria-hidden="true"><path d="M9 14l3-6h16l3 6v5H9z" fill="currentColor"/><circle cx="13.5" cy="19.5" r="2.4" fill="currentColor"/><circle cx="26.5" cy="19.5" r="2.4" fill="currentColor"/><path d="M11 27c2-2-2-3 0-5M29 27c2-2-2-3 0-5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>`,
   ice: `<svg viewBox="0 0 40 28" aria-hidden="true"><g stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M20 3v22M10.5 8.5l19 11M10.5 19.5l19-11"/><path d="M17 5l3 3 3-3M17 23l3-3 3 3" fill="none"/></g></svg>`,

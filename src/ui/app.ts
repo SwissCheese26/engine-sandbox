@@ -12,7 +12,11 @@ import { Recorder } from "./recorder.ts";
 import { Schematic } from "./schematic.ts";
 import { SOUND_AVAILABLE, createSound } from "./sound-bridge.ts";
 import { Workbench } from "./workbench.ts";
-import { onSettingsChange } from "./settings.ts";
+import { LAYOUTS, getSettings, onSettingsChange, setSettings, type LayoutId } from "./settings.ts";
+import { CockpitView } from "./layouts/cockpit.ts";
+import { CompactView } from "./layouts/compact.ts";
+import { RaceView } from "./layouts/race.ts";
+import { DriveInfo, type LayoutView } from "./layouts/view.ts";
 import { fmtQ } from "./units.ts";
 
 /** Largest simulation step per frame; longer frames (tab in background) are clamped. */
@@ -54,6 +58,14 @@ export class App {
   /** Menu or settings open (#42): loop stopped, keys ignored, sound silent. */
   private paused = false;
   private unsubscribeSettings: () => void;
+  /** Sandbox views (#26): the Prüfzelle itself or one of the views in src/ui/layouts/, created on first use. */
+  private layoutId: LayoutId = "pruefzelle";
+  private views = new Map<LayoutId, LayoutView>();
+  private viewSlot!: HTMLElement;
+  private cell!: HTMLElement;
+  private layoutSel!: HTMLSelectElement;
+  private info: DriveInfo;
+  private sinceIgnition = 0;
 
   constructor(private root: HTMLElement) {
     this.cfg = defaultConfig("diesel");
@@ -62,6 +74,7 @@ export class App {
     this.bench = new Workbench(this.cfg);
     this.console = new ControlPanel(this.inputs, SOUND_AVAILABLE);
     this.gearbox = new GearboxPanel(this.cfg, this.summary);
+    this.info = new DriveInfo(this.cfg, this.gearbox.drivetrain);
     this.announcer = document.createElement("p");
     this.announcer.className = "sr-only";
     this.announcer.setAttribute("aria-live", "polite");
@@ -69,7 +82,46 @@ export class App {
     this.layout();
     this.wire();
     this.applyConfig(this.cfg);
-    this.unsubscribeSettings = onSettingsChange(() => this.syncUnits());
+    this.setLayout(getSettings().layout);
+    this.unsubscribeSettings = onSettingsChange((st) => {
+      if (st.layout !== this.layoutId) this.setLayout(st.layout);
+      this.syncUnits();
+    });
+  }
+
+  /** Switches the view (#26). The simulation, the bench and every measured run stay as they are. */
+  private setLayout(id: LayoutId) {
+    this.layoutId = id;
+    this.cell.dataset.layout = id;
+    this.layoutSel.value = id;
+    const view = id === "pruefzelle" ? null : this.view(id);
+    this.viewSlot.replaceChildren(...(view ? [view.el] : []));
+    this.viewSlot.hidden = !view;
+    if (view) view.redraw();
+    else {
+      this.gauges.redraw();
+      this.recorder.redraw(this.sim.state.t);
+    }
+  }
+
+  private view(id: Exclude<LayoutId, "pruefzelle">): LayoutView {
+    let v = this.views.get(id);
+    if (!v) {
+      if (id === "cockpit") {
+        const c = new CockpitView();
+        c.onWantVehicle = () => {
+          const sel = this.root.querySelector<HTMLSelectElement>("select[data-control=mode]");
+          if (!sel || sel.value === "vehicle") return;
+          sel.value = "vehicle";
+          sel.dispatchEvent(new Event("change", { bubbles: true }));
+          this.announce("Rollenprüfstand mit Getriebe gewählt.");
+        };
+        v = c;
+      } else v = id === "race" ? new RaceView() : new CompactView();
+      v.configure(this.cfg, this.summary, this.info);
+      this.views.set(id, v);
+    }
+    return v;
   }
 
   /** Global unit setting changed or instrument overrides reset (#24): display only, the engine keeps running. */
@@ -80,6 +132,8 @@ export class App {
     this.nameplate.update(this.cfg, this.summary);
     this.recorder.syncUnits();
     this.gearbox.syncUnits();
+    for (const v of this.views.values()) v.syncUnits();
+    this.views.get(this.layoutId as Exclude<LayoutId, "pruefzelle">)?.redraw();
   }
 
   private layout() {
@@ -91,8 +145,14 @@ export class App {
     top.innerHTML = `
       <a class="btn btn--small cell__menu" href="#menu" aria-keyshortcuts="Escape">Menü</a>
       <h1 class="cell__title">Prüfzelle</h1>
+      <label class="cell__layout"><span class="sr-only">Ansicht</span>
+        <select data-control="layout" title="Ansicht wechseln">${LAYOUTS.map((l) => `<option value="${l.id}">${l.label}</option>`).join("")}</select>
+      </label>
       <button type="button" class="btn bench-toggle" aria-expanded="false" aria-controls="werkbank">Werkbank öffnen</button>`;
     const toggle = top.querySelector<HTMLButtonElement>(".bench-toggle")!;
+    this.cell = cell;
+    this.layoutSel = top.querySelector<HTMLSelectElement>("[data-control=layout]")!;
+    this.layoutSel.addEventListener("change", () => setSettings({ layout: this.layoutSel.value as LayoutId }));
     const setOpen = (open: boolean) => {
       cell.classList.toggle("bench-open", open);
       toggle.setAttribute("aria-expanded", String(open));
@@ -117,7 +177,10 @@ export class App {
     const engine = document.createElement("div");
     engine.className = "stage__engine";
     engine.append(this.schematic.el, this.nameplate.el);
-    stage.append(engine, this.gauges.el, this.gearbox.el, this.recorder.el);
+    this.viewSlot = document.createElement("div");
+    this.viewSlot.className = "stage__view";
+    this.viewSlot.hidden = true;
+    stage.append(this.viewSlot, engine, this.gauges.el, this.gearbox.el, this.recorder.el);
 
     const deck = document.createElement("footer");
     deck.className = "deck";
@@ -204,6 +267,7 @@ export class App {
         this.resizeRaf = requestAnimationFrame(() => {
           this.gauges.redraw();
           this.recorder.redraw(this.sim.state.t);
+          this.activeView?.redraw();
         });
       },
       { signal },
@@ -213,7 +277,12 @@ export class App {
       if (this.disposed) return;
       this.gauges.redraw();
       this.recorder.redraw(this.sim.state.t);
+      this.activeView?.redraw();
     });
+  }
+
+  private get activeView(): LayoutView | undefined {
+    return this.layoutId === "pruefzelle" ? undefined : this.views.get(this.layoutId);
   }
 
   private async ensureSound() {
@@ -243,6 +312,8 @@ export class App {
     this.recorder.configure(cfg, this.summary);
     this.console.configure(cfg.revLimitRpm, this.summary.peakTorqueNm);
     this.gearbox.configure(cfg, this.summary);
+    this.info.setEngine(cfg);
+    for (const v of this.views.values()) v.configure(cfg, this.summary, this.info);
     if (this.soundStarted) this.sound.setConfig(cfg, this.summary);
     this.root.dataset.fuel = cfg.fuel;
   }
@@ -283,9 +354,20 @@ export class App {
         s = this.sim.state;
       }
       this.bench.setLocked(App.turning(s));
-      this.gauges.update(s, dt);
-      this.schematic.update(s, dt);
-      this.recorder.update(s, dt);
+      this.sinceIgnition = this.inputs.ignition ? this.sinceIgnition + dt : 0;
+      const view = this.activeView;
+      if (view) {
+        view.update({
+          s, dt, mode: this.inputs.dynoMode, ignition: this.inputs.ignition, sinceIgnitionS: this.sinceIgnition,
+          pedal: this.inputs.pedal, braking: this.console.brakeHeld, drivetrain: this.gearbox.drivetrain, trip: this.gearbox.trip.computer.data,
+        });
+      } else {
+        // hidden canvases of the Prüfzelle are not drawn while another view is shown
+        this.gauges.update(s, dt);
+        this.schematic.update(s, dt);
+      }
+      // other views (#26): the recorder keeps sampling but does not draw on its hidden canvas
+      this.recorder.update(s, dt, !view);
       this.console.update(s);
       if (this.inputs.dynoMode === "vehicle") this.gearbox.update(this.console.brakeHeld);
       // board computer counts only while the car drives on the chassis dyno (#40, #41)
@@ -327,6 +409,7 @@ export class App {
     // canvases may have been laid out while hidden
     this.gauges.redraw();
     this.recorder.redraw(this.sim.state.t);
+    this.activeView?.redraw();
     this.start();
   }
 

@@ -159,7 +159,63 @@ async function run(label, viewport) {
   await page.waitForTimeout(300);
   if (!(await page.isVisible(RPM_READOUT))) failures.push(`${label}: Neuladen mit #sandbox öffnet die Sandbox nicht`);
 
+  await layouts(page, label);
+
   await page.close();
+}
+
+/** Reads a German formatted number from a readout ("1.234" → 1234, "–" → NaN). */
+async function readNum(page, sel) {
+  return page.evaluate((sel) => {
+    const text = (document.querySelector(sel)?.textContent ?? "").trim();
+    return /\d/.test(text) ? Number(text.replace(/[\s.  ]/g, "").replace(",", ".")) : NaN;
+  }, sel);
+}
+
+/**
+ * Layouts (#26): choose the cockpit (desktop: tile in the settings, mobile: switch in the header), put the car on the
+ * chassis dyno with the cockpit's own button, drive and check that the speedometer rises; shoot race dash and compact
+ * view; no horizontal scrolling; back to the Prüfzelle at the end so later runs start from the default.
+ */
+async function layouts(page, label) {
+  if (label === "desktop") {
+    await page.click('.cell__top a[href="#menu"]');
+    await page.click('a[href="#settings"]:visible');
+    await page.click('.layout-tile:has(input[value="cockpit"])');
+    await page.click('.office__top a[href="#menu"]');
+    await page.click('a.door[href="#sandbox"]');
+  } else {
+    await page.selectOption('select[data-control="layout"]', "cockpit");
+  }
+  await page.waitForSelector(".ck", { state: "visible" });
+  if (await page.isVisible(".recorder")) failures.push(`${label}: Cockpit zeigt noch den Linienschreiber`);
+  await page.click('[data-ck="to-vehicle"]');
+  await page.mouse.click(2, 300);
+  await page.keyboard.press("i");
+  await page.waitForTimeout(400);
+  await page.screenshot({ path: join(outDir, `smoke-${label}-cockpit-ignition.png`) });
+  await page.keyboard.down("a");
+  await page.waitForTimeout(1200);
+  await page.keyboard.up("a");
+  const v0 = await readNum(page, '[data-ck="speed-big"]');
+  await page.keyboard.press("e");
+  await page.keyboard.down("w");
+  await page.waitForTimeout(3000);
+  const v1 = await readNum(page, '[data-ck="speed-big"]');
+  await page.screenshot({ path: join(outDir, `smoke-${label}-cockpit.png`) });
+  console.log(`${label}: Cockpit-Tacho ${fmt(v0)} → ${fmt(v1)}`);
+  if (!(v1 > (Number.isFinite(v0) ? v0 : 0) + 5)) failures.push(`${label}: Cockpit-Tacho steigt nicht (${v0} → ${v1})`);
+  for (const id of ["race", "compact"]) {
+    await page.selectOption('select[data-control="layout"]', id);
+    await page.waitForTimeout(400);
+    await page.screenshot({ path: join(outDir, `smoke-${label}-${id}.png`) });
+  }
+  await page.keyboard.up("w");
+  const sw = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  if (sw > 0) failures.push(`${label}: Kompakt-Ansicht scrollt horizontal (${sw} px)`);
+  await page.selectOption('select[data-control="layout"]', "pruefzelle");
+  await page.waitForTimeout(200);
+  if (!(await page.isVisible(RPM_READOUT))) failures.push(`${label}: zurück zur Prüfzelle fehlen die Instrumente`);
 }
 
 const fmt = (n) => (Number.isFinite(n) ? Math.round(n).toString() : String(n));

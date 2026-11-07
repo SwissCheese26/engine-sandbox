@@ -219,7 +219,8 @@ export class Recorder {
     });
   }
 
-  update(s: EngineState, dt: number) {
+  /** `draw` false: only buffer the samples (another sandbox view is shown, #26); redraw() catches up. */
+  update(s: EngineState, dt: number, draw = true) {
     this.live = { rpm: s.rpm, tq: Math.max(0, s.torqueNm), pw: Math.max(0, s.powerKw) };
     // The paper only feeds while the engine turns (like a real recorder switched by the test bench).
     const feeding = s.rpm > 1;
@@ -228,8 +229,9 @@ export class Recorder {
       if (this.samples.length > MAX_SAMPLES) this.samples.splice(0, this.samples.length - MAX_SAMPLES);
       this.lastSampleT = s.t;
     }
-    if (feeding || this.samples.length === 0) this.drawStrip(s.t);
     if (this.print < 1) this.print = Math.min(1, this.print + dt / 1.4);
+    if (!draw) return;
+    if (feeding || this.samples.length === 0) this.drawStrip(s.t);
     this.drawSheet();
   }
 

@@ -54,3 +54,30 @@ Mobil: Die Zelle wird gestapelt. Die Werkbank ist eine ausklappbare Lade, das Pe
 - Es ist kein fast schwarzer Hintergrund mit Neon-Akzent. Die Grundfarbe ist mittleres Maschinengrün-Grau, Gelb ist semantisch.
 - Es gibt kein SaaS-Kartenraster. Die Werkbank-Platten sind Alu mit Schrauben-Ecken, Radien folgen der Hierarchie (Platten 3 px, Taster rund, Instrumente kreisrund).
 - Es gibt keine Eyebrow-Labels in Großbuchstaben und keine Pfeile an Buttons.
+
+## Cockpit-Layout (Issue #26)
+Neben der Prüfzelle gibt es drei weitere Ansichten (Einstellungen → Ansicht, Schnellumschalter in der Kopfleiste). Sie zeigen dieselben Daten, nur anders. Gerechnet wird nichts doppelt (`src/ui/layouts/`).
+
+**Cockpit / Kombiinstrument: Nachtfahrt.** Das Kombiinstrument sitzt unter einer Hutze aus dunklem Maschinenlack (`--ck-housing #1A221F`), oben rund und unten gerade, weil dort das Armaturenbrett weitergeht. Die Zifferblätter sind dunkel (`--ck-face #121816`) mit einem dünnen Ring aus Typenschild-Alu. Ziffern und Skalen leuchten im warmen **Instrumentenlicht** `#EFE6CC`, wie die Glühlampen hinter einem Tacho der 90er. Die Zeiger sind **Zeigerrot** `#FF5A2E` mit leichtem Schein. Das ist die eine mutige Stelle der Ansicht, alles andere bleibt dunkel und ruhig.
+```
+┌──────────── Kontrollleuchten (aus = unsichtbar) ────────────┐
+│  ◜ Tacho ◝      ┌ Mitteldisplay ┐      ◜ Drehzahl ◝        │
+│ (km/h | mph)    │ Gang  Tempo   │     (1/min×1000, Grenz-   │
+│                 │ Außen, Gesamt,│      bereich gelb)        │
+│                 │ Trip A, Ø,    │                           │
+│                 │ Tempomat      │                           │
+│   Kühlmittel · Öl · Öldruck · Ladedruck · Verbrauch         │
+└─────────────────────────────────────────────────────────────┘
+  Rollenprüfstand-Pult darunter, Werkbank als Lade, Bedienpult unten
+```
+- **Gelb heißt Grenze** gilt weiter: Der Drehzahlmesser zeigt Gelb als Vorwarnung ab 500 1/min unter dem Begrenzer oder ab der mechanisch sicheren Drehzahl, wenn diese niedriger ist. Die Grenzbereiche der kleinen Instrumente sind ebenfalls Signalgelb.
+- **Rote Zone ab dem Drehzahlbegrenzer** (nur im Drehzahlmesser des Cockpits): Jeder Fahrer kennt den roten Bereich aus dem Auto. Im Kombiinstrument ist er die übliche Konvention, und ein gelber Bereich allein würde dort wie ein Fehler wirken. Die Arbeitsteilung bleibt eindeutig: Gelb heißt „du näherst dich der Grenze“, Rot heißt „hier regelt der Begrenzer ab“. Rot kommt sonst nur bei den Kontrollleuchten vor.
+- **Kontrollleuchten** dürfen die Fahrzeugfarben nach ISO 2575 tragen: Rot für Ladekontrolle, Öldruck und Kühlmittel, Bernstein für Motorkontrolle, Vorglühen, ABS und ESP, Weiß für Glätte und Grün für den Tempomat. Die Logik ist realistisch: Lampentest für 2 s nach „Zündung an“; bei stehendem Motor leuchten Ladekontrolle, Öldruck und Motorkontrolle; ESP blinkt, solange ASR oder ESP eingreifen.
+- Im **Motorprüfstand-Modus** ruht der Tacho gedimmt, das Mitteldisplay zeigt „–“ und bietet „Auf die Rolle“ an.
+- Mobil (< 900 px): Die beiden Rundinstrumente stehen nebeneinander, das Mitteldisplay liegt quer darunter.
+
+**Renn-Dash.** Ein digitales Display wie im Motorsport. Die Schaltblitz-Leiste hat 12 LEDs (Grün → Gelb → Rot). Am optimalen Schaltpunkt blinken alle LEDs blau mit 8 Hz, bei reduzierter Bewegung leuchten sie dauerhaft. Der Schaltpunkt wird aus der Volllastkurve berechnet: Es wird dort geschaltet, wo die Zugkraft im nächsten Gang größer ist. Die LEDs sind Signal-LEDs und tragen deshalb ihre Motorsport-Farben. Grenzen (Drehzahl-Grenzbereich, Öl/Wasser) bleiben Signalgelb.
+
+**Kompakt.** Vier große Werte (Drehzahl, Tempo, Gang, Leistung) und ein Drehzahlbalken auf dem Hammerschlag der Prüfzelle. Das Pedal bleibt im Bedienpult unten. Diese Ansicht ist die Grundlage für das Touch-Overlay aus #44.
+
+**Für alle Ansichten außer der Prüfzelle gilt:** Die Werkbank wird zur ausklappbaren Lade, und Schnittbild, Instrumententafel und Linienschreiber werden nicht gezeichnet. Der Schreiber misst im Hintergrund weiter. Canvas-Zifferblätter werden einmal je Größe vorgezeichnet. Pro Frame wird nur der Zeiger neu gezeichnet, und zwar nur dann, wenn er sich bewegt hat. Dabei wird die DPR berücksichtigt.

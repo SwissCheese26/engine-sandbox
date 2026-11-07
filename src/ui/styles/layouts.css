@@ -1,0 +1,667 @@
+/* Sandbox views (#26) – see docs/process/design.md, "Cockpit-Layout". Prüfzelle (default) is untouched here. */
+
+/* ── Quick switch in the cell header ───────────────────────────────────── */
+.cell__layout select {
+  min-height: 32px;
+  padding: 0 28px 0 var(--space-3);
+  border-radius: var(--radius-plate);
+  border: 1px solid var(--alu-shade);
+  background: var(--hammer-deep);
+  color: var(--alu);
+  font: 500 var(--fs-14) var(--font);
+}
+.cell__layout select:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+.cell__top .cell__layout {
+  margin-left: auto;
+}
+
+/* ── Views other than the Prüfzelle: bench becomes a drawer, stage shows the view ───────────── */
+.cell:not([data-layout="pruefzelle"]) {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "top" "stage" "deck";
+}
+.cell:not([data-layout="pruefzelle"]) .cell__top .bench-toggle {
+  display: inline-flex;
+}
+.cell:not([data-layout="pruefzelle"]) .bench {
+  position: fixed;
+  z-index: 20;
+  top: 57px;
+  left: 0;
+  bottom: 0;
+  width: min(420px, 100vw);
+  transform: translateX(-100%);
+  visibility: hidden;
+  border-right: 2px solid #1f2925;
+  box-shadow: 8px 0 24px rgba(0, 0, 0, 0.35);
+}
+.cell:not([data-layout="pruefzelle"]).bench-open .bench {
+  transform: none;
+  visibility: visible;
+}
+.cell:not([data-layout="pruefzelle"]) .stage__engine,
+.cell:not([data-layout="pruefzelle"]) .instruments,
+.cell:not([data-layout="pruefzelle"]) .recorder {
+  display: none;
+}
+.cell:not([data-layout="pruefzelle"]) .stage {
+  align-content: start;
+}
+/* the cockpit is the night view: the stage dims around the cluster */
+.cell[data-layout="cockpit"] .stage,
+.cell[data-layout="race"] .stage {
+  background: #27312d;
+}
+.stage__view {
+  min-width: 0;
+}
+
+/* ── Cockpit / Kombiinstrument ─────────────────────────────────────────── */
+.ck {
+  --ck-housing: #1a221f;
+  --ck-face: #121816;
+  --ck-ring: #a9aea4;
+  --ck-light: #efe6cc; /* Instrumentenlicht: warm like the bulbs behind a 90s cluster */
+  --ck-dim: #7b7d70;
+  --ck-needle: #ff5a2e;
+  --ck-hub: #0b0f0e;
+  --ck-lcd: #0f1714;
+  --ck-red: #f0412f;
+  --ck-amber: #ffad1f;
+  --ck-ice: #e8f1f6;
+  --ck-green: #5fd068;
+  --ck-off: #26302c;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: var(--space-3) var(--space-5) var(--space-5);
+  /* the cowl: rounded top like the hood over a real cluster, square bottom where the dashboard continues */
+  border-radius: 120px 120px 10px 10px / 48px 48px 10px 10px;
+  background: var(--ck-housing);
+  box-shadow: inset 0 2px 0 rgba(239, 230, 204, 0.06), 0 10px 30px rgba(0, 0, 0, 0.35);
+  color: var(--ck-light);
+}
+.ck__lamps {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px var(--space-2);
+  padding: var(--space-2) 0 var(--space-1);
+}
+.ck-lamp {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 26px;
+  color: var(--ck-off);
+}
+.ck-lamp svg {
+  width: 32px;
+  height: 22px;
+}
+.ck-lamp b {
+  font: 700 10px var(--font);
+}
+.ck-lamp--red[data-state="on"],
+.ck-lamp--red[data-state="blink"] {
+  color: var(--ck-red);
+  filter: drop-shadow(0 0 4px rgba(240, 65, 47, 0.6));
+}
+.ck-lamp--amber[data-state="on"],
+.ck-lamp--amber[data-state="blink"] {
+  color: var(--ck-amber);
+  filter: drop-shadow(0 0 4px rgba(255, 173, 31, 0.55));
+}
+.ck-lamp--ice[data-state="on"] {
+  color: var(--ck-ice);
+  filter: drop-shadow(0 0 3px rgba(232, 241, 246, 0.5));
+}
+.ck-lamp[data-state="blink"] {
+  animation: ck-blink 0.32s steps(1, end) infinite;
+}
+@keyframes ck-blink {
+  50% {
+    color: var(--ck-off);
+    filter: none;
+  }
+}
+.ck__main {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(200px, 250px) minmax(0, 1fr);
+  grid-template-areas: "speed mfd rpm";
+  align-items: center;
+  gap: var(--space-4);
+}
+.ck__dial {
+  position: relative;
+  max-width: 380px;
+  width: 100%;
+  justify-self: center;
+}
+.ck__dial--speed {
+  grid-area: speed;
+}
+.ck__dial--rpm {
+  grid-area: rpm;
+}
+.ck__dial .dial {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+}
+.ck__read {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 13%;
+  text-align: center;
+  font-size: var(--fs-16);
+  color: var(--ck-light);
+}
+.ck__read small {
+  color: var(--ck-dim);
+  font-size: var(--fs-12);
+}
+.ck__dial--speed .ck__read {
+  /* the digital speed sits in the centre display; this one is for screen readers and small screens */
+  visibility: hidden;
+}
+.ck.is-engine-dyno .ck__dial--speed .dial {
+  opacity: 0.55;
+}
+.ck__mfd {
+  grid-area: mfd;
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+  padding: var(--space-4) var(--space-4) var(--space-3);
+  border-radius: 6px;
+  background: var(--ck-lcd);
+  box-shadow: inset 0 0 0 1px #2c3632, inset 0 6px 14px rgba(0, 0, 0, 0.5);
+  min-height: 250px;
+}
+.ck__gear {
+  font-size: 64px;
+  line-height: 1;
+  font-weight: 600;
+  text-align: center;
+}
+.ck__speed {
+  text-align: center;
+  font-size: var(--fs-31);
+  line-height: 1;
+  font-weight: 500;
+}
+.ck__speed small {
+  margin-left: 4px;
+  font-size: var(--fs-14);
+  color: var(--ck-dim);
+}
+.ck__dyno {
+  font-size: var(--fs-14);
+  color: var(--ck-dim);
+  text-align: center;
+}
+.ck__btn {
+  margin-top: var(--space-1);
+  min-height: 32px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--ck-dim);
+  border-radius: var(--radius-plate);
+  background: transparent;
+  color: var(--ck-light);
+  font: 500 var(--fs-14) var(--font);
+  cursor: pointer;
+}
+.ck__btn:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+.ck__cruise {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+  font-size: var(--fs-14);
+}
+.ck__cruise svg {
+  width: 26px;
+  height: 18px;
+  color: var(--ck-dim);
+}
+.ck__cruise[data-state="active"] svg {
+  color: var(--ck-green);
+}
+.ck__trip {
+  display: grid;
+  gap: 2px;
+  margin: var(--space-1) 0 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid #26302c;
+  font-size: var(--fs-14);
+}
+.ck__trip div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.ck__trip dt {
+  color: var(--ck-dim);
+}
+.ck__trip dd {
+  margin: 0;
+  text-align: right;
+}
+.ck__trip abbr {
+  text-decoration: none;
+}
+.ck__minis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: var(--space-3);
+  max-width: 760px;
+  margin: var(--space-3) auto 0;
+}
+.ck-mini {
+  margin: 0;
+  display: grid;
+  justify-items: center;
+}
+.ck-mini .dial {
+  width: 76px;
+  height: 76px;
+}
+.ck-mini figcaption {
+  font-size: var(--fs-12);
+  color: var(--ck-dim);
+  white-space: nowrap;
+}
+.ck-mini__val {
+  font-size: var(--fs-16);
+  font-weight: 500;
+  color: var(--ck-light);
+}
+
+@media (max-width: 899px) {
+  .ck {
+    padding: var(--space-2) var(--space-3) var(--space-4);
+    border-radius: 60px 60px 8px 8px / 28px 28px 8px 8px;
+  }
+  .ck__main {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas: "speed rpm" "mfd mfd";
+    gap: var(--space-2) var(--space-3);
+  }
+  .ck__mfd {
+    min-height: 0;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    column-gap: var(--space-4);
+    padding: var(--space-3);
+  }
+  .ck__gear {
+    font-size: 48px;
+  }
+  .ck__speed {
+    text-align: left;
+  }
+  .ck__dyno {
+    grid-column: 1 / -1;
+  }
+  .ck__cruise {
+    grid-column: 1 / -1;
+  }
+  .ck__trip {
+    grid-column: 1 / -1;
+    grid-template-columns: 1fr 1fr;
+    column-gap: var(--space-4);
+  }
+  .ck__read {
+    font-size: var(--fs-14);
+    bottom: 10%;
+  }
+  .ck__lamps {
+    gap: 0 2px;
+  }
+  .ck-lamp svg {
+    width: 26px;
+    height: 18px;
+  }
+  .ck-mini .dial {
+    width: 64px;
+    height: 64px;
+  }
+  .ck__minis {
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: var(--space-2);
+  }
+}
+
+/* ── Renn-Dash ─────────────────────────────────────────────────────────── */
+.rd {
+  --rd-screen: #15191a;
+  --rd-text: #f2f4f0;
+  --rd-dim: #8a938f;
+  --rd-green: #3fdc5a;
+  --rd-yellow: #ffd21f;
+  --rd-red: #ff3b2f;
+  --rd-blue: #3d8bff;
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: var(--space-4);
+  border-radius: 10px;
+  border: 6px solid #0d1011;
+  background: var(--rd-screen);
+  color: var(--rd-text);
+  display: grid;
+  gap: var(--space-3);
+}
+.rd__leds {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 6px;
+  padding: 0 var(--space-4);
+}
+.rd-led {
+  aspect-ratio: 1;
+  max-height: 28px;
+  justify-self: center;
+  width: 100%;
+  max-width: 28px;
+  border-radius: 50%;
+  background: #262c2d;
+  box-shadow: inset 0 0 0 1px #343b3c;
+}
+/* unlit LEDs keep the tint of their lens */
+.rd-led[data-color="green"] { background: #1f3523; }
+.rd-led[data-color="yellow"] { background: #3a3519; }
+.rd-led[data-color="red"] { background: #3d201d; }
+.rd-led[data-on="true"][data-color="green"] {
+  background: var(--rd-green);
+  box-shadow: 0 0 10px var(--rd-green);
+}
+.rd-led[data-on="true"][data-color="yellow"] {
+  background: var(--rd-yellow);
+  box-shadow: 0 0 10px var(--rd-yellow);
+}
+.rd-led[data-on="true"][data-color="red"] {
+  background: var(--rd-red);
+  box-shadow: 0 0 10px var(--rd-red);
+}
+.rd-led.is-shift[data-on="true"] {
+  background: var(--rd-blue);
+  box-shadow: 0 0 12px var(--rd-blue);
+}
+.rd__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--space-4);
+}
+.rd__cell {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: 4px;
+  background: #1d2324;
+  min-width: 0;
+}
+.rd__lab {
+  font-size: var(--fs-12);
+  color: var(--rd-dim);
+}
+.rd__cell b {
+  font-size: var(--fs-20);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.rd__big {
+  font-size: var(--fs-39) !important;
+  line-height: 1.05;
+}
+.rd__cell--rpm {
+  text-align: right;
+}
+.rd__gear b {
+  display: block;
+  min-width: 1.2ch;
+  font-size: 150px;
+  line-height: 0.9;
+  font-weight: 700;
+  text-align: center;
+}
+.rd__bar {
+  position: relative;
+  height: 18px;
+  border-radius: 3px;
+  background: #262c2d;
+  overflow: hidden;
+}
+.rd__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--rpm, 0%);
+  background: var(--rd-text);
+}
+.rd__zone {
+  position: absolute;
+  inset: 0 0 0 var(--zone, 90%);
+  background: var(--signal);
+  opacity: 0.55;
+}
+.rd__mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--mark, 80%);
+  width: 3px;
+  background: var(--rd-blue);
+}
+.rd__row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+.rd__cell--warn.is-limit {
+  background: var(--signal);
+  color: var(--signal-ink);
+}
+.rd__cell--warn.is-limit .rd__lab {
+  color: var(--signal-ink);
+}
+@media (max-width: 699px) {
+  .rd {
+    padding: var(--space-3);
+    border-width: 4px;
+  }
+  .rd__leds {
+    gap: 3px;
+    padding: 0;
+  }
+  .rd__gear b {
+    font-size: 96px;
+  }
+  .rd__big {
+    font-size: var(--fs-25) !important;
+  }
+  .rd__grid {
+    gap: var(--space-2);
+  }
+  .rd__row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .rd__row .rd__cell:first-child {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ── Kompakt ───────────────────────────────────────────────────────────── */
+.kp {
+  max-width: 640px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+.kp__val {
+  display: grid;
+  align-content: start;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-plate);
+  background: var(--hammer-deep);
+}
+.kp__val span {
+  font-size: var(--fs-14);
+  color: var(--alu-shade);
+}
+.kp__val b {
+  font-size: var(--fs-39);
+  line-height: 1.1;
+  font-weight: 600;
+  color: var(--alu);
+}
+.kp__val small {
+  font-size: var(--fs-14);
+  color: var(--alu-shade);
+}
+.kp__val--rpm {
+  grid-column: 1 / -1;
+}
+.kp__val--rpm b {
+  font-size: 72px;
+}
+.kp.is-limit .kp__val--rpm b {
+  color: var(--signal);
+}
+.kp__bar {
+  grid-column: 1 / -1;
+  position: relative;
+  height: 10px;
+  margin-top: calc(-1 * var(--space-2));
+  border-radius: 2px;
+  background: var(--hammer-deep);
+  overflow: hidden;
+}
+.kp__bar i {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--rpm, 0%);
+  background: var(--alu);
+}
+.kp__bar::after {
+  content: "";
+  position: absolute;
+  inset: 0 0 0 var(--zone, 90%);
+  background: var(--signal);
+  opacity: 0.6;
+}
+
+/* ── Preview tiles in the settings ─────────────────────────────────────── */
+.layouts {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-3);
+}
+.layout-tile {
+  position: relative;
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  padding: var(--space-2) var(--space-2) var(--space-3);
+  border: 2px solid rgba(35, 41, 42, 0.2);
+  border-radius: var(--radius-plate);
+  cursor: pointer;
+}
+.layout-tile:hover {
+  background: rgba(35, 41, 42, 0.05);
+}
+.layout-tile input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.layout-tile:has(input:checked) {
+  border-color: var(--engrave);
+  background: rgba(35, 41, 42, 0.07);
+}
+.layout-tile:has(input:focus-visible) {
+  box-shadow: var(--focus);
+}
+.layout-tile__thumb {
+  width: 100%;
+  height: auto;
+  margin-bottom: var(--space-2);
+  border-radius: 2px;
+  background: var(--hammer);
+}
+.layout-tile__name {
+  font-weight: 600;
+}
+.layout-tile__name::before {
+  content: "";
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border-radius: 50%;
+  border: 2px solid #6b726c;
+  vertical-align: 0;
+}
+.layout-tile:has(input:checked) .layout-tile__name::before {
+  border-color: var(--engrave);
+  background: var(--engrave);
+}
+.layout-tile__hint {
+  font-size: var(--fs-14);
+  color: #4a5250;
+}
+.t-alu { fill: var(--alu); }
+.t-deep { fill: var(--hammer-deep); }
+.t-paper { fill: var(--paper); }
+.t-ink { fill: none; stroke: var(--ink-torque); stroke-width: 1.5; }
+.t-night { fill: #1a221f; }
+.t-ring { fill: #121816; stroke: #a9aea4; stroke-width: 1.2; }
+.t-needle { stroke: #ff5a2e; stroke-width: 2; stroke-linecap: round; }
+.t-zone { fill: none; stroke: var(--signal); stroke-width: 2.5; }
+.t-lcd { fill: #2a3431; }
+.t-light { fill: #efe6cc; }
+.t-amber { fill: #ffad1f; }
+.t-red { fill: #f0412f; }
+.t-green { fill: #3fdc5a; }
+.t-gear { fill: #f2f4f0; font: 700 34px var(--font-num); }
+
+@media (prefers-reduced-motion: reduce) {
+  .ck-lamp[data-state="blink"] {
+    animation: none;
+  }
+}
+/* narrow phones: the header holds Menü, the view switch and the bench button; the title stays for screen readers */
+@media (max-width: 560px) {
+  .cell__title {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .cell__top {
+    gap: var(--space-2);
+  }
+  .cell__layout select {
+    width: 128px;
+  }
+  .cell__top .bench-toggle {
+    min-height: 32px;
+    padding: 0 var(--space-3);
+    font-size: var(--fs-14);
+  }
+}

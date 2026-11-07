@@ -822,7 +822,7 @@ kbd {
 }
 .console__group--main { grid-area: main; }
 .console__group--dyno { grid-area: dyno; }
-.console__group--aux { grid-area: aux; justify-content: flex-end; flex-wrap: nowrap; }
+.console__group--aux { grid-area: aux; justify-content: flex-end; flex-wrap: wrap; row-gap: var(--space-2); }
 .console__status {
   font-size: var(--fs-14);
   color: var(--alu-shade);
@@ -1044,6 +1044,10 @@ kbd {
     padding: var(--space-3) var(--space-4);
     letter-spacing: 0.03em;
   }
+}
+/* The aux group (sound, gas ramp, warm start, reset) needs ~730 px: below ~1500 px the console takes two rows,
+   switches and starter on top, test-bench mode and aux below; aux wraps instead of overlapping the mode select. */
+@media (max-width: 1500px) {
   .console {
     grid-template-columns: auto minmax(0, 1fr);
     grid-template-areas: "main main" "dyno aux" "msg msg";
