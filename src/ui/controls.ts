@@ -30,8 +30,16 @@ export class ControlPanel {
   private gasLevel = 0;
   private gasHeld = false;
   private starterKey = false;
-  /** S held: brake (chassis dyno). */
-  brakeHeld = false;
+  /** S held (keyboard) or the brake pedal pressed (touch/mouse): brake on the chassis dyno. */
+  private brakeKey = false;
+  private brakePointer = false;
+  get brakeHeld(): boolean {
+    return this.brakeKey || this.brakePointer;
+  }
+  /** Brake pedal next to the gas lever, shown on touch screens (phones have no S key). */
+  readonly brakeEl: HTMLButtonElement;
+  /** Gas lever and brake pedal side by side, as placed in the deck. */
+  readonly pedalsEl: HTMLElement;
   private starterPointer = false;
   private lastMsgKey = "";
   private lastStatus = "";
@@ -128,6 +136,37 @@ export class ControlPanel {
       <output class="num pedal__value">0 %</output>
       <span class="pedal__hint">Leertaste oder <kbd>W</kbd> halten</span>`;
     this.pedalFill = this.pedalEl.querySelector(".pedal__fill")!;
+    // brake pedal: held while pressed (pointer or Enter/Space), like the starter button
+    this.brakeEl = document.createElement("button");
+    this.brakeEl.type = "button";
+    this.brakeEl.className = "brakepedal";
+    this.brakeEl.setAttribute("aria-pressed", "false");
+    this.brakeEl.innerHTML = `<span class="brakepedal__plate" aria-hidden="true"></span><span class="brakepedal__label">Bremse</span>`;
+    const brake = (on: boolean) => {
+      this.brakePointer = on;
+      this.renderBrake();
+    };
+    this.brakeEl.addEventListener("pointerdown", (e) => {
+      this.brakeEl.setPointerCapture?.(e.pointerId);
+      brake(true);
+      e.preventDefault();
+    });
+    for (const ev of ["pointerup", "pointercancel", "lostpointercapture"] as const) this.brakeEl.addEventListener(ev, () => brake(false));
+    this.brakeEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        if (!e.repeat) brake(true);
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    });
+    this.brakeEl.addEventListener("keyup", (e) => {
+      if (e.key === "Enter" || e.key === " ") brake(false);
+    });
+    this.brakeEl.addEventListener("blur", () => this.brakePointer && brake(false));
+    this.brakeEl.addEventListener("contextmenu", (e) => e.preventDefault());
+    this.pedalsEl = document.createElement("div");
+    this.pedalsEl.className = "pedals";
+    this.pedalsEl.append(this.brakeEl, this.pedalEl);
     this.pedalOut = this.pedalEl.querySelector(".pedal__value")!;
 
     this.wire();
@@ -285,7 +324,10 @@ export class ControlPanel {
       return true;
     }
     if (key === "s") {
-      if (!e.repeat) this.brakeHeld = down;
+      if (!e.repeat) {
+        this.brakeKey = down;
+        this.renderBrake();
+      }
       return true;
     }
     if (key === "w" || (key === " " && !activatable)) {
@@ -302,12 +344,20 @@ export class ControlPanel {
     return false;
   }
 
+  private renderBrake() {
+    const on = this.brakeHeld;
+    this.brakeEl.classList.toggle("is-held", on);
+    this.brakeEl.setAttribute("aria-pressed", String(on));
+  }
+
   /** Releases held keys when the window loses focus, so the throttle never sticks open. */
   releaseAll() {
     this.gasHeld = false;
     this.gasLevel = 0;
     this.starterKey = false;
-    this.brakeHeld = false;
+    this.brakeKey = false;
+    this.brakePointer = false;
+    this.renderBrake();
     this.starterPointer = false;
     this.updateStarter();
     this.renderPedal();

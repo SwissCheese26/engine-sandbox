@@ -85,7 +85,9 @@ async function readRpm(page) {
 }
 
 async function run(label, viewport) {
-  const page = await browser.newPage({ viewport, deviceScaleFactor: 1 });
+  // the phone run is a touch device, so the brake pedal (shown on touch screens only) is tested there
+  const touch = label === "mobile";
+  const page = await browser.newPage({ viewport, deviceScaleFactor: 1, hasTouch: touch, isMobile: touch });
   page.on("console", (m) => {
     if (m.type() !== "error") return;
     const text = `${m.text()} ${m.location()?.url ?? ""}`;
@@ -206,6 +208,24 @@ async function layouts(page, label) {
   await page.screenshot({ path: join(outDir, `smoke-${label}-cockpit.png`) });
   console.log(`${label}: Cockpit-Tacho ${fmt(v0)} → ${fmt(v1)}`);
   if (!(v1 > (Number.isFinite(v0) ? v0 : 0) + 5)) failures.push(`${label}: Cockpit-Tacho steigt nicht (${v0} → ${v1})`);
+  // brake: S on the keyboard, the brake pedal on touch screens
+  await page.keyboard.up("w");
+  const brakeShown = await page.isVisible(".brakepedal");
+  const touch = label === "mobile";
+  if (touch !== brakeShown) failures.push(`${label}: Bremspedal ${brakeShown ? "sichtbar ohne" : "fehlt bei"} Touch`);
+  const b0 = await readNum(page, '[data-ck="speed-big"]');
+  if (brakeShown) {
+    const bb = await page.locator(".brakepedal__plate").boundingBox();
+    await page.mouse.move(bb.x + bb.width / 2, bb.y + bb.height / 2);
+    await page.mouse.down();
+  } else await page.keyboard.down("s");
+  await page.waitForTimeout(1500);
+  const b1 = await readNum(page, '[data-ck="speed-big"]');
+  if (brakeShown) await page.mouse.up();
+  else await page.keyboard.up("s");
+  console.log(`${label}: Bremse ${fmt(b0)} → ${fmt(b1)}`);
+  if (!(b1 < b0 - 3 || b1 === 0 || !Number.isFinite(b1))) failures.push(`${label}: Bremse bremst nicht (${b0} → ${b1})`);
+  await page.keyboard.down("w");
   for (const id of ["race", "compact"]) {
     await page.selectOption('select[data-control="layout"]', id);
     await page.waitForTimeout(400);
