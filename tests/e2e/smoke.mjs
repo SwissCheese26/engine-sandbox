@@ -234,6 +234,7 @@ async function layouts(page, label) {
   await page.mouse.up();
   await page.waitForTimeout(100);
   const after = (await page.locator(".pedal__value").textContent())?.trim();
+  if (!(parseInt(held ?? "0", 10) >= 30)) failures.push(`${label}: Gashebel lässt sich nicht ziehen (${held})`);
   if (after !== "0 %") failures.push(`${label}: Gashebel federt auf der Rolle nicht zurück (${held} → ${after})`);
   await page.keyboard.down("w");
   for (const id of ["race", "compact"]) {

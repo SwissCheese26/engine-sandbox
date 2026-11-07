@@ -6,6 +6,9 @@ import { clamp, fmt } from "./format.ts";
 
 const PEDAL_STEP = 0.05;
 
+/** Keys that move the gas lever (on the lever itself or, for the arrows, anywhere). */
+const LEVER_KEYS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "PageUp", "PageDown", "Home", "End"]);
+
 export class ControlPanel {
   readonly el: HTMLElement;
   readonly pedalEl: HTMLElement;
@@ -308,11 +311,7 @@ export class ControlPanel {
     });
     // on the chassis dyno the lever is the car's gas pedal: it springs back when the finger/mouse lets go.
     // On the engine dyno it stays where it was put (hand throttle for steady points).
-    const springBack = () => {
-      if (this.inputs.dynoMode !== "vehicle" || this.lever === 0) return;
-      this.lever = 0;
-      this.renderPedal();
-    };
+    const springBack = () => this.springBack();
     track.addEventListener("pointerup", springBack);
     track.addEventListener("pointercancel", springBack);
     track.addEventListener("lostpointercapture", springBack);
@@ -365,11 +364,23 @@ export class ControlPanel {
       return true;
     }
     const onSlider = tag === "INPUT" && (t as HTMLInputElement).type === "range" || tag === "SELECT" || t?.getAttribute("role") === "radiogroup" || (tag === "INPUT" && (t as HTMLInputElement).type === "radio");
+    // chassis dyno: the lever keys work like a held pedal and spring back on key release
+    if (!down && !onSlider && LEVER_KEYS.has(key) && this.inputs.dynoMode === "vehicle") {
+      this.springBack();
+      return true;
+    }
     if (!onSlider && down && (key === "ArrowUp" || key === "ArrowDown")) {
       this.nudge(key === "ArrowUp" ? PEDAL_STEP : -PEDAL_STEP);
       return true;
     }
     return false;
+  }
+
+  /** On the chassis dyno the gas lever is a pedal: back to 0 when let go. Engine dyno: hand throttle, stays. */
+  private springBack() {
+    if (this.inputs.dynoMode !== "vehicle" || this.lever === 0) return;
+    this.lever = 0;
+    this.renderPedal();
   }
 
   private renderBrake() {
@@ -384,6 +395,7 @@ export class ControlPanel {
     this.gasLevel = 0;
     this.starterKey = false;
     this.brakeKey = false;
+    this.springBack();
     this.brakePointers.clear();
     this.brakeBtnKey = false;
     this.renderBrake();

@@ -250,9 +250,9 @@ export class CockpitView implements LayoutView {
     this.put("ambient", `${fmt(toUnit("temp", d.environment.ambientC, u.temp))} ${u.temp}`);
     // a gradient set under Umwelt is driven as a hill: shown here so a car rolling away in N is explained
     const g = d.environment.gradePct;
-    const gradeRow = this.el.querySelector<HTMLElement>('[data-ck="grade-row"]')!;
+    const gradeRow = this.out["grade-row"]!;
     if (gradeRow.hidden !== (g === 0)) gradeRow.hidden = g === 0;
-    if (g !== 0) this.put("grade", `${g > 0 ? "Steigung" : "Gefälle"} ${fmt(Math.abs(g))} % (Umwelt)`);
+    if (g !== 0) this.put("grade", `${g > 0 ? "Steigung" : "Gefälle"} ${fmt(Math.abs(g), Number.isInteger(g) ? 0 : 1)} % (Umwelt)`);
     this.put("total", `${fmt(Math.floor(toUnit("distance", total.km, u.distance)))} ${u.distance}`);
     this.put("trip", `${fmt(toUnit("distance", tripA.km, u.distance), 1)} ${u.distance}`);
     const avg = toUnit("fuel", avgL100(tripA.km, tripA.fuelL), u.fuel);
