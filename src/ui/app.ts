@@ -98,10 +98,9 @@ export class App {
     this.viewSlot.replaceChildren(...(view ? [view.el] : []));
     this.viewSlot.hidden = !view;
     if (view) view.redraw();
-    else {
-      this.gauges.redraw();
-      this.recorder.redraw(this.sim.state.t);
-    }
+    else this.gauges.redraw();
+    // the recorder is shown in every view; its canvas is sized on redraw
+    this.recorder.redraw(this.sim.state.t);
   }
 
   private view(id: Exclude<LayoutId, "pruefzelle">): LayoutView {
