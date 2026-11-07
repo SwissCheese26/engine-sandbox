@@ -74,6 +74,13 @@ export const KICKDOWN_S = 0.5;
 const CC_KP = 0.07; // pedal per km/h
 const CC_KI = 0.012; // pedal per (km/h · s)
 const HOLD_GUESS = 0.2;
+/**
+ * Set-speed ramp: the controller reference follows a new set speed (resume, ±10) at ≈ 2 km/h/s and runs at most
+ * CC_LEAD_KMH ahead of the car, so a jump of 20 km/h is not a full-throttle step (series GRA accelerates gently,
+ * ≈ 0.5 m/s²) [S: Bosch Kraftfahrtechnisches Taschenbuch, "Fahrgeschwindigkeitsregelung"].
+ */
+const CC_RAMP_KMH_S = 2;
+const CC_LEAD_KMH = 3;
 const NOT_HOLDABLE_KMH = 2;
 const NOT_HOLDABLE_S = 1.5;
 const OVERSPEED_KMH = 3;
@@ -100,6 +107,8 @@ export class CruiseControl {
   private pedal = 0;
   private hold: number | null = null;
   private pendingEngage = false;
+  /** Ramped controller reference, km/h. */
+  private ref = 0;
   // limiter
   private limActive = false;
   private limI = 0;
@@ -149,7 +158,7 @@ export class CruiseControl {
   /** R: resume the last set speed. */
   resume(): boolean {
     if (this.st.setKmh === null || this.speed < CRUISE_MIN_KMH || this.st.mode !== "off") return false;
-    // the remembered hold pedal, but never more than the driver holds plus a margin, so it does not lurch
+    // the remembered hold pedal of the last run (or the estimate); the reference ramps up from the current speed
     this.engage(clamp(this.st.setKmh, CRUISE_MIN_KMH, this.maxSet()), this.iMem ?? this.hold ?? HOLD_GUESS);
     return true;
   }
@@ -157,6 +166,7 @@ export class CruiseControl {
   private engage(kmh: number, i0: number) {
     this.st.setKmh = kmh;
     this.st.mode = "active";
+    this.ref = this.speed;
     this.st.limiterOn = false; // one system at a time, like the GRA/limiter switch in the car
     this.resetLimiter();
     this.i = clamp(i0, 0, 1);
@@ -207,9 +217,13 @@ export class CruiseControl {
     this.limActive = false;
   }
 
-  /** Everything off (vehicle reset, other car); set speed and limit stay remembered. */
+  /**
+   * Vehicle reset / other car: cruise control AND limiter off (a limit chosen for one car must not silently hold
+   * the next one back); the set speed (resume memory) and the limit value stay remembered.
+   */
   reset() {
     this.off();
+    this.st.limiterOn = false;
     this.resetLimiter();
   }
 
@@ -243,7 +257,15 @@ export class CruiseControl {
       return;
     }
     if (s.setKmh !== null && this.gov !== null && s.setKmh > this.gov) s.setKmh = this.gov;
-    const e = (s.setKmh ?? x.speedKmh) - x.speedKmh;
+    const set = s.setKmh ?? x.speedKmh;
+    // reference ramp towards the set speed (resume, ±10); while ramping up it stays ≤ CC_LEAD_KMH ahead of the car
+    const rampingUp = this.ref < set;
+    this.ref += clamp(set - this.ref, -CC_RAMP_KMH_S * dt, CC_RAMP_KMH_S * dt);
+    if (rampingUp) this.ref = Math.min(this.ref, x.speedKmh + CC_LEAD_KMH);
+    const ramped = Math.abs(this.ref - set) < 0.01;
+    // PI on the reference; the notes use the set speed itself
+    const e = this.ref - x.speedKmh;
+    const eSet = set - x.speedKmh;
     if (x.clutchOpen) {
       // manual gearbox, clutch pressed for a shift: the controller pauses (integrator frozen) and picks up again
       // after the shift – a short clutch tap does not switch the system off (VW GRA behaviour) [S]
@@ -254,14 +276,16 @@ export class CruiseControl {
     const override = x.driverPedal > clamp(u, 0, 1) + 0.02;
     // conditional integration (anti-windup): frozen while the driver overrides or the output is saturated in the
     // direction the error pushes it
-    if (!this.pendingEngage && !override && !(u >= 1 && e > 0) && !(u <= 0 && e < 0)) this.i += CC_KI * e * dt;
+    // while the reference ramps up the P part alone carries the acceleration (the integrator would otherwise store
+    // the acceleration pedal and overshoot at the end of the ramp)
+    if (!this.pendingEngage && !override && !(u >= 1 && e > 0) && !(u <= 0 && e < 0) && !(rampingUp && e > 0)) this.i += CC_KI * e * dt;
     this.pendingEngage = false;
     this.i = clamp(this.i, 0, 1);
     s.output = clamp(CC_KP * e + this.i, 0, 1);
     s.mode = override ? "override" : "active";
-    this.slowT = !override && s.output >= 0.999 && e > NOT_HOLDABLE_KMH ? this.slowT + dt : e < 1 ? 0 : this.slowT;
+    this.slowT = !override && s.output >= 0.999 && eSet > NOT_HOLDABLE_KMH ? this.slowT + dt : eSet < 1 ? 0 : this.slowT;
     s.notHoldable = this.slowT > NOT_HOLDABLE_S;
-    s.overspeed = !override && s.output <= 0.001 && e < -OVERSPEED_KMH;
+    s.overspeed = !override && ramped && s.output <= 0.001 && eSet < -OVERSPEED_KMH;
     // lugging below ≈ 1.4 × idle (diesel ≈ 1150 rpm, petrol ≈ 1050 rpm) or not holdable: a lower gear helps
     s.downshift = x.manual && x.gear > 1 && !override && (s.notHoldable || (x.rpm < 1.4 * x.idleRpm && s.output > 0.3));
   }

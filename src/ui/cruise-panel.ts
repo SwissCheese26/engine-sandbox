@@ -1,8 +1,30 @@
 // Tempomat-Leiste (issue #30): cruise control and speed limiter in the Getriebe-Pult.
-// Keys: C set/off, R resume, + / − (or Bild↑ / Bild↓) ±1 km/h, long press or Shift ±10 km/h, L limiter on/off.
+// Keys: C set/off, R resume, + / − ±1 km/h (long press or Shift ±10), L limiter on/off. ± are read from e.code, so
+// they work on US and German layouts alike (review PR #46); Bild↑/↓ are left to the page (scrolling).
 // Speeds go through `formatSpeed`, so the global unit choice (#24, km/h ↔ mph) can plug in without touching this file.
 import { CRUISE_MIN_KMH, LIMITER_OPTIONS } from "../core/index.ts";
 import type { Drivetrain, CruiseState } from "../core/index.ts";
+
+export type CruiseKeyAction = "set" | "resume" | "limiter" | "plus" | "minus";
+
+/** Physical keys for ± (e.code): US "=" / "-", German "+" (BracketRight) / "-" (Slash), numpad. */
+const PLUS_CODES = new Set(["Equal", "BracketRight", "NumpadAdd"]);
+const MINUS_CODES = new Set(["Minus", "Slash", "NumpadSubtract"]);
+
+/** True while the focus is in a field that takes typing (same guard as controls.ts): number/text inputs, selects. */
+export function isTypingTarget(t: { tagName?: string; type?: string } | null | undefined): boolean {
+  const tag = t?.tagName;
+  return (tag === "INPUT" && !["checkbox", "radio", "range"].includes(t?.type ?? "")) || tag === "SELECT" || tag === "TEXTAREA";
+}
+
+/** Maps a key event to a cruise action, null = not ours. Pure, so it is unit-tested (tests/ui/cruise-keys.test.ts). */
+export function cruiseKeyAction(e: { key: string; code: string; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean; target?: unknown }): CruiseKeyAction | null {
+  if (e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target as { tagName?: string; type?: string } | null)) return null;
+  if (PLUS_CODES.has(e.code)) return "plus";
+  if (MINUS_CODES.has(e.code)) return "minus";
+  const k = e.key.toLowerCase();
+  return k === "c" ? "set" : k === "r" ? "resume" : k === "l" ? "limiter" : null;
+}
 
 /** Long press: after this time a held ± switches to 10 km/h steps (and repeats every LONG_MS). */
 const LONG_MS = 500;
@@ -36,14 +58,15 @@ export class CruisePanel {
         <span class="cruise__set num" data-out="cruise-set" aria-live="off">–</span>
         <button type="button" class="btn btn--small" data-control="cruise-set" aria-keyshortcuts="C">Setzen <kbd>C</kbd></button>
         <button type="button" class="btn btn--small" data-control="cruise-resume" aria-keyshortcuts="R">Wieder <kbd>R</kbd></button>
-        <button type="button" class="btn btn--small" data-control="cruise-minus" aria-keyshortcuts="Minus PageDown" aria-label="Soll minus">−</button>
-        <button type="button" class="btn btn--small" data-control="cruise-plus" aria-keyshortcuts="Plus PageUp" aria-label="Soll plus">+</button>
+        <button type="button" class="btn btn--small" data-control="cruise-minus" aria-keyshortcuts="-" aria-label="Soll minus">−</button>
+        <button type="button" class="btn btn--small" data-control="cruise-plus" aria-keyshortcuts="+" aria-label="Soll plus">+</button>
       </div>
       <div class="cruise__row">
         <span class="lamp lamp--green cruise__lamp" data-out="limit-lamp" title="Limiter">${ICON_LIMIT}</span>
         <select data-control="limit-value" aria-label="Limiter-Höchstgeschwindigkeit"></select>
         <button type="button" class="btn btn--small" data-control="limit-toggle" aria-keyshortcuts="L" aria-pressed="false">Limiter <kbd>L</kbd></button>
       </div>
+      <p class="cruise__keys">Kurz <kbd>+</kbd>/<kbd>−</kbd> ±1, lang oder mit Shift ±10. Kickdown: am Limit <kbd>W</kbd> loslassen und erneut halten.</p>
       <div class="cruise__notes" aria-live="polite">
         <p class="note note--warning" data-out="cruise-not-holdable" hidden>Tempo nicht haltbar</p>
         <p class="note note--warning" data-out="cruise-downshift" hidden>Runterschalten</p>
@@ -111,17 +134,18 @@ export class CruisePanel {
 
   /** C, R, ± / Bild↑↓, L. Returns true when handled. */
   handleKey(e: KeyboardEvent, down: boolean): boolean {
-    const k = e.key.length === 1 ? e.key.toLowerCase() : e.key;
-    if (k === "c" || k === "r" || k === "l") {
+    const a = cruiseKeyAction(e);
+    if (a === null) return false;
+    if (a === "set" || a === "resume" || a === "limiter") {
       if (down && !e.repeat) {
-        if (k === "c") this.setOrOff();
-        else if (k === "r") this.dt.cruise.resume();
+        if (a === "set") this.setOrOff();
+        else if (a === "resume") this.dt.cruise.resume();
         else this.dt.cruise.toggleLimiter();
       }
       return true;
     }
-    const dir = k === "+" || k === "PageUp" ? 1 : k === "-" || k === "PageDown" ? -1 : 0;
-    if (!dir) return false;
+    const dir = a === "plus" ? 1 : -1;
+    // Shift = ±10 at once (layout independent: the physical key decides, e.shiftKey only the step)
     if (down && !e.repeat) this.pressStart(dir, e.shiftKey);
     else if (!down) this.pressEnd();
     return true;

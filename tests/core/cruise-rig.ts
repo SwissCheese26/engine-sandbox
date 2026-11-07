@@ -49,5 +49,5 @@ export function cruiseRig(carId: string, gearbox?: GearboxType) {
     }
     return { min, max };
   };
-  return { car, cfg, sim, dt, trip, step, accelerateTo, run, autoShift };
+  return { car, cfg, sim, dt, trip, inp, step, accelerateTo, run, autoShift };
 }

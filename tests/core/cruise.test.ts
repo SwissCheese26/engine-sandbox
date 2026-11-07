@@ -112,6 +112,82 @@ describe("cruise control (issue #30): holds the set speed", () => {
   });
 });
 
+describe("cruise control: ramp, switch-off, reset (review PR #46)", () => {
+  test("resume 60 → 100: ramped (pedal < 1, ≈ 2 km/h/s), no overshoot", () => {
+    const r = cruiseRig(TDI);
+    r.accelerateTo(100);
+    r.dt.cruise.set();
+    r.run(15);
+    r.run(0.3, 0, 0.6); // brake: off
+    for (let i = 0; i < 1200 && r.dt.state.speedKmh > 60; i++) r.step(0, 0.4);
+    r.run(0.5);
+    const v0 = r.dt.state.speedKmh;
+    expect(v0).toBeLessThan(62);
+    expect(r.dt.cruise.resume()).toBe(true);
+    let maxOut = 0, maxV = 0, t95 = 0;
+    r.run(60, 0, 0, (i) => {
+      maxOut = Math.max(maxOut, r.dt.state.cruise!.output);
+      maxV = Math.max(maxV, r.dt.state.speedKmh);
+      if (!t95 && r.dt.state.speedKmh >= 95) t95 = i / 60;
+    });
+    expect(maxOut).toBeLessThan(1);
+    expect(maxV).toBeLessThan(101);
+    // ≈ 2 km/h/s: 35 km/h take about 17 s (not a full-throttle sprint of ≈ 6 s)
+    expect(t95).toBeGreaterThan(14);
+    expect(t95).toBeLessThan(25);
+    expect(Math.abs(r.dt.state.speedKmh - 100)).toBeLessThan(1);
+  });
+
+  test("+10 at 100 km/h: no pedal jump, settles at 110 without overshoot", () => {
+    const r = cruiseRig(GTI);
+    r.accelerateTo(100);
+    r.dt.cruise.set();
+    r.run(20);
+    const out0 = r.dt.state.cruise!.output;
+    r.dt.cruise.adjust(1, true);
+    r.step(0);
+    expect(r.dt.state.cruise!.output - out0).toBeLessThan(0.05);
+    let maxV = 0;
+    r.run(40, 0, 0, () => (maxV = Math.max(maxV, r.dt.state.speedKmh)));
+    expect(r.dt.state.cruise!.setKmh).toBe(110);
+    expect(maxV).toBeLessThan(111);
+    expect(Math.abs(r.dt.state.speedKmh - 110)).toBeLessThan(1);
+  });
+
+  test("ignition off and a stalled engine switch the cruise control off", () => {
+    const r = cruiseRig(TDI);
+    r.accelerateTo(80);
+    r.dt.cruise.set();
+    r.run(3);
+    r.inp.ignition = false;
+    r.run(0.5);
+    expect(r.sim.state.running).toBe(false);
+    expect(r.dt.state.cruise!.mode).toBe("off");
+    expect(r.dt.state.cruise!.output).toBe(0);
+    // stalled (engine not running) is the same signal: resume is refused below 30 km/h, and the controller never
+    // re-engages by itself
+    r.run(20);
+    expect(r.dt.state.cruise!.mode).toBe("off");
+  });
+
+  test("reset and loading another car: cruise control and limiter off, values remembered", () => {
+    const r = cruiseRig(TDI);
+    r.accelerateTo(80);
+    r.dt.cruise.set();
+    r.run(2);
+    r.dt.reset();
+    expect(r.dt.state.cruise!.mode).toBe("off");
+    expect(r.dt.state.cruise!.setKmh).toBe(80);
+    r.dt.cruise.setLimit(100);
+    r.dt.cruise.toggleLimiter();
+    r.dt.applyCar(structuredClone(r.car.setup));
+    expect(r.dt.state.cruise!.limiterOn).toBe(false);
+    expect(r.dt.state.cruise!.limitKmh).toBe(100);
+    // the state object stays the same instance for the UI
+    expect(r.dt.state.cruise).toBe(r.dt.cruise.state);
+  });
+});
+
 describe("cruise control on gradients (issue #30)", () => {
   test("6 %: 130 km/h are held (TDI, GTI)", () => {
     for (const id of [TDI, GTI]) {
@@ -264,7 +340,7 @@ describe("constant-speed consumption via the board computer (issues #30, #21)", 
       const t = r.trip.data.tripA;
       expect(t.km).toBeGreaterThan((kmh / 60) * 0.98);
       const l100 = averageL100(t)!;
-      console.log(`  ${id} ${kmh} km/h: ${l100.toFixed(2)} l/100 km, gear ${r.dt.state.gear}, ${Math.round(r.sim.state.rpm)} rpm`);
+      if (process.env.CRUISE_LOG) console.log(`  ${id} ${kmh} km/h: ${l100.toFixed(2)} l/100 km, gear ${r.dt.state.gear}, ${Math.round(r.sim.state.rpm)} rpm`);
       expect(l100).toBeGreaterThan(lo);
       expect(l100).toBeLessThan(hi);
     });

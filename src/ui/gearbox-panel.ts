@@ -218,9 +218,10 @@ export class GearboxPanel {
   /** Q / E shift keys. Returns true when handled. */
   handleKey(e: KeyboardEvent, down: boolean): boolean {
     if (this.el.hidden || e.ctrlKey || e.metaKey || e.altKey) return false;
+    // the cruise keys have the full typing guard of controls.ts (number fields, selects), review PR #46
+    if (this.cruise.handleKey(e, down)) return true;
     const tag = (e.target as HTMLElement | null)?.tagName;
     if (tag === "SELECT" || tag === "TEXTAREA" || (tag === "INPUT" && (e.target as HTMLInputElement).type === "text")) return false;
-    if (this.cruise.handleKey(e, down)) return true;
     const key = e.key.toLowerCase();
     if (key !== "q" && key !== "e") return false;
     if (down && !e.repeat) this.drivetrain.shift(key === "e" ? 1 : -1);
