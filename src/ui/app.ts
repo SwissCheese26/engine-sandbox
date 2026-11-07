@@ -98,10 +98,9 @@ export class App {
     this.viewSlot.replaceChildren(...(view ? [view.el] : []));
     this.viewSlot.hidden = !view;
     if (view) view.redraw();
-    else {
-      this.gauges.redraw();
-      this.recorder.redraw(this.sim.state.t);
-    }
+    else this.gauges.redraw();
+    // the recorder is shown in every view; its canvas is sized on redraw
+    this.recorder.redraw(this.sim.state.t);
   }
 
   private view(id: Exclude<LayoutId, "pruefzelle">): LayoutView {
@@ -371,8 +370,8 @@ export class App {
         this.gauges.update(s, dt);
         this.schematic.update(s, dt);
       }
-      // other views (#26): the recorder keeps sampling but does not draw on its hidden canvas
-      this.recorder.update(s, dt, !view);
+      // the recorder is shown and drawn in every view
+      this.recorder.update(s, dt);
       this.console.update(s);
       if (this.inputs.dynoMode === "vehicle") this.gearbox.update(this.console.brakeHeld);
       // board computer counts only while the car drives on the chassis dyno (#40, #41)

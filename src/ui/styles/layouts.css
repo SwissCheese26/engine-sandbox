@@ -43,8 +43,8 @@
   visibility: visible;
 }
 .cell:not([data-layout="pruefzelle"]) .stage__engine,
-.cell:not([data-layout="pruefzelle"]) .instruments,
-.cell:not([data-layout="pruefzelle"]) .recorder {
+/* the recorder (Messbogen with the full-load curve) stays in every view: measuring is the point of the bench */
+.cell:not([data-layout="pruefzelle"]) .instruments {
   display: none;
 }
 .cell:not([data-layout="pruefzelle"]) .stage {
