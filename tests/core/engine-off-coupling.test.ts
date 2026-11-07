@@ -45,11 +45,13 @@ test("in neutral the same car rolls down the slope (gravity, no engine braking)"
   expect(r.dt.state.speedKmh).toBeGreaterThan(30);
 });
 
-test("the engine still starts with 1st engaged (clutch held down while cranking)", () => {
-  const r = cruiseRig("car-vw-golf6-tdi"); // the rig cranks with gear 1 engaged
-  expect(r.dt.state.gear).toBe(1);
-  expect(r.sim.state.running).toBe(true);
-  expect(r.dt.state.speedKmh).toBeLessThan(1);
+test("the engine still starts with 1st engaged, and cranking does not push the car (clutch held down)", () => {
+  for (const id of ["car-vw-golf6-tdi", "car-bmw-m3-e92"]) {
+    const r = cruiseRig(id); // the rig cranks with gear 1 engaged
+    expect(r.dt.state.gear).toBe(1);
+    expect(r.sim.state.running).toBe(true);
+    expect(r.dt.state.speedKmh).toBeLessThan(0.02);
+  }
 });
 
 test("automatic gearboxes: no oil pressure without a running engine, the clutches stay open", () => {
