@@ -65,6 +65,12 @@ export const CRUISE_OFF_BELOW_KMH = 20;
 export const CRUISE_MAX_KMH = 250;
 /** Limiter presets in km/h (urban, rural, motorway signs), free values via ± steps. */
 export const LIMITER_OPTIONS: readonly number[] = [30, 50, 80, 100, 120, 130];
+/** 1 mph in km/h (international mile, exact). */
+export const MPH_KMH = 1.609344;
+/** Limiter presets in mph (UK/US signs: 20/30/40/50 urban, 55/65/70 highway, 80 Texas), stored in km/h. */
+export const LIMITER_OPTIONS_MPH: readonly number[] = [20, 30, 40, 50, 55, 65, 70, 80];
+/** Lowest set speed when the driver works in mph (30 km/h ≈ 18.6 mph → 20 mph, a whole sign value). */
+export const CRUISE_MIN_MPH = 20;
 /** Kickdown: pedal ≥ 98 % held for this time overrides the limiter [S: VW Betriebsanleitung "Geschwindigkeitsbegrenzer"]. */
 export const KICKDOWN_PEDAL = 0.98;
 export const KICKDOWN_S = 0.5;
@@ -137,21 +143,36 @@ export class CruiseControl {
     return Math.min(CRUISE_MAX_KMH, this.gov ?? CRUISE_MAX_KMH);
   }
 
-  /** C: set to the current speed (≥ 30 km/h). While active (not overtaking) it switches off. Returns success. */
-  setOrOff(): boolean {
+  /**
+   * C: set to the current speed (≥ 30 km/h). While active (not overtaking) it switches off. Returns success.
+   * `unitKmh`: the display unit in km/h (1 = km/h, MPH_KMH = mph); the set speed is rounded to whole units of it.
+   */
+  setOrOff(unitKmh = 1): boolean {
     if (this.st.mode === "active") {
       this.off();
       return true;
     }
-    return this.set();
+    return this.set(unitKmh);
   }
 
-  /** Set the current speed as set speed and engage (≥ 30 km/h). */
-  set(): boolean {
-    if (this.speed < CRUISE_MIN_KMH) return false;
+  /** Lowest set speed / limit in km/h for a display unit. */
+  static minKmh(unitKmh = 1): number {
+    return unitKmh === 1 ? CRUISE_MIN_KMH : Math.max(CRUISE_MIN_KMH, Math.ceil(CRUISE_MIN_KMH / unitKmh / 10) * 10 * unitKmh);
+  }
+
+  /** Clamp in km/h, rounded to whole display units (and kept inside the range in those units). */
+  private fit(kmh: number, unitKmh: number, max: number): number {
+    const lo = Math.ceil(CruiseControl.minKmh(unitKmh) / unitKmh - 1e-9);
+    const hi = Math.floor(max / unitKmh + 1e-9);
+    return clamp(Math.round(kmh / unitKmh), lo, hi) * unitKmh;
+  }
+
+  /** Set the current speed as set speed and engage (≥ 30 km/h, ≥ 20 mph in mph). */
+  set(unitKmh = 1): boolean {
+    if (this.speed < CruiseControl.minKmh(unitKmh) - unitKmh / 2) return false;
     // the integrator starts at the estimated hold pedal (not the accelerating pedal: that would overshoot by
     // ≈ 5 km/h); coasting without an estimate: the remembered hold pedal or a generic part load
-    this.engage(clamp(Math.round(this.speed), CRUISE_MIN_KMH, this.maxSet()), this.hold ?? this.iMem ?? HOLD_GUESS);
+    this.engage(this.fit(this.speed, unitKmh, this.maxSet()), this.hold ?? this.iMem ?? HOLD_GUESS);
     return true;
   }
 
@@ -183,17 +204,24 @@ export class CruiseControl {
   }
 
   /**
-   * ± on the active cruise control (set speed) or else the limiter. `big`: to the next multiple of 10 km/h.
-   * Returns true when something changed.
+   * ± on the active cruise control (set speed) or else the limiter. `big`: to the next multiple of 10.
+   * `unitKmh`: steps and rounding in that display unit (MPH_KMH: ±1 mph, next 10 mph). Returns true on a change.
    */
-  adjust(dir: 1 | -1, big = false): boolean {
-    const step = (v: number) => (big ? (dir > 0 ? Math.floor(v / 10 + 1e-9) * 10 + 10 : Math.ceil(v / 10 - 1e-9) * 10 - 10) : v + dir);
+  adjust(dir: 1 | -1, big = false, unitKmh = 1): boolean {
+    const step = (kmh: number) => {
+      const v = kmh / unitKmh;
+      const r = Math.round(v);
+      // a value that is not whole in this unit (set in the other unit) first snaps to the next whole one
+      const n = big ? (dir > 0 ? Math.floor(v / 10 + 1e-6) * 10 + 10 : Math.ceil(v / 10 - 1e-6) * 10 - 10)
+        : Math.abs(v - r) < 1e-6 ? r + dir : dir > 0 ? Math.ceil(v) : Math.floor(v);
+      return n * unitKmh;
+    };
     if (this.st.mode !== "off" && this.st.setKmh !== null) {
-      this.st.setKmh = clamp(step(this.st.setKmh), CRUISE_MIN_KMH, this.maxSet());
+      this.st.setKmh = this.fit(step(this.st.setKmh), unitKmh, this.maxSet());
       return true;
     }
     if (this.st.limiterOn) {
-      this.setLimit(step(this.st.limitKmh));
+      this.setLimit(step(this.st.limitKmh), unitKmh);
       return true;
     }
     return false;
@@ -212,8 +240,9 @@ export class CruiseControl {
     return this.st.limiterOn;
   }
 
-  setLimit(kmh: number) {
-    this.st.limitKmh = clamp(Math.round(kmh), CRUISE_MIN_KMH, CRUISE_MAX_KMH);
+  /** Limit in km/h, rounded to whole display units (`unitKmh`, e.g. MPH_KMH: 80 mph = 128.75 km/h). */
+  setLimit(kmh: number, unitKmh = 1) {
+    this.st.limitKmh = this.fit(kmh, unitKmh, CRUISE_MAX_KMH);
     this.limActive = false;
   }
 

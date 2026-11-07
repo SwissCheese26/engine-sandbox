@@ -1,8 +1,11 @@
 // Tempomat-Leiste (issue #30): cruise control and speed limiter in the Getriebe-Pult.
 // Keys: C set/off, R resume, + / − ±1 km/h (long press or Shift ±10), L limiter on/off. ± are read from e.code, so
 // they work on US and German layouts alike (review PR #46); Bild↑/↓ are left to the page (scrolling).
-// Speeds go through `formatSpeed`, so the global unit choice (#24, km/h ↔ mph) can plug in without touching this file.
-import { CRUISE_MIN_KMH, LIMITER_OPTIONS } from "../core/index.ts";
+// Speeds follow the global unit choice (#24, km/h ↔ mph): display, ±1/±10 steps, rounding and limiter presets are in
+// the chosen unit; the core keeps km/h. GearboxPanel.syncUnits() calls syncUnits() on every change.
+import { CruiseControl, LIMITER_OPTIONS, LIMITER_OPTIONS_MPH, MPH_KMH } from "../core/index.ts";
+import { prefs } from "./settings.ts";
+import { fmtQ } from "./units.ts";
 import type { Drivetrain, CruiseState } from "../core/index.ts";
 
 export type CruiseKeyAction = "set" | "resume" | "limiter" | "plus" | "minus";
@@ -35,8 +38,11 @@ const ICON_LIMIT = `<svg viewBox="0 0 30 21" aria-hidden="true"><path d="M5 17a1
 
 export class CruisePanel {
   readonly el: HTMLElement;
-  /** km/h → shown text incl. unit. Replaced by the unit settings (#24). */
-  formatSpeed: (kmh: number) => string = (kmh) => `${Math.round(kmh).toLocaleString("de-DE")} km/h`;
+  /** km/h → shown text incl. unit, in the globally chosen speed unit. */
+  formatSpeed: (kmh: number) => string = (kmh) => fmtQ("speed", kmh, 0, this.unit);
+  /** Speed unit ("km/h" | "mph") and its size in km/h. */
+  private unit = "km/h";
+  private unitKmh = 1;
   private cruiseLamp: HTMLElement;
   private limitLamp: HTMLElement;
   private setOut: HTMLElement;
@@ -98,38 +104,52 @@ export class CruisePanel {
         if ((e.key === "Enter" || e.key === " ") && !e.repeat) {
           e.preventDefault();
           e.stopPropagation();
-          this.dt.cruise.adjust(dir, e.shiftKey);
+          this.dt.cruise.adjust(dir, e.shiftKey, this.unitKmh);
         }
       });
     }
-    this.limitSel.addEventListener("change", () => this.dt.cruise.setLimit(Number(this.limitSel.value)));
+    this.limitSel.addEventListener("change", () => this.dt.cruise.setLimit(Number(this.limitSel.value), this.unitKmh));
     this.limitBtn.addEventListener("click", () => this.dt.cruise.toggleLimiter());
     this.syncUnits();
   }
 
   /** Refreshes the limiter options in the current speed unit (call after a unit change, #24). */
-  syncUnits() {
-    this.limitSel.innerHTML = LIMITER_OPTIONS.map((v) => `<option value="${v}">${this.formatSpeed(v)}</option>`).join("");
+  syncUnits(unit: string = prefs().speed) {
+    this.unit = unit === "mph" ? "mph" : "km/h";
+    this.unitKmh = this.unit === "mph" ? MPH_KMH : 1;
+    const opts = this.unit === "mph" ? LIMITER_OPTIONS_MPH : LIMITER_OPTIONS;
+    // option values in km/h (core unit); a limit chosen in the other unit is snapped to the nearest whole value
+    this.limitSel.innerHTML = opts.map((v) => `<option value="${v * this.unitKmh}">${this.formatSpeed(v * this.unitKmh)}</option>`).join("");
+    // the limit follows to the nearest preset of the new unit (50 km/h → 30 mph, 80 mph → 130 km/h), so a unit
+    // switch never leaves an odd value like 31 mph
+    const c = this.dt.cruise;
+    const near = opts.reduce((a, v) => (Math.abs(v * this.unitKmh - c.state.limitKmh) < Math.abs(a * this.unitKmh - c.state.limitKmh) ? v : a));
+    if (Math.abs(c.state.limitKmh / this.unitKmh - Math.round(c.state.limitKmh / this.unitKmh)) > 1e-6) c.setLimit(near * this.unitKmh, this.unitKmh);
     this.last = "";
   }
 
   private setOrOff() {
-    if (!this.dt.cruise.setOrOff()) this.tooSlowT = performance.now() + 2000;
+    if (!this.dt.cruise.setOrOff(this.unitKmh)) this.tooSlowT = performance.now() + 2000;
   }
 
   private pressStart(dir: 1 | -1, big: boolean) {
     if (big) {
-      this.dt.cruise.adjust(dir, true);
+      this.dt.cruise.adjust(dir, true, this.unitKmh);
       this.held = null;
       return;
     }
     this.held = { dir, t0: performance.now(), steps: 0 };
   }
 
+  /** Drops a held ± (the app leaves the sandbox for the menu, the keyup never comes). */
+  release() {
+    this.held = null;
+  }
+
   private pressEnd() {
     const h = this.held;
     this.held = null;
-    if (h && h.steps === 0) this.dt.cruise.adjust(h.dir);
+    if (h && h.steps === 0) this.dt.cruise.adjust(h.dir, false, this.unitKmh);
   }
 
   /** C, R, ± / Bild↑↓, L. Returns true when handled. */
@@ -154,11 +174,13 @@ export class CruisePanel {
   /** Per frame. */
   update() {
     const now = performance.now();
+    // window lost focus while ± was held: the keyup will not come
+    if (this.held && !document.hasFocus()) this.held = null;
     const h = this.held;
     // held ±: every LONG_MS one step to the next multiple of 10
     if (h && now - h.t0 >= LONG_MS * (h.steps + 1)) {
       h.steps++;
-      this.dt.cruise.adjust(h.dir, true);
+      this.dt.cruise.adjust(h.dir, true, this.unitKmh);
     }
     const c: Readonly<CruiseState> = this.dt.cruise.state;
     const tooSlow = now < this.tooSlowT;
@@ -174,7 +196,9 @@ export class CruisePanel {
     this.setOut.textContent = c.setKmh === null ? "–" : this.formatSpeed(c.setKmh);
     this.setOut.classList.toggle("is-off", !on);
     this.el.classList.toggle("is-override", c.mode === "override");
-    if (![...this.limitSel.options].some((o) => Number(o.value) === c.limitKmh)) {
+    const same = (o: HTMLOptionElement) => Math.abs(Number(o.value) - c.limitKmh) < 1e-6;
+    const match = [...this.limitSel.options].find(same);
+    if (!match) {
       // a free value set with ± gets its own option
       const o = document.createElement("option");
       o.value = String(c.limitKmh);
@@ -183,7 +207,7 @@ export class CruisePanel {
       this.limitSel.querySelectorAll("[data-free]").forEach((x) => x.remove());
       this.limitSel.append(o);
     }
-    this.limitSel.value = String(c.limitKmh);
+    this.limitSel.value = (match ?? [...this.limitSel.options].find(same))?.value ?? "";
     this.limitBtn.setAttribute("aria-pressed", String(c.limiterOn));
     this.notes.notHoldable.hidden = !c.notHoldable;
     this.notes.downshift.hidden = !c.downshift;
@@ -191,6 +215,6 @@ export class CruisePanel {
     this.notes.limiting.hidden = !c.limiting;
     this.notes.kickdown.hidden = !c.kickdown;
     this.notes.tooSlow.hidden = !tooSlow;
-    this.notes.tooSlow.textContent = `Tempomat ab ${this.formatSpeed(CRUISE_MIN_KMH)}`;
+    this.notes.tooSlow.textContent = `Tempomat ab ${this.formatSpeed(CruiseControl.minKmh(this.unitKmh))}`;
   }
 }

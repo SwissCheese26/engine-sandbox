@@ -60,11 +60,11 @@ class RoundGauge {
     this.el.append(this.canvas, cap);
     const units = def.units;
     if (units && units.length > 1) {
-      this.unitIdx = savedUnit(def.id, units.length);
+      this.unitIdx = savedUnit(def.id, units);
       this.unitEl.textContent = units[this.unitIdx]!.unit;
       makeSwitchable(this.el, def.label, () => {
         this.unitIdx = (this.unitIdx + 1) % units.length;
-        saveUnit(def.id, this.unitIdx);
+        saveUnit(def.id, units, this.unitIdx);
         this.unitEl.textContent = units[this.unitIdx]!.unit;
         this.dirty = true;
         if (this.lastState) this.readout.textContent = this.fmtShown(this.def.value(this.lastState), this.lastState);
@@ -75,6 +75,17 @@ class RoundGauge {
 
   private get unitOpt(): UnitOpt | undefined {
     return this.def.units?.[this.unitIdx];
+  }
+
+  /** Global unit setting changed or overrides were reset (#24): pick the unit again. */
+  syncUnit() {
+    const units = this.def.units;
+    if (!units || units.length < 2) return;
+    this.unitIdx = savedUnit(this.def.id, units);
+    this.unitEl.textContent = units[this.unitIdx]!.unit;
+    this.dirty = true;
+    if (this.lastState) this.readout.textContent = this.fmtShown(this.def.value(this.lastState), this.lastState);
+    this.draw();
   }
 
   private fmtShown(v: number, s?: EngineState): string {
@@ -113,6 +124,11 @@ class RoundGauge {
   }
 
   draw() {
+    // hidden (menu open, #42): nothing to lay out; draw on the next visible frame
+    if (!this.canvas.clientWidth) {
+      this.dirty = true;
+      return;
+    }
     const { ctx, w, h } = fitCanvas(this.canvas);
     this.dirty = false;
     const t = tokens();
@@ -242,15 +258,24 @@ class Meter {
     const units = def.units;
     if (units && units.length > 1) {
       const unitEl = this.el.querySelector<HTMLElement>(".meter__unit")!;
-      this.unitIdx = savedUnit(def.id, units.length);
+      this.unitIdx = savedUnit(def.id, units);
       unitEl.textContent = units[this.unitIdx]!.unit;
       makeSwitchable(this.el, def.label, () => {
         this.unitIdx = (this.unitIdx + 1) % units.length;
-        saveUnit(def.id, this.unitIdx);
+        saveUnit(def.id, units, this.unitIdx);
         unitEl.textContent = units[this.unitIdx]!.unit;
         if (this.lastState) this.update(this.lastState, 0, new Set());
       });
     }
+  }
+
+  /** Global unit setting changed or overrides were reset (#24). */
+  syncUnit() {
+    const units = this.def.units;
+    if (!units || units.length < 2) return;
+    this.unitIdx = savedUnit(this.def.id, units);
+    this.el.querySelector<HTMLElement>(".meter__unit")!.textContent = units[this.unitIdx]!.unit;
+    if (this.lastState) this.update(this.lastState, 0, new Set());
   }
 
   configure(cfg: EngineConfig) {
@@ -358,5 +383,11 @@ export class InstrumentPanel {
 
   redraw() {
     for (const g of this.round) g.draw();
+  }
+
+  /** Re-reads the unit of every instrument (global setting or reset of the overrides, #24). */
+  syncUnits() {
+    for (const g of this.round) g.syncUnit();
+    for (const m of this.meters) m.syncUnit();
   }
 }

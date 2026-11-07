@@ -346,3 +346,53 @@ describe("constant-speed consumption via the board computer (issues #30, #21)", 
     });
   }
 });
+
+describe("cruise control in mph (issue #30 with the unit choice #24)", () => {
+  const MPH = 1.609344;
+  const mph = (kmh: number | null) => (kmh === null ? NaN : kmh / MPH);
+
+  test("set rounds to whole mph, ±1 mph, ±10 to the next 10 mph, holds 60 mph", () => {
+    const r = cruiseRig(GTI);
+    r.accelerateTo(97.5); // ≈ 60.6 mph
+    expect(r.dt.cruise.set(MPH)).toBe(true);
+    expect(mph(r.dt.state.cruise!.setKmh)).toBeCloseTo(61, 6);
+    r.dt.cruise.adjust(-1, false, MPH);
+    expect(mph(r.dt.state.cruise!.setKmh)).toBeCloseTo(60, 6);
+    r.dt.cruise.adjust(1, true, MPH);
+    expect(mph(r.dt.state.cruise!.setKmh)).toBeCloseTo(70, 6);
+    r.dt.cruise.adjust(-1, true, MPH);
+    r.dt.cruise.adjust(1, false, MPH);
+    r.dt.cruise.adjust(-1, false, MPH);
+    expect(mph(r.dt.state.cruise!.setKmh)).toBeCloseTo(60, 6);
+    r.run(40);
+    expect(Math.abs(mph(r.dt.state.speedKmh) - 60)).toBeLessThan(0.7);
+  });
+
+  test("a km/h set speed snaps to whole mph on the first step; minimum 20 mph", () => {
+    const c = new CruiseControl();
+    c.update(1 / 60, { speedKmh: 100, driverPedal: 0.3, brake: 0, running: true, gear: 5, clutchOpen: false, manual: false, rpm: 2000, idleRpm: 800, governorKmh: 250 });
+    c.set();
+    expect(c.state.setKmh).toBe(100); // 62.14 mph
+    c.adjust(1, false, MPH);
+    expect(mph(c.state.setKmh)).toBeCloseTo(63, 6);
+    c.adjust(-1, false, MPH);
+    expect(mph(c.state.setKmh)).toBeCloseTo(62, 6);
+    for (let k = 0; k < 10; k++) c.adjust(-1, true, MPH);
+    expect(mph(c.state.setKmh)).toBeCloseTo(20, 6);
+    expect(CruiseControl.minKmh(MPH)).toBeCloseTo(20 * MPH, 6);
+  });
+
+  test("limiter in mph: 50 mph preset holds at 50 ± 1 mph, ± in mph", () => {
+    const r = cruiseRig(GTI);
+    r.dt.cruise.setLimit(50 * MPH, MPH);
+    r.dt.cruise.toggleLimiter();
+    let max = 0;
+    r.run(30, 0.9, 0, () => (max = Math.max(max, mph(r.dt.state.speedKmh))));
+    expect(max).toBeLessThan(51);
+    expect(mph(r.dt.state.speedKmh)).toBeGreaterThan(49);
+    r.dt.cruise.adjust(1, true, MPH);
+    expect(mph(r.dt.state.cruise!.limitKmh)).toBeCloseTo(60, 6);
+    r.dt.cruise.adjust(-1, false, MPH);
+    expect(mph(r.dt.state.cruise!.limitKmh)).toBeCloseTo(59, 6);
+  });
+});

@@ -1,4 +1,6 @@
 // E2E smoke test (issue #7). Does NOT build: run `bun scripts/build.ts` first.
+// Since #42 the page opens with the main menu: the test shoots the menu and the settings, enters the
+// sandbox through its door, and at the end checks Esc (back to the menu) and reload (#sandbox stays).
 // Serves dist/ with a tiny built-in node:http server, loads the app, fails on console/page errors,
 // starts the engine with the keyboard (I = ignition, hold S = starter, hold Space = throttle),
 // checks that the rpm readout rises, and writes screenshots (1440×900, 390×844) to
@@ -105,6 +107,18 @@ async function run(label, viewport) {
     return;
   }
 
+  // main menu (#42) and settings (#24), then into the sandbox through Tor 1
+  if (!(await page.$(".hall"))) failures.push(`${label}: Hauptmenü fehlt`);
+  await page.screenshot({ path: join(outDir, `smoke-${label}-menu.png`) });
+  await page.click('a[href="#settings"]:visible');
+  await page.waitForSelector('[data-screen="settings"]:not([hidden]) input[name="preset"]');
+  await page.screenshot({ path: join(outDir, `smoke-${label}-settings.png`), fullPage: true });
+  await page.click('.office__top a[href="#menu"]');
+  await page.waitForSelector('[data-screen="menu"]:not([hidden])');
+  await page.click('a.door[href="#sandbox"]');
+  await page.waitForSelector(RPM_READOUT, { state: "visible" });
+  await page.waitForTimeout(300);
+
   await page.screenshot({ path: join(outDir, `smoke-${label}-idle.png`) });
   for (const sel of [RPM_READOUT, '[data-control="ignition"]', '[data-control="starter"]']) {
     if (!(await page.$(sel))) failures.push(`${label}: Element ${sel} fehlt`);
@@ -133,6 +147,17 @@ async function run(label, viewport) {
   if (!Number.isFinite(rpmGas) || !Number.isFinite(rpmIdle)) failures.push(`${label}: Drehzahlanzeige nicht lesbar`);
   else if (!(rpmGas > Math.max(rpmIdle, rpm0 || 0) + 300)) failures.push(`${label}: Drehzahl steigt nicht (Leerlauf ${fmt(rpmIdle)}, Gas ${fmt(rpmGas)})`);
   if (Number.isFinite(rpmIdle) && !(rpmIdle > 200)) failures.push(`${label}: Motor springt nicht an (rpm ${fmt(rpmIdle)})`);
+
+  // Esc leads back to the menu, the sandbox pauses; reload keeps the mode in the URL
+  await page.mouse.click(2, 2);
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(150);
+  const back = await page.evaluate(() => ({ hash: location.hash, menu: !document.querySelector('[data-screen="menu"]')?.hidden, paused: window.__pruefzelle?.isPaused }));
+  if (back.hash !== "#menu" || !back.menu || back.paused !== true) failures.push(`${label}: Esc führt nicht ins Menü (${JSON.stringify(back)})`);
+  await page.goto(base + "#sandbox", { waitUntil: "load" });
+  await page.reload({ waitUntil: "load" });
+  await page.waitForTimeout(300);
+  if (!(await page.isVisible(RPM_READOUT))) failures.push(`${label}: Neuladen mit #sandbox öffnet die Sandbox nicht`);
 
   await page.close();
 }

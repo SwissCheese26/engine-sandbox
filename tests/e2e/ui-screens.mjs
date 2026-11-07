@@ -48,7 +48,7 @@ async function run(name, viewport, steps) {
   page.on("pageerror", (e) => errors.push(`${name}: ${e.message}`));
   // Google Fonts may be unreachable offline; abort quickly instead of waiting for timeouts.
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
-  await page.goto(base);
+  await page.goto(base + "#sandbox");
   await page.waitForSelector(".cell");
   await page.waitForTimeout(300);
   const scrollTo = await steps(page);
@@ -110,7 +110,7 @@ await run("desktop-v8-petrol", { width: 1440, height: 900 }, async (page) => {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   page.on("pageerror", (e) => errors.push(`checks: ${e.message}`));
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
-  await page.goto(base);
+  await page.goto(base + "#sandbox");
   await page.waitForSelector(".cell");
   const expect = (ok, msg) => {
     if (!ok) errors.push(`check failed: ${msg}`);
@@ -158,7 +158,7 @@ await run("desktop-v8-petrol", { width: 1440, height: 900 }, async (page) => {
   const disposed = await page.evaluate(() => {
     const app = window.__pruefzelle;
     app.dispose();
-    return document.getElementById("app").childElementCount === 0 && !window.__pruefzelle;
+    return document.querySelector(".cell") === null && !window.__pruefzelle;
   });
   expect(disposed, "dispose() clears the app");
   await page.close();
@@ -200,7 +200,7 @@ await run("desktop-v8-petrol", { width: 1440, height: 900 }, async (page) => {
   const expect = (ok, msg) => {
     if (!ok) errors.push(`check failed: ${msg}`);
   };
-  await page.goto(base);
+  await page.goto(base + "#sandbox");
   await page.waitForSelector(".cell");
   expect(!(await page.isVisible("text=Motorklang folgt")), "placeholder hint removed");
   await page.click('[data-control="mute"]');
@@ -232,7 +232,7 @@ await run("desktop-v8-petrol", { width: 1440, height: 900 }, async (page) => {
 {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
-  await page.goto(base);
+  await page.goto(base + "#sandbox");
   await page.waitForSelector(".cell");
   const unreachable = await page.evaluate(() => {
     const sel = "button, input, select, [role=slider]";

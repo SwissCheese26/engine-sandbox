@@ -55,5 +55,5 @@ export { TripComputer, averageKmh, averageL100, MIN_KM_FOR_AVERAGE } from "./tri
 export type { TripComputerData, TripCounter } from "./trip-computer.ts";
 
 // issue #30: cruise control and driver speed limiter
-export { CruiseControl, CRUISE_MIN_KMH, LIMITER_OPTIONS, KICKDOWN_S } from "./cruise.ts";
+export { CruiseControl, CRUISE_MIN_KMH, CRUISE_MIN_MPH, LIMITER_OPTIONS, LIMITER_OPTIONS_MPH, MPH_KMH, KICKDOWN_S } from "./cruise.ts";
 export type { CruiseState, CruiseMode } from "./cruise.ts";

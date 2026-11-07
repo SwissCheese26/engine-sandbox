@@ -10,6 +10,9 @@ export interface SoundOutput {
   /** Every frame, also while the engine is off (starter and crash need it). */
   update(state: EngineState, pedal: number): void;
   setVolume(v: number): void;
+  /** Pauses / continues the audio clock (menu open, #42). */
+  suspend(): Promise<void>;
+  resume(): Promise<void>;
   stop(): void;
 }
 

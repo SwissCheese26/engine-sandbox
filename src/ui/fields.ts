@@ -1,6 +1,7 @@
 // Declarative description of every EngineConfig parameter shown on the workbench. Pure, no DOM.
 // The workbench renders this list; tests check that every config leaf is covered.
 import { summarize } from "../core/index.ts";
+import type { Quantity } from "./settings.ts";
 import type { CylinderLayout, EngineConfig, WarningCode } from "../core/index.ts";
 import { clamp, snap } from "./format.ts";
 
@@ -44,6 +45,8 @@ export interface NumberField extends FieldBase {
   range: (cfg: EngineConfig) => { min: number; max: number; step: number };
   /** Display multiplier (e.g. 100 to show 0…1 as %). */
   scale?: number;
+  /** Quantity for the global unit choice (#24): shown and typed in the chosen unit, stored in `unit`. */
+  q?: Quantity;
 }
 
 export interface ChoiceNumberField extends FieldBase {
@@ -69,6 +72,8 @@ export interface OptionalNumberField extends FieldBase {
   range: (cfg: EngineConfig) => { min: number; max: number; step: number };
   /** Value used when the switch is turned on. */
   defaultOn: (cfg: EngineConfig) => number;
+  /** Quantity for the global unit choice (#24). */
+  q?: Quantity;
 }
 
 export interface TextField extends FieldBase {
@@ -201,18 +206,18 @@ export const FIELDS: Field[] = [
     visible: (c) => c.block.layout === "inline" && c.block.cylinders === 4,
   },
   {
-    kind: "number", path: "block.boreMm", group: "block", label: "Bohrung", unit: "mm", decimals: 1,
+    kind: "number", path: "block.boreMm", q: "length", group: "block", label: "Bohrung", unit: "mm", decimals: 1,
     effect: "+ Bohrung → mehr Hubraum, Platz für größere Ventile.",
     range: () => ({ min: 40, max: 140, step: 0.5 }),
   },
   {
-    kind: "number", path: "block.strokeMm", group: "block", label: "Hub", unit: "mm", decimals: 1,
+    kind: "number", path: "block.strokeMm", q: "length", group: "block", label: "Hub", unit: "mm", decimals: 1,
     effect: "+ Hub → mehr Drehmoment, höhere Kolbengeschwindigkeit.",
     warns: ["piston-speed"],
     range: () => ({ min: 40, max: 160, step: 0.5 }),
   },
   {
-    kind: "number", path: "block.conrodLengthMm", group: "block", label: "Pleuellänge", unit: "mm", decimals: 0,
+    kind: "number", path: "block.conrodLengthMm", q: "length", group: "block", label: "Pleuellänge", unit: "mm", decimals: 0,
     effect: "+ Pleuel → weniger Seitenkraft am Kolben, höherer Block.",
     warns: ["conrod-stress"],
     range: () => ({ min: 70, max: 300, step: 1 }),
@@ -326,7 +331,7 @@ export const FIELDS: Field[] = [
     ],
   },
   {
-    kind: "number", path: "fuelSystem.injectionPressureBar", group: "mixture", label: "Einspritzdruck", unit: "bar", decimals: 0,
+    kind: "number", path: "fuelSystem.injectionPressureBar", q: "pressure", group: "mixture", label: "Einspritzdruck", unit: "bar", decimals: 0,
     effect: "+ Druck → feinere Zerstäubung, weniger Ruß, mehr Leistung.",
     visible: (c) => c.fuelSystem.kind === "diesel" && (c.fuelSystem.injection === "common-rail" || c.fuelSystem.injection === "unit-injector"),
     range: injectionPressureRange,
@@ -394,7 +399,7 @@ export const FIELDS: Field[] = [
     visible: isPetrol,
   },
   {
-    kind: "number", path: "induction.intakeRunnerLengthMm", group: "mixture", label: "Saugrohrlänge", unit: "mm", decimals: 0,
+    kind: "number", path: "induction.intakeRunnerLengthMm", q: "length", group: "mixture", label: "Saugrohrlänge", unit: "mm", decimals: 0,
     effect: "Lang → Resonanz und Drehmoment unten. Kurz → Leistung oben.",
     range: () => ({ min: 100, max: 800, step: 10 }),
   },
@@ -413,13 +418,13 @@ export const FIELDS: Field[] = [
     ],
   },
   {
-    kind: "number", path: "induction.boostTargetBar", group: "induction", label: "Ladedruck-Soll", unit: "bar", decimals: 2,
+    kind: "number", path: "induction.boostTargetBar", q: "pressure", group: "induction", label: "Ladedruck-Soll", unit: "bar", decimals: 2,
     effect: "+ Ladedruck → mehr Drehmoment, mehr Spitzendruck und Abgashitze.",
     visible: isCharged, warns: ["overboost", "peak-pressure", "knock"],
     range: (c) => (isDiesel(c) ? { min: 0.2, max: 3.0, step: 0.05 } : { min: 0.2, max: 2.5, step: 0.05 }),
   },
   {
-    kind: "number", path: "induction.compressorInducerMm", group: "induction", label: "Verdichterrad", unit: "mm", decimals: 0,
+    kind: "number", path: "induction.compressorInducerMm", q: "length", group: "induction", label: "Verdichterrad", unit: "mm", decimals: 0,
     effect: "+ Rad → mehr Luftdurchsatz oben, mehr Turboloch unten.",
     visible: hasCompressorWheel, warns: ["turbo-overspeed"],
     range: () => ({ min: 25, max: 80, step: 1 }),
@@ -487,14 +492,14 @@ export const FIELDS: Field[] = [
     ],
   },
   {
-    kind: "number", path: "cooling.radiatorCapacityKw", group: "cooling", label: "Kühlerleistung", unit: "kW", decimals: 0,
+    kind: "number", path: "cooling.radiatorCapacityKw", q: "power", group: "cooling", label: "Kühlerleistung", unit: "kW", decimals: 0,
     effect: "+ Kühler → mehr Dauerleistung ohne Überhitzen. Luftkühlung: Rippenleistung bei 90 km/h Fahrtwind.",
     warns: ["overheat-coolant"],
     // up to 2000 kW: hypercar / race radiators (Arthur's wish), constant 5 kW steps
     range: () => ({ min: 20, max: 2000, step: 5 }),
   },
   {
-    kind: "number", path: "cooling.thermostatOpenC", group: "cooling", label: "Thermostat öffnet", unit: "°C", decimals: 0,
+    kind: "number", path: "cooling.thermostatOpenC", q: "temp", group: "cooling", label: "Thermostat öffnet", unit: "°C", decimals: 0,
     effect: "Wärmer → weniger Reibung, näher an der Siedegrenze.",
     warns: ["overheat-coolant"],
     visible: (c) => (c.cooling.type ?? "liquid") === "liquid",
@@ -516,7 +521,7 @@ export const FIELDS: Field[] = [
   },
   // ── Steuergerät ──────────────────────────────────────────────────────────
   {
-    kind: "optional-number", path: "ecuTorqueLimitNm", group: "ecu", label: "Drehmomentbegrenzung Steuergerät", unit: "Nm", decimals: 0,
+    kind: "optional-number", path: "ecuTorqueLimitNm", q: "torque", group: "ecu", label: "Drehmomentbegrenzung Steuergerät", unit: "Nm", decimals: 0,
     effect: "Hält das Drehmoment am Limit (Getriebeschutz): weniger Ladedruck bzw. Einspritzmenge statt hartem Abschalten.",
     range: () => ({ min: 50, max: 3000, step: 5 }),
     // switching on starts at 90 % of the current full-load peak, so the effect is visible right away

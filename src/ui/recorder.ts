@@ -5,6 +5,8 @@ import { dynoSweep } from "../core/index.ts";
 import type { DynoPoint, EngineConfig, EngineState, EngineSummary } from "../core/index.ts";
 import { fitCanvas, reducedMotion, tokens } from "./canvas.ts";
 import { fmt, niceCeil, tickStep } from "./format.ts";
+import { prefs } from "./settings.ts";
+import { fmtQ, toUnit } from "./units.ts";
 
 /** Paper feed in CSS px per second of simulation time. */
 const FEED_PX_S = 36;
@@ -148,8 +150,11 @@ export class Recorder {
       rpm = Math.max(rpm, r.points[r.points.length - 1]!.rpm);
     }
     this.rpmMax = Math.ceil((rpm * 1.05) / 1000) * 1000;
-    this.tqMax = niceCeil(Math.max(50, tq * 1.2));
-    this.pwMax = niceCeil(Math.max(20, pw * 1.2));
+    // round scale ends in the shown unit (#24): e.g. 300 lb·ft instead of 406,7 Nm converted
+    const kT = toUnit("torque", 1);
+    const kP = toUnit("power", 1);
+    this.tqMax = niceCeil(Math.max(50 * kT, tq * kT * 1.2)) / kT;
+    this.pwMax = niceCeil(Math.max(20 * kP, pw * kP * 1.2)) / kP;
     this.drawSheet();
   }
 
@@ -184,6 +189,12 @@ export class Recorder {
     this.onMeasure?.(auto);
   }
 
+  /** Global unit setting changed (#24): rescale the axes and rewrite the legend. */
+  syncUnits() {
+    this.rescale();
+    this.renderLegend();
+  }
+
   get latestRun(): Run | undefined {
     return this.runs[0];
   }
@@ -203,7 +214,7 @@ export class Recorder {
       li.innerHTML = `<span class="run__name"></span> <span class="num run__vals"></span>`;
       li.querySelector(".run__name")!.textContent = i === 0 ? r.label : `${r.label} (Lauf ${this.runs.length - i})`;
       li.querySelector(".run__vals")!.textContent =
-        `${fmt(r.peakTorque.torqueNm)} Nm bei ${fmt(r.peakTorque.rpm)} 1/min, ${fmt(r.peakPower.powerKw)} kW bei ${fmt(r.peakPower.rpm)} 1/min`;
+        `${fmtQ("torque", r.peakTorque.torqueNm)} bei ${fmt(r.peakTorque.rpm)} 1/min, ${fmtQ("power", r.peakPower.powerKw)} bei ${fmt(r.peakPower.rpm)} 1/min`;
       this.legend.append(li);
     });
   }
@@ -354,8 +365,8 @@ export class Recorder {
     ctx.font = `600 11px ${tk.fontNum}`;
     const caps: [string, string][] = [
       [`${fmt(this.rpmMax)}`, tk.alu],
-      [`${fmt(this.tqMax)}`, "#e8a39d"],
-      [`${fmt(this.pwMax)}`, "#a9b9ea"],
+      [`${fmt(toUnit("torque", this.tqMax))}`, "#e8a39d"],
+      [`${fmt(toUnit("power", this.pwMax))}`, "#a9b9ea"],
     ];
     caps.forEach(([txt, c], i) => {
       ctx.fillStyle = c;
@@ -409,18 +420,18 @@ export class Recorder {
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
     ctx.fillStyle = tk.inkTorque;
-    for (let i = 0; i <= 5; i++) ctx.fillText(fmt((this.tqMax * i) / 5), padL - 5, padT + ph * (1 - i / 5));
+    for (let i = 0; i <= 5; i++) ctx.fillText(fmt(toUnit("torque", (this.tqMax * i) / 5)), padL - 5, padT + ph * (1 - i / 5));
     ctx.textAlign = "left";
     ctx.fillStyle = tk.inkPower;
-    for (let i = 0; i <= 5; i++) ctx.fillText(fmt((this.pwMax * i) / 5), padL + pw + 5, padT + ph * (1 - i / 5));
+    for (let i = 0; i <= 5; i++) ctx.fillText(fmt(toUnit("power", (this.pwMax * i) / 5)), padL + pw + 5, padT + ph * (1 - i / 5));
     ctx.font = `600 11px ${tk.font}`;
     ctx.textBaseline = "top";
     ctx.fillStyle = tk.inkTorque;
     ctx.textAlign = "right";
-    ctx.fillText("Nm", padL - 5, 3);
+    ctx.fillText(prefs().torque, padL - 5, 3);
     ctx.fillStyle = tk.inkPower;
     ctx.textAlign = "left";
-    ctx.fillText("kW", padL + pw + 5, 3);
+    ctx.fillText(prefs().power, padL + pw + 5, 3);
 
     // limit
     ctx.strokeStyle = tk.signal;

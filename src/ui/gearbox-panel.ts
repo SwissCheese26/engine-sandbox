@@ -9,6 +9,8 @@ import type { EngineConfig, EngineSummary, GearboxType, VehicleKind } from "../c
 import { EnvironmentPanel, WarningLamps } from "./environment-panel.ts";
 import { VehiclePanel } from "./vehicle-panel.ts";
 import { CruisePanel } from "./cruise-panel.ts";
+import { prefs } from "./settings.ts";
+import { toUnit } from "./units.ts";
 
 const TYPE_LABEL: Record<GearboxType, string> = {
   manual: "Handschalter, 6 Gänge",
@@ -22,6 +24,9 @@ const LIMIT_KEY = "pruefzelle.vmaxLimit";
 const TYRE_WARN_ON_KMH = 1;
 const TYRE_WARN_OFF_KMH = 2;
 const LAYOUT_SHORT = { fwd: "Frontantrieb", rwd: "Heckantrieb", awd: "Allrad" } as const;
+
+/** 60 mph in km/h: the sprint mark when speeds are shown in mph (#24). */
+const MPH60_KMH = 60 / 0.621371;
 
 const fmt1 = (n: number) => n.toLocaleString("de-DE", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const fmt0 = (n: number) => Math.round(n).toLocaleString("de-DE");
@@ -60,6 +65,8 @@ export class GearboxPanel {
   private summary: EngineSummary;
   private last = { gear: "", speed: "", vmax: "", t100: "", vmaxNote: false, gov: false, tyre: false, wheelie: false, spin: false, locked: false, tyreRating: 0 };
   private moving = false;
+  /** 0–60 mph stopwatch, measured here from the drivetrain's running 0–100 timer (UI only, #24). */
+  private sprint = { running: false, done: false, t60: null as number | null };
   /** Set by the app: puts the vehicle in the simulator back to standstill. */
   onResetVehicle: () => void = () => {};
 
@@ -88,7 +95,7 @@ export class GearboxPanel {
         </label>
         <label class="gearbox__field"><span>Vmax-Begrenzer</span>
           <select data-control="speed-limit">${SPEED_LIMIT_OPTIONS
-            .map((v) => `<option value="${v ?? "off"}">${v === null ? "aus (aufgehoben)" : `${v} km/h`}</option>`).join("")}</select>
+            .map((v) => `<option value="${v ?? "off"}">aus (aufgehoben)</option>`).join("")}</select>
         </label>
         <p class="gearbox__hint">Kürzer übersetzt zieht stärker und dreht früher in den Begrenzer, länger übersetzt bringt mehr Vmax, wenn die Leistung reicht. <span data-out="vehicle-hint"></span></p>
         <p class="gearbox__calc num"></p>
@@ -107,9 +114,9 @@ export class GearboxPanel {
       </div>
       <div class="gearbox__out">
       <dl class="gearbox__readouts">
-        <div><dt>Tempo</dt><dd class="num"><span data-out="speed">0</span> km/h</dd></div>
-        <div><dt>Vmax gemessen</dt><dd class="num"><span data-out="vmax">0</span> km/h<small class="gearbox__vmax-note" hidden> (abgeregelt)</small></dd></div>
-        <div><dt>0–100 km/h</dt><dd class="num"><span data-out="t100">–</span> s</dd></div>
+        <div><dt>Tempo</dt><dd class="num"><span data-out="speed">0</span> <span data-unit="speed">km/h</span></dd></div>
+        <div><dt>Vmax gemessen</dt><dd class="num"><span data-out="vmax">0</span> <span data-unit="speed">km/h</span><small class="gearbox__vmax-note" hidden> (abgeregelt)</small></dd></div>
+        <div><dt data-out="sprint-label">0–100 km/h</dt><dd class="num"><span data-out="t100">–</span> s</dd></div>
       </dl>
       <div data-slot="trip"></div>
       <div class="gearbox__notes" aria-live="polite">
@@ -192,7 +199,28 @@ export class GearboxPanel {
     this.downBtn.addEventListener("click", () => this.drivetrain.shift(-1));
     this.upBtn.addEventListener("click", () => this.drivetrain.shift(1));
     this.autoBtn.addEventListener("click", () => this.drivetrain.setAutomatic());
+    this.syncUnits();
+  }
+
+  /** Shows speeds in the globally chosen unit (km/h or mph, #24). Physics and the governor stay in km/h. */
+  syncUnits() {
+    const u = prefs().speed;
+    this.el.querySelectorAll<HTMLElement>("[data-unit=speed]").forEach((n) => (n.textContent = u));
+    this.el.querySelector<HTMLElement>("[data-out=sprint-label]")!.textContent = u === "mph" ? "0–60 mph" : "0–100 km/h";
+    for (const o of this.limitSel.options) {
+      if (o.value !== "off") o.textContent = `${fmt0(toUnit("speed", Number(o.value), u))} ${u}`;
+    }
+    this.last.speed = this.last.vmax = this.last.t100 = "";
+    this.last.tyreRating = -1;
     this.syncSetup();
+    this.trip.syncUnits();
+    this.vehiclePanel.syncUnits();
+    this.cruise.syncUnits(u);
+    this.environmentPanel.sync();
+  }
+
+  private spd(kmh: number): string {
+    return `${fmt0(toUnit("speed", kmh))} ${prefs().speed}`;
   }
 
   setVisible(on: boolean) {
@@ -206,12 +234,14 @@ export class GearboxPanel {
     // the simulator was reset by setConfig() (engine and vehicle at rest), so the gearbox follows
     this.drivetrain.setEngine(cfg, summary);
     this.drivetrain.reset();
+    this.sprint = { running: false, done: false, t60: null };
     this.syncSetup();
   }
 
   /** Vehicle back to standstill (engine reset). */
   reset() {
     this.drivetrain.reset();
+    this.sprint = { running: false, done: false, t60: null };
     this.onResetVehicle();
   }
 
@@ -265,14 +295,36 @@ export class GearboxPanel {
       // physical top speed without the governor; the governor note follows when it caps below that
       const lim = s.speedLimitKmh;
       const capped = lim !== null && r.vmaxKmh > lim
-        ? ` Der Vmax-Begrenzer regelt bei ${fmt0(lim)} km/h ab.`
+        ? ` Der Vmax-Begrenzer regelt bei ${this.spd(lim)} ab.`
         : "";
       this.calcEl.textContent = (r.limitedBy === "limiter"
-        ? `Berechnete Vmax ohne Begrenzer ${fmt0(r.vmaxKmh)} km/h, begrenzt durch den Drehzahlbegrenzer im ${r.gear}. Gang: länger übersetzen bringt mehr.`
-        : `Berechnete Vmax ohne Begrenzer ${fmt0(r.vmaxKmh)} km/h, begrenzt durch den Luftwiderstand.`) + capped;
+        ? `Berechnete Vmax ohne Begrenzer ${this.spd(r.vmaxKmh)}, begrenzt durch den Drehzahlbegrenzer im ${r.gear}. Gang: länger übersetzen bringt mehr.`
+        : `Berechnete Vmax ohne Begrenzer ${this.spd(r.vmaxKmh)}, begrenzt durch den Luftwiderstand.`) + capped;
     } catch {
       this.calcEl.textContent = "";
     }
+  }
+
+  /** 0–60 mph: follows the drivetrain's 0–100 run (same start and abort rules) and stops it at 96,56 km/h. */
+  private stepSprint(s: { speedKmh: number; t0to100Running: number | null; t0to100S: number | null }): number | null {
+    const sp = this.sprint;
+    const r = s.t0to100Running;
+    if (r !== null) {
+      if (!sp.running) {
+        sp.running = true;
+        sp.done = false;
+      }
+      if (!sp.done && s.speedKmh >= MPH60_KMH) {
+        sp.t60 = r;
+        sp.done = true;
+      }
+    } else if (sp.running) {
+      // the run ended this frame: reached 100 km/h (60 mph crossed in the same frame) or aborted
+      if (!sp.done && s.speedKmh >= MPH60_KMH && s.t0to100S !== null) sp.t60 = s.t0to100S;
+      sp.running = false;
+      sp.done = true;
+    }
+    return sp.t60;
   }
 
   /** Per frame: returns the pedal the engine should get (manual shifts lift off). */
@@ -280,9 +332,13 @@ export class GearboxPanel {
     const d = this.drivetrain;
     const s = d.state;
     const gear = s.shifting && s.type === "manual" ? "–" : d.gearLabel();
-    const speed = fmt0(s.speedKmh);
-    const vmax = fmt0(s.maxSpeedKmh);
-    const t100 = s.t0to100Running !== null ? fmt1(s.t0to100Running) : s.t0to100S !== null ? fmt1(s.t0to100S) : "–";
+    const mph = prefs().speed === "mph";
+    const speed = fmt0(toUnit("speed", s.speedKmh));
+    const vmax = fmt0(toUnit("speed", s.maxSpeedKmh));
+    const t60 = this.stepSprint(s);
+    const t100 = mph
+      ? this.sprint.running && !this.sprint.done ? fmt1(s.t0to100Running ?? 0) : t60 !== null ? fmt1(t60) : "–"
+      : s.t0to100Running !== null ? fmt1(s.t0to100Running) : s.t0to100S !== null ? fmt1(s.t0to100S) : "–";
     if (gear !== this.last.gear) this.gearEl.textContent = this.last.gear = gear;
     if (speed !== this.last.speed) this.speedEl.textContent = this.last.speed = speed;
     if (vmax !== this.last.vmax) this.vmaxEl.textContent = this.last.vmax = vmax;
@@ -294,7 +350,7 @@ export class GearboxPanel {
     if (s.tyreRatingKmh !== this.last.tyreRating) {
       this.last.tyreRating = s.tyreRatingKmh;
       const idx = this.drivetrain.tyre.speedIndex;
-      this.tyreNoteEl.textContent = `Reifenfreigabe ${idx} = ${idx === "(Y)" ? "über 300" : s.tyreRatingKmh} km/h überschritten`;
+      this.tyreNoteEl.textContent = `Reifenfreigabe ${idx} = ${idx === "(Y)" ? `über ${this.spd(300)}` : this.spd(s.tyreRatingKmh)} überschritten`;
     }
     const tyre = this.last.tyre ? s.speedKmh >= s.tyreRatingKmh - TYRE_WARN_OFF_KMH : s.speedKmh > s.tyreRatingKmh + TYRE_WARN_ON_KMH;
     if (tyre !== this.last.tyre) this.tyreNoteEl.hidden = !(this.last.tyre = tyre);
