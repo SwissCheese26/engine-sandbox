@@ -188,7 +188,8 @@ async function layouts(page, label) {
     await page.selectOption('select[data-control="layout"]', "cockpit");
   }
   await page.waitForSelector(".ck", { state: "visible" });
-  if (await page.isVisible(".recorder")) failures.push(`${label}: Cockpit zeigt noch den Linienschreiber`);
+  // the recorder (full-load curve) stays in every view (Arthur's report after #47)
+  if (!(await page.isVisible(".recorder"))) failures.push(`${label}: Cockpit zeigt den Linienschreiber nicht`);
   await page.click('[data-ck="to-vehicle"]');
   await page.mouse.click(2, 300);
   await page.keyboard.press("i");
