@@ -1,0 +1,372 @@
+/**
+ * Cruise control ("Tempomat", GRA) and driver speed limiter (issue #30). Pure TypeScript, no DOM; used by the
+ * Drivetrain, which feeds it once per frame and combines its output with the driver pedal.
+ *
+ * Behaviour modelled on series systems (VW GRA / Bosch "Fahrgeschwindigkeitsregler", Bosch Kraftfahrtechnisches
+ * Taschenbuch, ch. "Adaptive Fahrgeschwindigkeitsregelung": the controller acts on the throttle/injection request
+ * only, never on the service brake; brake or clutch switch it off; the set speed is kept for "Resume"):
+ * - Set from 30 km/h, ±1 km/h per tap, ±10 km/h (to the next multiple of 10) on a long press / Shift.
+ * - PI controller on vehicle speed → pedal 0 … 1, conditional-integration anti-windup.
+ * - The driver pedal overrides when it is above the controller output (overtaking); the integrator is frozen
+ *   meanwhile, so the car returns to the set speed afterwards without a jolt.
+ * - Downhill there is only engine braking: the controller output goes to 0, a note shows the overspeed.
+ * - Speed limiter: PI pedal cap like the top-speed governor (issue #32); kickdown (pedal ≥ 98 % for > 0.5 s)
+ *   overrides it until the speed is back below the limit.
+ */
+
+export type CruiseMode = "off" | "active" | "override";
+
+export interface CruiseState {
+  /** Cruise control: off (set speed kept for resume), active (holds), override (driver pedal above output). */
+  mode: CruiseMode;
+  /** Set speed in km/h, kept after switching off (resume memory); null = never set. */
+  setKmh: number | null;
+  /** Controller pedal output 0 … 1 (for display/tests). */
+  output: number;
+  /** Full pedal and still > 2 km/h below the set speed for > 1.5 s ("Tempo nicht haltbar"). */
+  notHoldable: boolean;
+  /** Manual gearbox: engine speed too low or speed not holdable in this gear ("Runterschalten"). */
+  downshift: boolean;
+  /** Controller at zero pedal and > 3 km/h above the set speed (downhill, engine braking only). */
+  overspeed: boolean;
+  /** Speed limiter on/off and its limit in km/h. */
+  limiterOn: boolean;
+  limitKmh: number;
+  /** Limiter holds the pedal back. */
+  limiting: boolean;
+  /** Kickdown has overridden the limiter (until the speed is back below the limit). */
+  kickdown: boolean;
+}
+
+export interface CruiseInputs {
+  speedKmh: number;
+  /** Raw driver pedal 0 … 1. */
+  driverPedal: number;
+  brake: number;
+  running: boolean;
+  gear: number;
+  /** Manual gearbox shift in progress (clutch pressed). */
+  clutchOpen: boolean;
+  manual: boolean;
+  rpm: number;
+  idleRpm: number;
+  /** Top-speed governor limit (issue #32), the set speed is clamped to it. */
+  governorKmh: number | null;
+  /**
+   * Estimated pedal that would hold the current speed (steady state), null when unknown (coasting). The drivetrain
+   * derives it from the drive force and the acceleration: p_hold ≈ p · (F − m·a) / F (torque ≈ ∝ pedal).
+   */
+  holdPedal?: number | null;
+}
+
+/** Lowest set speed and the speed below which an active cruise control switches off (VW GRA: 30 / ≈ 20 km/h) [S]. */
+export const CRUISE_MIN_KMH = 30;
+export const CRUISE_OFF_BELOW_KMH = 20;
+export const CRUISE_MAX_KMH = 250;
+/** Limiter presets in km/h (urban, rural, motorway signs), free values via ± steps. */
+export const LIMITER_OPTIONS: readonly number[] = [30, 50, 80, 100, 120, 130];
+/** 1 mph in km/h (international mile, exact). */
+export const MPH_KMH = 1.609344;
+/** Limiter presets in mph (UK/US signs: 20/30/40/50 urban, 55/65/70 highway, 80 Texas), stored in km/h. */
+export const LIMITER_OPTIONS_MPH: readonly number[] = [20, 30, 40, 50, 55, 65, 70, 80];
+/** Lowest set speed when the driver works in mph (30 km/h ≈ 18.6 mph → 20 mph, a whole sign value). */
+export const CRUISE_MIN_MPH = 20;
+/** Kickdown: pedal ≥ 98 % held for this time overrides the limiter [S: VW Betriebsanleitung "Geschwindigkeitsbegrenzer"]. */
+export const KICKDOWN_PEDAL = 0.98;
+export const KICKDOWN_S = 0.5;
+
+// Cruise PI gains. Plant at motorway speed: ≈ 4 … 8 km/h/s per unit pedal (Golf class, 5th/6th gear), so
+// s² + k·Kp·s + k·Ki = 0 gives ωn ≈ 0.25 /s, ζ ≈ 0.7 – no overshoot worth noting, no hunting with turbo lag.
+const CC_KP = 0.07; // pedal per km/h
+const CC_KI = 0.012; // pedal per (km/h · s)
+const HOLD_GUESS = 0.2;
+/**
+ * Set-speed ramp: the controller reference follows a new set speed (resume, ±10) at ≈ 2 km/h/s and runs at most
+ * CC_LEAD_KMH ahead of the car, so a jump of 20 km/h is not a full-throttle step (series GRA accelerates gently,
+ * ≈ 0.5 m/s²) [S: Bosch Kraftfahrtechnisches Taschenbuch, "Fahrgeschwindigkeitsregelung"].
+ */
+const CC_RAMP_KMH_S = 2;
+const CC_LEAD_KMH = 3;
+const NOT_HOLDABLE_KMH = 2;
+const NOT_HOLDABLE_S = 1.5;
+const OVERSPEED_KMH = 3;
+// limiter: same structure as the governor (drivetrain.ts, issue #32), narrower window for low urban limits
+const LIM_WINDOW_KMH = 4;
+const LIM_KP = 0.12;
+const LIM_KI = 0.06;
+/** Lead time on the acceleration (s): hard acceleration in a low gear (≈ 15 km/h/s) would overshoot a 4 km/h window. */
+const LIM_LEAD_S = 0.8;
+
+const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
+
+export class CruiseControl {
+  private st: CruiseState = {
+    mode: "off", setKmh: null, output: 0, notHoldable: false, downshift: false, overspeed: false,
+    limiterOn: false, limitKmh: 50, limiting: false, kickdown: false,
+  };
+  private i = 0;
+  /** Integrator memory for resume. */
+  private iMem: number | null = null;
+  private slowT = 0;
+  private speed = 0;
+  private gov: number | null = null;
+  private pedal = 0;
+  private hold: number | null = null;
+  private pendingEngage = false;
+  /** Ramped controller reference, km/h. */
+  private ref = 0;
+  // limiter
+  private limActive = false;
+  private limI = 0;
+  private limCap = 1;
+  private kickT = 0;
+  /** The current full-pedal press started at the limit (kickdown candidate). */
+  private kickArmed = false;
+  private lastDriverPedal = 0;
+  private lastKmh: number | null = null;
+  /** Smoothed acceleration, km/h per s. */
+  private accKmhS = 0;
+
+  get state(): Readonly<CruiseState> {
+    return this.st;
+  }
+
+  /** Pedal the engine should get: max(driver, cruise output), then capped by the limiter (unless kickdown). */
+  command(driverPedal: number): number {
+    let p = driverPedal;
+    if (this.st.mode !== "off") p = Math.max(p, this.st.output);
+    if (this.st.limiterOn && !this.st.kickdown) p = Math.min(p, this.limCap);
+    return p;
+  }
+
+  private maxSet(): number {
+    return Math.min(CRUISE_MAX_KMH, this.gov ?? CRUISE_MAX_KMH);
+  }
+
+  /**
+   * C: set to the current speed (≥ 30 km/h). While active (not overtaking) it switches off. Returns success.
+   * `unitKmh`: the display unit in km/h (1 = km/h, MPH_KMH = mph); the set speed is rounded to whole units of it.
+   */
+  setOrOff(unitKmh = 1): boolean {
+    if (this.st.mode === "active") {
+      this.off();
+      return true;
+    }
+    return this.set(unitKmh);
+  }
+
+  /** Lowest set speed / limit in km/h for a display unit. */
+  static minKmh(unitKmh = 1): number {
+    return unitKmh === 1 ? CRUISE_MIN_KMH : Math.max(CRUISE_MIN_KMH, Math.ceil(CRUISE_MIN_KMH / unitKmh / 10) * 10 * unitKmh);
+  }
+
+  /** Clamp in km/h, rounded to whole display units (and kept inside the range in those units). */
+  private fit(kmh: number, unitKmh: number, max: number): number {
+    const lo = Math.ceil(CruiseControl.minKmh(unitKmh) / unitKmh - 1e-9);
+    const hi = Math.floor(max / unitKmh + 1e-9);
+    return clamp(Math.round(kmh / unitKmh), lo, hi) * unitKmh;
+  }
+
+  /** Set the current speed as set speed and engage (≥ 30 km/h, ≥ 20 mph in mph). */
+  set(unitKmh = 1): boolean {
+    if (this.speed < CruiseControl.minKmh(unitKmh) - unitKmh / 2) return false;
+    // the integrator starts at the estimated hold pedal (not the accelerating pedal: that would overshoot by
+    // ≈ 5 km/h); coasting without an estimate: the remembered hold pedal or a generic part load
+    this.engage(this.fit(this.speed, unitKmh, this.maxSet()), this.hold ?? this.iMem ?? HOLD_GUESS);
+    return true;
+  }
+
+  /** R: resume the last set speed. */
+  resume(): boolean {
+    if (this.st.setKmh === null || this.speed < CRUISE_MIN_KMH || this.st.mode !== "off") return false;
+    // the remembered hold pedal of the last run (or the estimate); the reference ramps up from the current speed
+    this.engage(clamp(this.st.setKmh, CRUISE_MIN_KMH, this.maxSet()), this.iMem ?? this.hold ?? HOLD_GUESS);
+    return true;
+  }
+
+  private engage(kmh: number, i0: number) {
+    this.st.setKmh = kmh;
+    this.st.mode = "active";
+    this.ref = this.speed;
+    this.st.limiterOn = false; // one system at a time, like the GRA/limiter switch in the car
+    this.resetLimiter();
+    this.i = clamp(i0, 0, 1);
+    this.slowT = 0;
+    this.pendingEngage = true;
+  }
+
+  off() {
+    if (this.st.mode !== "off") this.iMem = this.i;
+    this.st.mode = "off";
+    this.st.output = 0;
+    this.st.notHoldable = this.st.downshift = this.st.overspeed = false;
+    this.slowT = 0;
+  }
+
+  /**
+   * ± on the active cruise control (set speed) or else the limiter. `big`: to the next multiple of 10.
+   * `unitKmh`: steps and rounding in that display unit (MPH_KMH: ±1 mph, next 10 mph). Returns true on a change.
+   */
+  adjust(dir: 1 | -1, big = false, unitKmh = 1): boolean {
+    const step = (kmh: number) => {
+      const v = kmh / unitKmh;
+      const r = Math.round(v);
+      // a value that is not whole in this unit (set in the other unit) first snaps to the next whole one
+      const n = big ? (dir > 0 ? Math.floor(v / 10 + 1e-6) * 10 + 10 : Math.ceil(v / 10 - 1e-6) * 10 - 10)
+        : Math.abs(v - r) < 1e-6 ? r + dir : dir > 0 ? Math.ceil(v) : Math.floor(v);
+      return n * unitKmh;
+    };
+    if (this.st.mode !== "off" && this.st.setKmh !== null) {
+      this.st.setKmh = this.fit(step(this.st.setKmh), unitKmh, this.maxSet());
+      return true;
+    }
+    if (this.st.limiterOn) {
+      this.setLimit(step(this.st.limitKmh), unitKmh);
+      return true;
+    }
+    return false;
+  }
+
+  /** L: limiter on/off. Switching it on ends the cruise control. */
+  toggleLimiter(): boolean {
+    if (this.st.limiterOn) {
+      this.st.limiterOn = false;
+      this.resetLimiter();
+    } else {
+      this.off();
+      this.st.limiterOn = true;
+      this.resetLimiter();
+    }
+    return this.st.limiterOn;
+  }
+
+  /** Limit in km/h, rounded to whole display units (`unitKmh`, e.g. MPH_KMH: 80 mph = 128.75 km/h). */
+  setLimit(kmh: number, unitKmh = 1) {
+    this.st.limitKmh = this.fit(kmh, unitKmh, CRUISE_MAX_KMH);
+    this.limActive = false;
+  }
+
+  /**
+   * Vehicle reset / other car: cruise control AND limiter off (a limit chosen for one car must not silently hold
+   * the next one back); the set speed (resume memory) and the limit value stay remembered.
+   */
+  reset() {
+    this.off();
+    this.st.limiterOn = false;
+    this.resetLimiter();
+  }
+
+  private resetLimiter() {
+    this.limActive = false;
+    this.limI = 0;
+    this.limCap = 1;
+    this.kickT = 0;
+    this.st.limiting = false;
+    this.st.kickdown = false;
+  }
+
+  /** Once per frame with the current speed; updates the outputs used by command() in the next frame. */
+  update(dt: number, x: CruiseInputs) {
+    this.speed = x.speedKmh;
+    this.gov = x.governorKmh;
+    this.pedal = x.driverPedal;
+    this.hold = x.holdPedal ?? null;
+    if (this.lastKmh !== null && dt > 0) this.accKmhS += ((x.speedKmh - this.lastKmh) / dt - this.accKmhS) * Math.min(1, dt / 0.2);
+    this.lastKmh = x.speedKmh;
+    const s = this.st;
+    if (s.mode !== "off") this.cruise(dt, x);
+    this.limiter(dt, x);
+  }
+
+  private cruise(dt: number, x: CruiseInputs) {
+    const s = this.st;
+    // switch-off conditions: brake, engine off, neutral, too slow
+    if (x.brake > 0.05 || !x.running || x.gear === 0 || x.speedKmh < CRUISE_OFF_BELOW_KMH) {
+      this.off();
+      return;
+    }
+    if (s.setKmh !== null && this.gov !== null && s.setKmh > this.gov) s.setKmh = this.gov;
+    const set = s.setKmh ?? x.speedKmh;
+    // reference ramp towards the set speed (resume, ±10); while ramping up it stays ≤ CC_LEAD_KMH ahead of the car
+    const rampingUp = this.ref < set;
+    this.ref += clamp(set - this.ref, -CC_RAMP_KMH_S * dt, CC_RAMP_KMH_S * dt);
+    if (rampingUp) this.ref = Math.min(this.ref, x.speedKmh + CC_LEAD_KMH);
+    const ramped = Math.abs(this.ref - set) < 0.01;
+    // PI on the reference; the notes use the set speed itself
+    const e = this.ref - x.speedKmh;
+    const eSet = set - x.speedKmh;
+    if (x.clutchOpen) {
+      // manual gearbox, clutch pressed for a shift: the controller pauses (integrator frozen) and picks up again
+      // after the shift – a short clutch tap does not switch the system off (VW GRA behaviour) [S]
+      s.output = clamp(CC_KP * e + this.i, 0, 1);
+      return;
+    }
+    const u = CC_KP * e + this.i;
+    const override = x.driverPedal > clamp(u, 0, 1) + 0.02;
+    // conditional integration (anti-windup): frozen while the driver overrides or the output is saturated in the
+    // direction the error pushes it
+    // while the reference ramps up the P part alone carries the acceleration (the integrator would otherwise store
+    // the acceleration pedal and overshoot at the end of the ramp)
+    if (!this.pendingEngage && !override && !(u >= 1 && e > 0) && !(u <= 0 && e < 0) && !(rampingUp && e > 0)) this.i += CC_KI * e * dt;
+    this.pendingEngage = false;
+    this.i = clamp(this.i, 0, 1);
+    s.output = clamp(CC_KP * e + this.i, 0, 1);
+    s.mode = override ? "override" : "active";
+    this.slowT = !override && s.output >= 0.999 && eSet > NOT_HOLDABLE_KMH ? this.slowT + dt : eSet < 1 ? 0 : this.slowT;
+    s.notHoldable = this.slowT > NOT_HOLDABLE_S;
+    s.overspeed = !override && ramped && s.output <= 0.001 && eSet < -OVERSPEED_KMH;
+    // lugging below ≈ 1.4 × idle (diesel ≈ 1150 rpm, petrol ≈ 1050 rpm) or not holdable: a lower gear helps
+    s.downshift = x.manual && x.gear > 1 && !override && (s.notHoldable || (x.rpm < 1.4 * x.idleRpm && s.output > 0.3));
+  }
+
+  private limiter(dt: number, x: CruiseInputs) {
+    const s = this.st;
+    if (!s.limiterOn) return;
+    const lim = s.limitKmh;
+    // kickdown: pedal through the detent for > 0.5 s overrides until the speed is back below the limit
+    // A press counts as kickdown only when it reaches full pedal while the car is already at the limit (inside the
+    // window): floor it from standstill and the limiter still holds; at the limit, a fresh push through overrides.
+    // (The keyboard W is a full-throttle key – without this it would always be a kickdown.)
+    const full = x.driverPedal >= KICKDOWN_PEDAL;
+    if (full && this.lastDriverPedal < KICKDOWN_PEDAL) this.kickArmed = lim - x.speedKmh - LIM_LEAD_S * Math.max(0, this.accKmhS) <= LIM_WINDOW_KMH;
+    this.lastDriverPedal = x.driverPedal;
+    this.kickT = full && this.kickArmed ? this.kickT + dt : 0;
+    if (this.kickT > KICKDOWN_S && !s.kickdown) {
+      s.kickdown = true;
+      this.limActive = false;
+    }
+    if (s.kickdown) {
+      if (x.speedKmh <= lim && x.driverPedal < KICKDOWN_PEDAL) s.kickdown = false;
+      else {
+        this.limCap = 1;
+        s.limiting = false;
+        return;
+      }
+    }
+    const e = lim - x.speedKmh;
+    // predicted margin: the speed the car will have in LIM_LEAD_S at the current acceleration
+    const ep = e - LIM_LEAD_S * Math.max(0, this.accKmhS);
+    const pedal = x.driverPedal;
+    if (!this.limActive) {
+      if (ep > LIM_WINDOW_KMH) {
+        this.limCap = 1;
+        s.limiting = false;
+        return;
+      }
+      this.limActive = true;
+      // bumpless entry; above the limit (limit lowered while driving) start closed
+      this.limI = e < 0 ? 0 : clamp(pedal - LIM_KP * ep, 0, 1);
+    } else if (ep > LIM_WINDOW_KMH + 1) {
+      this.limActive = false;
+      this.limCap = 1;
+      s.limiting = false;
+      return;
+    }
+    // same PI + conditional integration as the top-speed governor (drivetrain.ts, issue #32)
+    const outPrev = LIM_KP * ep + this.limI;
+    if (outPrev < pedal || e < 0) this.limI += LIM_KI * ep * dt;
+    this.limI = clamp(this.limI, -0.5, 1);
+    this.limCap = clamp(LIM_KP * ep + this.limI, 0, 1);
+    s.limiting = this.limCap < pedal - 0.01;
+  }
+}

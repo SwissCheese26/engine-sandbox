@@ -305,6 +305,7 @@ export class App {
     this.paused = true;
     cancelAnimationFrame(this.rafId);
     this.console.releaseAll();
+    this.gearbox.cruise.release();
     this.gearbox.trip.save();
     if (this.soundStarted) {
       // silence first (smoothed in the DSP), then stop the audio clock
