@@ -180,6 +180,9 @@
 }
 .ck__scale label {
   display: inline-flex;
+  flex-wrap: wrap;
+  max-width: 100%;
+  min-width: 0;
   align-items: center;
   gap: var(--space-1);
 }
@@ -191,7 +194,9 @@
   border: 1px solid var(--ck-dim);
   border-radius: 3px;
   padding: 2px var(--space-1);
-  min-height: 28px;
+  min-height: 32px;
+  max-width: 100%;
+  min-width: 0;
 }
 .ck__scale select option {
   color: initial;

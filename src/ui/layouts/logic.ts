@@ -52,7 +52,11 @@ export function speedoScaleMax(scale: SpeedoScale, customKmh: number, vmaxShown:
 
 /** Labelled and minor tick spacing of the speedometer: at most ~12 numerals on the 270° arc, like real clusters. */
 export function speedoTicks(max: number, unit: string): { major: number; minor: number } {
-  if (max <= 220) return { major: 20, minor: 10 };
+  if (max <= 220) {
+    // the last numeral sits on the scale end (150 mph → every 30, not 20 with an unlabelled end)
+    const major = max % 20 === 0 ? 20 : max % 30 === 0 ? 30 : 25;
+    return { major, minor: major % 10 === 0 && max % 10 === 0 ? 10 : 5 };
+  }
   // prefer a spacing whose last numeral sits on the scale end
   const cands = unit === "mph" ? [20, 40, 50, 60, 80, 100] : [40, 50, 60, 80, 100];
   const major = cands.find((m) => max % m === 0 && max / m <= 12) ?? cands.find((m) => max / m <= 12) ?? 100;

@@ -146,7 +146,7 @@ export class SettingsScreen {
     });
     const customIn = el.querySelector<HTMLInputElement>("[data-control=speedo-custom]")!;
     customIn.addEventListener("change", () => {
-      setSettings({ speedoCustomKmh: clampSpeedoKmh(customIn.valueAsNumber) });
+      setSettings({ speedoCustomKmh: clampSpeedoKmh(customIn.valueAsNumber) }); // sync() shows the stored value
       this.sync();
     });
     el.querySelectorAll<HTMLInputElement>("input[data-q]").forEach((r) =>

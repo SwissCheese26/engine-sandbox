@@ -47,7 +47,7 @@ export class CockpitView implements LayoutView {
   private cfg!: EngineConfig;
   private summary!: EngineSummary;
   private info!: DriveInfo;
-  private speedMax = 0;
+  private speedKey = "";
   private scaleSel: HTMLSelectElement;
   private customIn: HTMLInputElement;
   private scaleKey = "";
@@ -68,7 +68,7 @@ export class CockpitView implements LayoutView {
         <div class="ck__dial ck__dial--speed" data-slot="speed">
           <p class="ck__read num" aria-live="off"><span data-ck="speed">–</span> <small data-ck="speed-unit">km/h</small></p>
           <div class="ck__scale">
-            <label><span>Skala</span>
+            <label><span>Skala<span class="sr-only"> des Tachos</span></span>
               <select data-control="speedo-scale">${SPEEDO_SCALES.map((o) => `<option value="${o.id}">${o.label}${o.kmh ? ` · ${o.kmh} km/h` : ""}</option>`).join("")}</select>
             </label>
             <label data-ck-custom hidden><span class="sr-only">Eigene Skala</span>
@@ -107,7 +107,12 @@ export class CockpitView implements LayoutView {
     this.scaleSel = el.querySelector<HTMLSelectElement>("[data-control=speedo-scale]")!;
     this.customIn = el.querySelector<HTMLInputElement>("[data-control=speedo-custom]")!;
     this.scaleSel.addEventListener("change", () => isSpeedoScale(this.scaleSel.value) && setSettings({ speedo: this.scaleSel.value }));
-    this.customIn.addEventListener("change", () => setSettings({ speedoCustomKmh: clampSpeedoKmh(this.customIn.valueAsNumber) }));
+    this.customIn.addEventListener("change", () => {
+      // show the value that is stored (on a 20 km/h step, within 100–600)
+      const v = clampSpeedoKmh(this.customIn.valueAsNumber);
+      this.customIn.value = String(v);
+      setSettings({ speedoCustomKmh: v });
+    });
     el.querySelector("[data-slot=rpm]")!.prepend(this.tacho.canvas);
 
     const host = el.querySelector(".ck__minis")!;
@@ -138,7 +143,7 @@ export class CockpitView implements LayoutView {
       })(),
       caption: "1/min × 1000",
     });
-    this.speedMax = 0;
+    this.speedKey = "";
     this.syncUnits();
   }
 
@@ -169,7 +174,7 @@ export class CockpitView implements LayoutView {
     // momentary consumption: l/100 km (or mpg) while driving, l/h at standstill like a real board computer
     this.fuelKey = "";
     this.out["speed-unit"]!.textContent = this.out["speed-unit2"]!.textContent = u.speed;
-    this.speedMax = 0;
+    this.speedKey = "";
     for (const k of Object.keys(this.last)) this.last[k] = "";
     for (const m of Object.values(this.minis)) m.last = "";
     this.lastLamps = "";
@@ -219,8 +224,9 @@ export class CockpitView implements LayoutView {
     }
     const vmaxShown = toUnit("speed", this.info.vmaxKmh, u.speed);
     const smax = speedoScaleMax(st.speedo, st.speedoCustomKmh, vmaxShown, u.speed);
-    if (smax !== this.speedMax) {
-      this.speedMax = smax;
+    const spKey = `${smax}|${u.speed}`;
+    if (spKey !== this.speedKey) {
+      this.speedKey = spKey;
       const t = speedoTicks(smax, u.speed);
       this.speedo.setScale({ min: 0, max: smax, major: t.major, minor: t.minor, caption: u.speed });
     }
