@@ -118,6 +118,8 @@ async function run(label, viewport) {
   await page.click('.office__top a[href="#menu"]');
   await page.waitForSelector('[data-screen="menu"]:not([hidden])');
   await page.click('a.door[href="#sandbox"]');
+  // "Wähle eine Strecke" opens first; the smoke test starts on the engine dyno
+  await page.click('.routepick [data-pick="engine"]');
   await page.waitForSelector(RPM_READOUT, { state: "visible" });
   await page.waitForTimeout(300);
 
@@ -186,6 +188,8 @@ async function layouts(page, label) {
     await page.click('.layout-tile:has(input[value="cockpit"])');
     await page.click('.office__top a[href="#menu"]');
     await page.click('a.door[href="#sandbox"]');
+  // "Wähle eine Strecke" opens first; the smoke test starts on the engine dyno
+  await page.click('.routepick [data-pick="engine"]');
   } else {
     await page.selectOption('select[data-control="layout"]', "cockpit");
   }

@@ -1,6 +1,7 @@
 // Prüfzelle: wires workbench, schematic, nameplate, instruments, recorder and console to the
 // simulator and runs the main loop.
-import { EngineSimulator, defaultInputs, summarize } from "../core/index.ts";
+import { EngineSimulator, TERRAIN_LABELS, defaultInputs, summarize } from "../core/index.ts";
+import { takePendingRoute } from "./route-picker.ts";
 import type { EngineConfig, EngineState, EngineSummary } from "../core/index.ts";
 import { defaultConfig } from "../data/presets.ts";
 import { ControlPanel } from "./controls.ts";
@@ -96,6 +97,10 @@ export class App {
     this.layoutSel.value = id;
     const view = id === "pruefzelle" ? null : this.view(id);
     this.viewSlot.replaceChildren(...(view ? [view.el] : []));
+    // Tempomat-Leiste: in the cockpit it sits in the centre display (reachable on phones), elsewhere in the gearbox panel
+    const cruiseEl = this.gearbox.cruise.el;
+    if (view instanceof CockpitView) view.cruiseSlot.append(cruiseEl);
+    else this.gearbox.cruiseHome();
     this.viewSlot.hidden = !view;
     if (view) view.redraw();
     else this.gauges.redraw();
@@ -409,9 +414,32 @@ export class App {
     }
   }
 
+  /** A route chosen in the main menu ("Wähle eine Strecke"): Umwelt → Strecke, onto the chassis dyno. */
+  applyPendingRoute() {
+    const t = takePendingRoute();
+    if (!t) return;
+    if (t === "engine") {
+      const m = this.root.querySelector<HTMLSelectElement>("select[data-control=mode]");
+      if (m && m.value === "vehicle") {
+        m.value = "free";
+        m.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+      return;
+    }
+    this.gearbox.environmentPanel.setRoute(t);
+    this.gearbox.drivetrain.setPosition(0);
+    const sel = this.root.querySelector<HTMLSelectElement>("select[data-control=mode]");
+    if (sel && sel.value !== "vehicle") {
+      sel.value = "vehicle";
+      sel.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    this.announce(`Strecke: ${t === "static" ? "eben" : TERRAIN_LABELS[t]}. Rollenprüfstand gewählt.`);
+  }
+
   resume() {
     if (!this.paused || this.disposed) return;
     this.paused = false;
+    this.applyPendingRoute();
     if (this.soundStarted) {
       void this.sound.resume();
       this.sound.setVolume(this.console.muted ? 0 : this.console.volumeLevel);
@@ -452,6 +480,7 @@ export class App {
 export function mountApp(root: HTMLElement): App {
   const app = new App(root);
   app.start();
+  app.applyPendingRoute();
   // Small hook for the e2e tests and for debugging in the console.
   (window as unknown as { __pruefzelle?: App }).__pruefzelle = app;
   return app;

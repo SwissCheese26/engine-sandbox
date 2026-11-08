@@ -230,6 +230,14 @@ export class EnvironmentPanel {
     this.sync();
   }
 
+  /** Route picked in the main menu: set it (a level, fixed road for "static"), store it, refresh. */
+  setRoute(t: Terrain) {
+    this.drivetrain.setEnvironment(t === "static" ? { terrain: t, gradePct: 0 } : { terrain: t });
+    writeJson(ENV_KEY, this.drivetrain.environment);
+    this.sync();
+    this.onChange();
+  }
+
   private apply() {
     if (this.moving) return this.sync();
     const v = (k: Range["key"]) => Number(this.ranges.get(k)!.input.value);

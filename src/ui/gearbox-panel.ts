@@ -61,6 +61,11 @@ export class GearboxPanel {
   readonly lamps = new WarningLamps();
   /** Tempomat-Leiste (issue #30). */
   readonly cruise: CruisePanel;
+  private cruiseAnchor: Element;
+  /** Puts the Tempomat-Leiste back in this panel (the cockpit borrows it). */
+  cruiseHome() {
+    if (this.cruiseAnchor.nextElementSibling !== this.cruise.el) this.cruiseAnchor.after(this.cruise.el);
+  }
   private cfg: EngineConfig;
   private summary: EngineSummary;
   private last = { gear: "", speed: "", vmax: "", t100: "", vmaxNote: false, gov: false, tyre: false, wheelie: false, spin: false, locked: false, tyreRating: 0 };
@@ -160,7 +165,8 @@ export class GearboxPanel {
     el.append(this.environmentPanel.el);
     q(".gearbox__gear").after(this.lamps.el);
     this.cruise = new CruisePanel(this.drivetrain);
-    q(".gearbox__shift").after(this.cruise.el);
+    this.cruiseAnchor = q(".gearbox__shift");
+    this.cruiseHome();
 
     this.vehicleSel.addEventListener("change", () => {
       this.drivetrain.setVehicle(this.vehicleSel.value as VehicleKind);

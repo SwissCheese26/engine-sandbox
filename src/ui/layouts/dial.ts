@@ -52,6 +52,10 @@ function palette(el: Element): Palette {
   };
 }
 
+/** Cruise control green and limiter orange (the colours of the cluster lamps). */
+const MARK_CRUISE = "#5fd068";
+const MARK_LIMIT = "#f08a24";
+
 export class Dial {
   readonly canvas: HTMLCanvasElement;
   private face: HTMLCanvasElement | null = null;
@@ -62,6 +66,9 @@ export class Dial {
   private size = 0;
   private pal: Palette | null = null;
   private small: boolean;
+  /** Cruise set speed (green arc from the needle to it, arrow) and limiter (orange arrow), display units. */
+  private marks: { cruise: number | null; limit: number | null } = { cruise: null, limit: null };
+  private marksKey = "";
   dimmed = false;
 
   constructor(scale: DialScale, opts: { small?: boolean; label: string }) {
@@ -106,6 +113,15 @@ export class Dial {
     this.draw(false);
   }
 
+  /** Cruise control / limiter marks on the scale (BMW style); null = not shown. */
+  setMarks(cruise: number | null, limit: number | null) {
+    const key = `${cruise}|${limit}`;
+    if (key === this.marksKey) return;
+    this.marksKey = key;
+    this.marks = { cruise, limit };
+    this.draw(true);
+  }
+
   draw(force: boolean) {
     if (!this.canvas.isConnected || this.canvas.getClientRects().length === 0) return;
     const { ctx, w, h, changed } = fitCanvas(this.canvas);
@@ -120,6 +136,7 @@ export class Dial {
     this.face ??= this.paintFace(size);
     ctx.clearRect(0, 0, w, h);
     ctx.drawImage(this.face, (w - size) / 2, (h - size) / 2, size, size);
+    this.paintMarks(ctx, w / 2, h / 2, size / 2);
     this.paintNeedle(ctx, w / 2, h / 2, size / 2, a);
     this.drawnAngle = a;
   }
@@ -206,6 +223,50 @@ export class Dial {
     ctx.textBaseline = "middle";
     ctx.fillText(s.caption, cx, small ? cy + r * 0.42 : cy - r * 0.34);
     return c;
+  }
+
+  /**
+   * Cruise: a green band on the outer edge from the needle up (or down) to the set speed and a green arrow at it;
+   * limiter: an orange arrow at the limit. Like the LED marks of BMW/VW clusters.
+   */
+  private paintMarks(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number) {
+    const { cruise, limit } = this.marks;
+    if (cruise === null && limit === null) return;
+    const s = this.scale;
+    const clampV = (v: number) => Math.min(s.max, Math.max(s.min, v));
+    const rr = r * 0.9;
+    const arrow = (v: number, col: string) => {
+      const a = this.angle(clampV(v));
+      const cos = Math.cos(a);
+      const sin = Math.sin(a);
+      const tip = rr - 13;
+      const base = rr + 2;
+      const half = r * 0.045;
+      ctx.beginPath();
+      ctx.moveTo(cx + cos * tip, cy + sin * tip);
+      ctx.lineTo(cx + cos * base - sin * half, cy + sin * base + cos * half);
+      ctx.lineTo(cx + cos * base + sin * half, cy + sin * base - cos * half);
+      ctx.closePath();
+      ctx.fillStyle = col;
+      ctx.fill();
+    };
+    ctx.save();
+    if (cruise !== null) {
+      const a0 = this.angle(clampV(this.shown));
+      const a1 = this.angle(clampV(cruise));
+      if (Math.abs(a1 - a0) > 0.004) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, rr - 5, Math.min(a0, a1), Math.max(a0, a1));
+        ctx.lineWidth = 9;
+        ctx.strokeStyle = MARK_CRUISE;
+        ctx.globalAlpha = 0.75;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+      arrow(cruise, MARK_CRUISE);
+    }
+    if (limit !== null) arrow(limit, MARK_LIMIT);
+    ctx.restore();
   }
 
   private paintNeedle(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, a: number) {

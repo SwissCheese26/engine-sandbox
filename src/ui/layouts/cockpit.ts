@@ -58,6 +58,10 @@ export class CockpitView implements LayoutView {
   onWantVehicle: () => void = () => {};
   /** Set by the app: jump to the Umwelt panel (route, weather, gradient). */
   onWantEnvironment: () => void = () => {};
+  /** Place for the Tempomat-Leiste: the app moves the one cruise panel here while the cockpit is shown. */
+  get cruiseSlot(): HTMLElement {
+    return this.el.querySelector<HTMLElement>("[data-slot=cruise]")!;
+  }
 
   constructor() {
     const el = document.createElement("section");
@@ -88,6 +92,7 @@ export class CockpitView implements LayoutView {
           <p class="ck__grade num" data-ck="grade-row">
             <button type="button" class="ck__road" data-ck="road" title="Strecke und Umwelt einstellen"><span data-ck="grade">Strecke: eben</span> <span aria-hidden="true">›</span><span class="sr-only"> – Umwelt einstellen</span></button>
           </p>
+          <div class="ck__cruisectl" data-slot="cruise"></div>
           <dl class="ck__trip num">
             <div><dt>Außen</dt><dd><span data-ck="ambient">–</span></dd></div>
             <div><dt>Gesamt</dt><dd><span data-ck="total">0</span></dd></div>
@@ -239,6 +244,12 @@ export class CockpitView implements LayoutView {
     }
     const speed = vehicle ? toUnit("speed", ds.speedKmh, u.speed) : 0;
     this.speedo.dimmed = !vehicle;
+    // cruise control (green band up to the set speed, arrow) and limiter (orange arrow) on the scale
+    const cc = vehicle ? ds.cruise : undefined;
+    this.speedo.setMarks(
+      cc && cc.mode !== "off" && cc.setKmh !== null ? toUnit("speed", cc.setKmh, u.speed) : null,
+      cc?.limiterOn ? toUnit("speed", cc.limitKmh, u.speed) : null,
+    );
     this.speedo.set(speed, dt);
     this.tacho.set(s.rpm, dt);
     const speedText = vehicle ? fmt(speed) : "–";

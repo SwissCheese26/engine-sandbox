@@ -1816,38 +1816,110 @@ kbd {
   border-radius: var(--radius-plate);
   background: var(--hammer-deep);
 }
-.cruise__row {
-  display: flex;
-  flex-wrap: wrap;
+/* one row per function: symbol button (the lamp) · − · value · + (· resume) */
+.cruise__unit {
+  display: grid;
+  grid-template-columns: auto 44px minmax(0, 1fr) 44px 44px;
   align-items: center;
   gap: var(--space-1);
 }
-.cruise .lamp {
-  --lamp-green: #5fd068;
-  --lamp-dark: #6b746f;
+.cruise__sym {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: 0 var(--space-2);
+  border: 1px solid #56655e;
+  border-radius: 6px;
   background: #141a18;
-}
-.cruise__set {
-  min-width: 5.5em;
-  font-family: var(--font-num);
-  font-variant-numeric: tabular-nums;
-  font-size: var(--fs-16);
+  color: #8b948f;
+  font: inherit;
   font-weight: 600;
-  text-align: right;
+  cursor: pointer;
+  text-align: left;
 }
-.cruise__set.is-off {
-  color: var(--alu-shade);
-  font-weight: 400;
+/* narrow (phone, cockpit centre display): symbol only, the name stays for screen readers */
+@media (max-width: 560px) {
+  .cruise__name {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .cruise__sym {
+    justify-content: center;
+    min-width: 56px;
+  }
 }
-.cruise select {
-  min-width: 6.5em;
-  min-height: 32px;
-  padding: 2px 8px;
-  border-radius: 2px;
+.cruise__sym svg {
+  width: 30px;
+  height: 21px;
+  flex: none;
+}
+/* green = active, like the cruise lamp in the cluster */
+.cruise__sym[data-state="on"],
+.cruise__sym[data-state="override"] {
+  color: #5fd068;
+  border-color: #5fd068;
+  box-shadow: inset 0 0 0 1px #5fd068;
+}
+.cruise__sym[data-state="override"] {
+  color: #b6e8ba;
+}
+.cruise__unit[data-unit="limit"] .cruise__sym[data-state="on"] {
+  color: #f08a24;
+  border-color: #f08a24;
+  box-shadow: inset 0 0 0 1px #f08a24;
+}
+.cruise__step,
+.cruise__resume {
+  min-height: 44px;
   border: 1px solid var(--alu-shade);
+  border-radius: 6px;
   background: var(--hammer);
   color: inherit;
   font: inherit;
+  font-size: var(--fs-20);
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.cruise__resume:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.cruise__sym:focus-visible,
+.cruise__step:focus-visible,
+.cruise__resume:focus-visible {
+  outline: 2px solid var(--alu);
+  outline-offset: 2px;
+}
+.cruise__val {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-20);
+  font-weight: 600;
+  text-align: center;
+}
+.cruise__val.is-off {
+  color: var(--alu-shade);
+  font-weight: 400;
+}
+.cruise__help {
+  margin: 0;
+  font-size: var(--fs-12);
+  color: var(--alu-shade);
+}
+/* touch screens have no keyboard: the key hints go */
+@media (pointer: coarse), (hover: none) {
+  .cruise__keys {
+    display: none;
+  }
 }
 .cruise__notes {
   display: flex;
