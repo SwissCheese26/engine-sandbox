@@ -221,3 +221,10 @@ test("settings: gas lever on the chassis dyno springs back by default, 'hold' is
   expect(validateSettings({ throttle: "hold" }).throttle).toBe("hold");
   expect(validateSettings({ throttle: "x" }).throttle).toBe("spring");
 });
+
+test("settings: shift buttons in the control bar default to automatic (touch), on/off kept", () => {
+  expect(DEFAULT_SETTINGS.shiftPad).toBe("auto");
+  expect(validateSettings({ shiftPad: "on" }).shiftPad).toBe("on");
+  expect(validateSettings({ shiftPad: "off" }).shiftPad).toBe("off");
+  expect(validateSettings({ shiftPad: 3 }).shiftPad).toBe("auto");
+});

@@ -84,6 +84,28 @@ export class SettingsScreen {
             <label><input type="radio" name="throttle" value="spring" /> <span><b>Federt zurück</b> wie ein Gaspedal: loslassen heißt Gas weg.</span></label>
             <label><input type="radio" name="throttle" value="hold" /> <span><b>Bleibt stehen</b> (Handgas): der Hebel hält seine Stellung, auch nach dem Loslassen.</span></label>
           </fieldset>
+          <fieldset class="office__choice office__choice--shift">
+            <legend>Schaltknöpfe in der Bedienleiste</legend>
+            <figure class="office__example" aria-hidden="true">
+              <svg viewBox="0 0 220 90">
+                <rect x="1" y="1" width="218" height="88" rx="6" fill="#3c4a44" stroke="#56655e"/>
+                <text x="10" y="22" fill="#d3d6cf" font-size="11" font-family="Barlow, sans-serif">Zündung · Starter</text>
+                <g transform="translate(92 10)">
+                  <rect width="34" height="22" rx="4" fill="#46564f" stroke="#f6a800"/><path d="M17 6l7 10H10z" fill="#f6a800"/>
+                  <text x="17" y="44" text-anchor="middle" fill="#efe6cc" font-size="18" font-weight="700" font-family="Barlow, sans-serif">3</text>
+                  <rect y="50" width="34" height="22" rx="4" fill="#46564f" stroke="#f6a800"/><path d="M17 66l7-10H10z" fill="#f6a800"/>
+                </g>
+                <rect x="138" y="20" width="34" height="58" rx="5" fill="#1f2925" stroke="#56655e"/>
+                <text x="155" y="16" text-anchor="middle" fill="#b8bcb3" font-size="9" font-family="Barlow, sans-serif">Bremse</text>
+                <rect x="180" y="14" width="30" height="64" rx="5" fill="#1f2925" stroke="#56655e"/><rect x="183" y="62" width="24" height="12" rx="2" fill="#d3d6cf"/>
+                <text x="195" y="11" text-anchor="middle" fill="#b8bcb3" font-size="9" font-family="Barlow, sans-serif">Gas</text>
+              </svg>
+              <figcaption>Beispiel: ▲ hoch, Gang, ▼ runter neben Bremse und Gas. Auf dem Rollenprüfstand, ohne Scrollen.</figcaption>
+            </figure>
+            <label><input type="radio" name="shiftpad" value="auto" /> <span><b>Automatisch</b>: auf Touch-Geräten (Handy, Tablet) zeigen.</span></label>
+            <label><input type="radio" name="shiftpad" value="on" /> <span><b>Immer</b> zeigen, auch am PC (zusätzlich zu E und Q).</span></label>
+            <label><input type="radio" name="shiftpad" value="off" /> <span><b>Nie</b>: geschaltet wird im Getriebe-Pult oder mit E und Q.</span></label>
+          </fieldset>
         </section>
         <section class="plate office__plate" aria-labelledby="set-units">
           <span class="screw screw--tl" aria-hidden="true"></span><span class="screw screw--tr" aria-hidden="true"></span>
@@ -149,6 +171,11 @@ export class SettingsScreen {
         if (r.checked) setSettings({ layout: r.value as LayoutId });
       }),
     );
+    el.querySelectorAll<HTMLInputElement>("input[name=shiftpad]").forEach((r) =>
+      r.addEventListener("change", () => {
+        if (r.checked) setSettings({ shiftPad: r.value === "on" || r.value === "off" ? r.value : "auto" });
+      }),
+    );
     el.querySelectorAll<HTMLInputElement>("input[name=throttle]").forEach((r) =>
       r.addEventListener("change", () => {
         if (r.checked) setSettings({ throttle: r.value === "hold" ? "hold" : "spring" });
@@ -193,6 +220,7 @@ export class SettingsScreen {
     this.el.querySelectorAll<HTMLInputElement>("input[name=layout]").forEach((r) => (r.checked = r.value === s.layout));
     this.el.querySelector<HTMLSelectElement>("[data-control=speedo-scale]")!.value = s.speedo;
     this.el.querySelectorAll<HTMLInputElement>("input[name=throttle]").forEach((r) => (r.checked = r.value === s.throttle));
+    this.el.querySelectorAll<HTMLInputElement>("input[name=shiftpad]").forEach((r) => (r.checked = r.value === s.shiftPad));
     this.el.querySelector<HTMLInputElement>("[data-control=speedo-custom]")!.value = String(s.speedoCustomKmh);
     this.el.querySelector<HTMLElement>("[data-speedo-custom]")!.hidden = s.speedo !== "custom";
     this.el.querySelectorAll<HTMLInputElement>("input[data-q]").forEach((r) => (r.checked = u[r.dataset.q as Quantity] === r.value));

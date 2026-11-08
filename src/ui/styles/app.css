@@ -1967,3 +1967,91 @@ kbd {
 .environment__profile[hidden] {
   display: none;
 }
+
+/* Schaltknöpfe in der Bedienleiste: ▲ gear ▼ beside brake and gas */
+.shiftpad {
+  display: grid;
+  grid-template-rows: auto auto auto;
+  justify-items: center;
+  gap: 2px;
+  align-self: flex-end;
+}
+.shiftpad[hidden],
+.shiftpad.is-auto {
+  display: none;
+}
+@media (pointer: coarse), (hover: none) {
+  .shiftpad.is-auto:not([hidden]) {
+    display: grid;
+  }
+}
+.shiftpad__btn {
+  width: 56px;
+  min-height: 44px;
+  border: 1px solid var(--signal);
+  border-radius: 6px;
+  background: var(--hammer);
+  color: var(--signal);
+  font: inherit;
+  font-size: var(--fs-20);
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.shiftpad__btn:active {
+  background: var(--hammer-light);
+}
+.shiftpad__btn:focus-visible {
+  outline: 2px solid var(--alu);
+  outline-offset: 2px;
+}
+.shiftpad__gear {
+  font-family: var(--font-num);
+  font-size: var(--fs-25);
+  font-weight: 700;
+  line-height: 1.1;
+  min-width: 2ch;
+  text-align: center;
+}
+
+/* settings: example picture of the control bar with shift buttons */
+.office__example {
+  margin: 0 0 var(--space-2);
+  display: grid;
+  gap: var(--space-1);
+  max-width: 320px;
+}
+.office__example svg {
+  width: 100%;
+  height: auto;
+}
+.office__example figcaption {
+  font-size: var(--fs-12);
+  color: var(--alu-shade);
+}
+
+/* phones with shift buttons: ignition and starter stack, pedals a little narrower, so all fits in 390 px */
+@media (max-width: 700px) {
+  .deck:has(.shiftpad:not([hidden]):not(.is-auto)) .console__group--main {
+    grid-template-columns: auto;
+    gap: var(--space-2);
+  }
+  .shiftpad__btn {
+    width: 48px;
+  }
+  .deck:has(.shiftpad:not([hidden]):not(.is-auto)) .brakepedal__plate {
+    width: 56px;
+  }
+}
+/* "automatisch" shows the buttons only on touch screens, so it compacts the bar only there */
+@media (max-width: 700px) and (pointer: coarse), (max-width: 700px) and (hover: none) {
+  .deck:has(.shiftpad.is-auto:not([hidden])) .console__group--main {
+    grid-template-columns: auto;
+    gap: var(--space-2);
+  }
+  .deck:has(.shiftpad.is-auto:not([hidden])) .brakepedal__plate {
+    width: 56px;
+  }
+}
