@@ -80,7 +80,7 @@ export class Workbench {
         <button type="button" class="btn btn--small" data-action="preset">Grundausstattung laden</button>
       </div>
       <label class="bench__library"><span>Serienmotor laden</span>
-        <select data-action="library"><option value="">Motor wählen …</option>${([["Diesel", (e: LibraryEngine) => e.category !== "motorcycle" && e.config.fuel === "diesel"], ["Benziner", (e: LibraryEngine) => e.category !== "motorcycle" && e.config.fuel === "petrol"], ["Motorrad", (e: LibraryEngine) => e.category === "motorcycle"]] as const).map(([label, pick]) => `<optgroup label="${label}">${ENGINE_LIBRARY.filter(pick).map((e) => `<option value="${e.config.id}">${e.config.name}</option>`).join("")}</optgroup>`).join("")}</select>
+        <select data-action="library"><option value="">Motor wählen …</option>${([["Diesel", (e: LibraryEngine) => e.category !== "motorcycle" && e.config.fuel === "diesel"], ["Benziner", (e: LibraryEngine) => e.category !== "motorcycle" && e.config.fuel === "petrol"], ["Motorrad", (e: LibraryEngine) => e.category === "motorcycle"]] as const).map(([label, pick]) => `<optgroup label="${label}">${ENGINE_LIBRARY.filter(pick).map((e) => `<option value="${e.config.id}">${e.config.name}${e.cars ? ` – ${e.cars}` : ""}</option>`).join("")}</optgroup>`).join("")}</select>
       </label>
       <p class="bench__libinfo" hidden></p>
       <p class="bench__lock" role="status" aria-live="polite" hidden>Zum Umbauen Motor abstellen: Zündung aus mit <kbd>I</kbd>.</p>
