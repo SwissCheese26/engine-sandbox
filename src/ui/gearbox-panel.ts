@@ -4,7 +4,7 @@
 // fitted tyre's speed index.
 // Issue #23: Umwelt- und Assistenz-Platte (environment-panel.ts) and the warning-lamp strip under the gear indicator.
 import { TripPanel } from "./trip-panel.ts";
-import { Drivetrain, GEARBOXES, VEHICLES, theoreticalVmax, dynoSweep, SPEED_LIMIT_OPTIONS } from "../core/index.ts";
+import { Drivetrain, FuelTank, GEARBOXES, VEHICLES, theoreticalVmax, dynoSweep, SPEED_LIMIT_OPTIONS } from "../core/index.ts";
 import type { EngineConfig, EngineSummary, GearboxType, VehicleKind } from "../core/index.ts";
 import { EnvironmentPanel, WarningLamps } from "./environment-panel.ts";
 import { VehiclePanel } from "./vehicle-panel.ts";
@@ -60,6 +60,27 @@ export class GearboxPanel {
   readonly environmentPanel: EnvironmentPanel;
   readonly lamps = new WarningLamps();
   /** Tempomat-Leiste (issue #30). */
+  private tankOut!: HTMLElement;
+  private lastTank = "";
+  private tankSavedAt = 0;
+  private tankSavedL = Number.NaN;
+  private refuelBtn!: HTMLButtonElement;
+  private saveTank() {
+    const t = this.drivetrain.tank;
+    this.tankSavedAt = performance.now();
+    this.tankSavedL = t.levelL;
+    try {
+      localStorage.setItem(TANK_KEY, JSON.stringify({ ...t.toJSON(), vehicle: this.vehiclePanel.carId }));
+    } catch {
+      /* storage unavailable */
+    }
+  }
+  private tankAbort = new AbortController();
+  /** Saves the tank once more and removes the page listeners (App.dispose). */
+  disposeTank() {
+    this.saveTank();
+    this.tankAbort.abort();
+  }
   readonly cruise: CruisePanel;
   private cruiseAnchor: Element;
   /** Puts the Tempomat-Leiste back in this panel (the cockpit borrows it). */
@@ -122,6 +143,8 @@ export class GearboxPanel {
         <div><dt>Tempo</dt><dd class="num"><span data-out="speed">0</span> <span data-unit="speed">km/h</span></dd></div>
         <div><dt>Vmax gemessen</dt><dd class="num"><span data-out="vmax">0</span> <span data-unit="speed">km/h</span><small class="gearbox__vmax-note" hidden> (abgeregelt)</small></dd></div>
         <div><dt data-out="sprint-label">0–100 km/h</dt><dd class="num"><span data-out="t100">–</span> s</dd></div>
+        <div class="gearbox__tank"><dt>Tank</dt><dd class="num"><span data-out="tank">–</span>
+          <button type="button" class="btn btn--small" data-control="refuel">Volltanken</button></dd></div>
       </dl>
       <div data-slot="trip"></div>
       <div class="gearbox__notes" aria-live="polite">
@@ -133,6 +156,18 @@ export class GearboxPanel {
     this.trip = new TripPanel();
     el.querySelector("[data-slot=trip]")!.replaceWith(this.trip.el);
     const q = <T extends Element>(s: string) => el.querySelector<T>(s)!;
+    this.tankOut = q("[data-out=tank]");
+    this.refuelBtn = q("[data-control=refuel]");
+    // at the pump: only standing still (the button is disabled while rolling)
+    this.refuelBtn.addEventListener("click", () => {
+      if (this.drivetrain.state.speedKmh > 0.5) return;
+      this.drivetrain.tank.refill();
+      this.saveTank();
+      this.lastTank = "";
+    });
+    const signal = this.tankAbort.signal;
+    addEventListener("pagehide", () => this.saveTank(), { signal });
+    document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && this.saveTank(), { signal });
     this.typeSel = q("[data-control=gearbox]");
     this.vehicleSel = q("[data-control=vehicle]");
     this.hintEl = q("[data-out=vehicle-hint]");
@@ -154,6 +189,11 @@ export class GearboxPanel {
     this.spinEl = q("[data-out=wheelspin]");
     this.lockEl = q("[data-out=wheels-locked]");
     this.vehiclePanel = new VehiclePanel(this.drivetrain);
+    // the tank level of the last visit, if it was the same vehicle (library id, or the own vehicle), else full
+    const saved = loadTank();
+    if (saved && saved.vehicle === this.vehiclePanel.carId && Math.abs(saved.tank.capacityL - this.drivetrain.tank.capacityL) < 0.01) {
+      this.drivetrain.tank.setLevel(saved.tank.levelL);
+    }
     this.vehiclePanel.onChange = () => {
       this.onResetVehicle();
       this.syncSetup();
@@ -339,6 +379,21 @@ export class GearboxPanel {
   update(braking = false): void {
     const d = this.drivetrain;
     const s = d.state;
+    // tank: content, reserve and empty (amber, "Gelb heißt Grenze"); saved every few seconds while it changes
+    const t = d.tank;
+    const gal = prefs().fuel === "mpg";
+    const lv = gal ? t.levelL / 3.785411784 : t.levelL;
+    const cap = gal ? t.capacityL / 3.785411784 : t.capacityL;
+    const tankText = `${fmt0(lv)} / ${fmt0(cap)} ${gal ? "gal" : "l"}${t.empty ? " – leer" : t.reserve ? " – Reserve" : ""}`;
+    if (tankText !== this.lastTank) {
+      this.lastTank = tankText;
+      this.tankOut.textContent = tankText;
+      this.tankOut.classList.toggle("is-low", t.reserve);
+    }
+    // saved every 5 s while the level changes (and on leaving the page)
+    const now = performance.now();
+    if (now - this.tankSavedAt > 5000 && Math.abs(t.levelL - this.tankSavedL) > 0.01) this.saveTank();
+    this.refuelBtn.disabled = s.speedKmh > 0.5 || t.fraction >= 0.999;
     const gear = s.shifting && s.type === "manual" ? "–" : d.gearLabel();
     const mph = prefs().speed === "mph";
     const speed = fmt0(toUnit("speed", s.speedKmh));
@@ -378,5 +433,18 @@ export class GearboxPanel {
       this.vehicleSel.disabled = moving;
       this.fdInput.disabled = moving;
     }
+  }
+}
+
+const TANK_KEY = "pruefzelle.tank";
+
+/** Saved tank and the vehicle it belongs to ("" = own vehicle). */
+function loadTank(): { tank: FuelTank; vehicle: string } | null {
+  try {
+    const raw = JSON.parse(localStorage.getItem(TANK_KEY) ?? "null") as Record<string, unknown> | null;
+    const tank = FuelTank.fromJSON(raw);
+    return tank && raw ? { tank, vehicle: typeof raw.vehicle === "string" ? raw.vehicle : "" } : null;
+  } catch {
+    return null;
   }
 }

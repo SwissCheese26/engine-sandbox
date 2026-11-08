@@ -212,6 +212,8 @@ export interface SimInputs {
   startWarm?: boolean;
   /** Only for dynoMode "vehicle"; produced each frame by `Drivetrain.inputs()`. */
   vehicle?: VehicleCoupling;
+  /** The vehicle's tank ran dry (fuel-tank.ts): no injection, the engine stalls and does not start. */
+  fuelEmpty?: boolean;
 }
 
 /** Vehicle physics parameters (fixed base vehicle for now, see DEFAULT_VEHICLE). */

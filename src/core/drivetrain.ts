@@ -22,6 +22,7 @@ import { DEFAULT_ASSISTS, ASSIST_LAMP_HOLD_S, TractionControl } from "./assists.
 import type { AssistSettings } from "./assists.ts";
 import { DEFAULT_ENVIRONMENT, airDensity, altitudeToKpa, iceWarning, weatherSurface } from "./environment.ts";
 import { isTerrain, roadAt } from "./terrain.ts";
+import { DEFAULT_TANK_L, FuelTank } from "./fuel-tank.ts";
 import type { Environment } from "./environment.ts";
 import { DEFAULT_TYRE, TYRE_TYPES, aquaplaningFactor, compoundFactor, speedRatingKmh, stepTyreTemp, tyreGrip, tyreRadii } from "./tyres.ts";
 import type { RoadSurface, TyreSetup } from "./tyres.ts";
@@ -179,6 +180,8 @@ export interface DrivetrainState {
 export interface CarSetup {
   /** Vehicle kind (issue #25); default "car". */
   kind?: VehicleKind;
+  /** Tank volume in litres (manufacturer data); default DEFAULT_TANK_L of the kind. */
+  tankL?: number;
   /** Body/chassis; wheel radius and rolling resistance are overwritten from the tyre. */
   vehicle: VehicleParams;
   tyre: TyreSetup;
@@ -216,6 +219,8 @@ export class Drivetrain {
   private launchCap = 1;
   private gearDwell = 0;
   private lastSpeedMs = 0;
+  /** Fuel tank of the vehicle (drained by the app from the engine's fuel flow on the chassis dyno). */
+  readonly tank = new FuelTank(DEFAULT_TANK_L.car);
   /** Issue #48: distance along the route and the road there (gradient, altitude). */
   private positionM = 0;
   private road = { altitudeM: 0, gradePct: 0 };
@@ -398,6 +403,8 @@ export class Drivetrain {
     this.updateRoad();
     const wasCar = this.kind === "car";
     this.kind = car.kind ?? "car";
+    // the car's own tank, full
+    this.tank.setCapacity(car.tankL ?? DEFAULT_TANK_L[this.kind]);
     // motorcycles (issue #25 presets: CBR1000RR-class superbike, tourer) have ABS but no ESP; traction control is
     // off like on the non-electronic base bikes the presets are modelled on (issue #23 decision). The car's own
     // choice is remembered and comes back when a car is loaded again (review PR #39).

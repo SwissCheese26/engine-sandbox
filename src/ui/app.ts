@@ -365,7 +365,9 @@ export class App {
           const d = this.gearbox.drivetrain;
           const vehicle = d.inputs(dt, this.sim.state, this.inputs.pedal, this.console.brakeHeld ? 1 : 0);
           // environment (issue #23): outside temperature and air pressure of the test track reach the engine intake
-          s = this.sim.step(dt, { ...this.inputs, ...d.simInputs(), vehicle, pedal: d.effectivePedal(this.inputs.pedal) });
+          // tank: an empty tank starves the engine (no injection), it stalls and does not restart
+          s = this.sim.step(dt, { ...this.inputs, ...d.simInputs(), vehicle, pedal: d.effectivePedal(this.inputs.pedal), fuelEmpty: d.tank.empty });
+          if (s.running) d.tank.step(dt, s.fuelFlowLh);
         } else {
           s = this.sim.step(dt, this.inputs);
         }
@@ -470,6 +472,7 @@ export class App {
   dispose() {
     this.recorder.dispose();
     this.gearbox.trip.dispose();
+    this.gearbox.disposeTank();
     if (this.disposed) return;
     this.disposed = true;
     this.unsubscribeSettings();

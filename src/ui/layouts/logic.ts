@@ -182,6 +182,8 @@ export interface LampInput {
   abs?: { enabled: boolean; active: boolean };
   esp?: { esp: boolean; asr: boolean; active: boolean };
   ice?: boolean;
+  /** Tank in reserve (chassis dyno); undefined = no tank (engine dyno): the lamp stays dark, also in the bulb check. */
+  fuelReserve?: boolean;
 }
 
 export interface LampSet {
@@ -194,6 +196,8 @@ export interface LampSet {
   engine: Lamp;
   coolant: Lamp;
   glow: Lamp;
+  /** Fuel reserve (amber), on the chassis dyno only. */
+  fuel: Lamp;
 }
 
 /** Bulb check after ignition on, s (typical cluster: 2 … 4 s). */
@@ -216,10 +220,10 @@ export function glowTimeS(coolantC: number): number {
  * - diesel: glow lamp during pre-glow.
  */
 export function clusterLamps(x: LampInput): LampSet {
-  const off: LampSet = { abs: "off", esp: "off", espOff: "off", ice: "off", oil: "off", battery: "off", engine: "off", coolant: "off", glow: "off" };
+  const off: LampSet = { abs: "off", esp: "off", espOff: "off", ice: "off", oil: "off", battery: "off", engine: "off", coolant: "off", glow: "off", fuel: "off" };
   if (!x.ignition) return off;
   if (x.sinceIgnitionS < BULB_CHECK_S && !x.running) {
-    return { abs: "on", esp: "on", espOff: "off", ice: x.ice ? "on" : "off", oil: "on", battery: "on", engine: "on", coolant: "on", glow: x.diesel ? "on" : "off" };
+    return { abs: "on", esp: "on", espOff: "off", ice: x.ice ? "on" : "off", oil: "on", battery: "on", engine: "on", coolant: "on", glow: x.diesel ? "on" : "off", fuel: x.fuelReserve === undefined ? "off" : "on" };
   }
   const l = { ...off };
   l.battery = x.running ? "off" : "on";
@@ -233,6 +237,7 @@ export function clusterLamps(x: LampInput): LampSet {
     l.espOff = !x.esp.esp || !x.esp.asr ? "on" : "off";
   }
   l.ice = x.ice ? "on" : "off";
+  l.fuel = x.fuelReserve ? "on" : "off";
   return l;
 }
 
