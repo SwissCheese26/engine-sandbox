@@ -351,10 +351,31 @@
     padding: var(--space-2) var(--space-3) var(--space-4);
     border-radius: 60px 60px 8px 8px / 28px 28px 8px 8px;
   }
-  .ck__main {
+  /* phone/tablet: the two dials side by side on top, then the small instruments, then the centre display
+     ("der ganze Kasten") and the Tempomat-Leiste – the main row dissolves into the cluster's own grid */
+  .ck {
+    display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-areas: "speed rpm" "mfd mfd";
+    grid-template-areas: "lamps lamps" "speed rpm" "minis minis" "mfd mfd" "cruise cruise";
     gap: var(--space-2) var(--space-3);
+  }
+  .ck__main {
+    display: contents;
+  }
+  /* grid items may shrink below their content (the small instruments wrap instead of widening the page) */
+  .ck > *,
+  .ck__main > * {
+    min-width: 0;
+  }
+  .ck__lamps {
+    grid-area: lamps;
+  }
+  .ck__minis {
+    grid-area: minis;
+    width: 100%; /* auto margins would size it to its content (all minis in one row) */
+  }
+  .ck__cruisectl {
+    grid-area: cruise;
   }
   .ck__mfd {
     min-height: 0;
