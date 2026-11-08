@@ -43,10 +43,10 @@ export class CruisePanel {
   /** Speed unit ("km/h" | "mph") and its size in km/h. */
   private unit = "km/h";
   private unitKmh = 1;
-  private cruiseLamp: HTMLElement;
-  private limitLamp: HTMLElement;
+  private cruiseBtn: HTMLButtonElement;
+  private resumeBtn: HTMLButtonElement;
   private setOut: HTMLElement;
-  private limitSel: HTMLSelectElement;
+  private limitOut: HTMLElement;
   private limitBtn: HTMLButtonElement;
   private notes: Record<"notHoldable" | "downshift" | "overspeed" | "limiting" | "kickdown" | "tooSlow", HTMLElement>;
   private last = "";
@@ -58,21 +58,26 @@ export class CruisePanel {
     el.className = "cruise";
     el.setAttribute("role", "group");
     el.setAttribute("aria-label", "Tempomat und Limiter");
+    // one row per function: the symbol button switches it (green = active), − value + set the speed (#30, redesign)
     el.innerHTML = `
-      <div class="cruise__row">
-        <span class="lamp lamp--green cruise__lamp" data-out="cruise-lamp" title="Tempomat">${ICON_CRUISE}</span>
-        <span class="cruise__set num" data-out="cruise-set" aria-live="off">–</span>
-        <button type="button" class="btn btn--small" data-control="cruise-set" aria-keyshortcuts="C">Setzen <kbd>C</kbd></button>
-        <button type="button" class="btn btn--small" data-control="cruise-resume" aria-keyshortcuts="R">Wieder <kbd>R</kbd></button>
-        <button type="button" class="btn btn--small" data-control="cruise-minus" aria-keyshortcuts="-" aria-label="Soll minus">−</button>
-        <button type="button" class="btn btn--small" data-control="cruise-plus" aria-keyshortcuts="+" aria-label="Soll plus">+</button>
+      <div class="cruise__unit" data-unit="cruise">
+        <button type="button" class="cruise__sym" data-control="cruise-set" data-state="off" aria-pressed="false" aria-keyshortcuts="C"
+          title="Tempomat: aktuelles Tempo halten oder ausschalten">${ICON_CRUISE}<span class="cruise__name">Tempomat</span></button>
+        <button type="button" class="cruise__step" data-control="cruise-minus" aria-keyshortcuts="-" aria-label="Tempomat langsamer">−</button>
+        <output class="cruise__val num" data-out="cruise-set" aria-live="off">–</output>
+        <button type="button" class="cruise__step" data-control="cruise-plus" aria-keyshortcuts="+" aria-label="Tempomat schneller">+</button>
+        <button type="button" class="cruise__resume" data-control="cruise-resume" aria-keyshortcuts="R" title="Letztes Tempo wieder aufnehmen"
+          aria-label="Tempomat wieder aufnehmen">↺</button>
       </div>
-      <div class="cruise__row">
-        <span class="lamp lamp--green cruise__lamp" data-out="limit-lamp" title="Limiter">${ICON_LIMIT}</span>
-        <select data-control="limit-value" aria-label="Limiter-Höchstgeschwindigkeit"></select>
-        <button type="button" class="btn btn--small" data-control="limit-toggle" aria-keyshortcuts="L" aria-pressed="false">Limiter <kbd>L</kbd></button>
+      <div class="cruise__unit" data-unit="limit">
+        <button type="button" class="cruise__sym" data-control="limit-toggle" data-state="off" aria-pressed="false" aria-keyshortcuts="L"
+          title="Limiter: Höchsttempo an oder aus">${ICON_LIMIT}<span class="cruise__name">Limiter</span></button>
+        <button type="button" class="cruise__step" data-control="limit-minus" aria-label="Limit niedriger">−</button>
+        <output class="cruise__val num" data-out="limit-val" aria-live="off">–</output>
+        <button type="button" class="cruise__step" data-control="limit-plus" aria-label="Limit höher">+</button>
       </div>
-      <p class="cruise__keys">Kurz <kbd>+</kbd>/<kbd>−</kbd> ±1, lang oder mit Shift ±10. Kickdown: am Limit <kbd>W</kbd> loslassen und erneut halten.</p>
+      <p class="cruise__help">Symbol antippen: an/aus. Tempomat hält das aktuelle Tempo (ab 30 km/h), <b>+</b>/<b>−</b> ändern es (gedrückt halten: in 10er-Schritten), <b>↺</b> nimmt das letzte Tempo wieder auf. Limiter: Höchsttempo mit <b>+</b>/<b>−</b> einstellen.</p>
+      <p class="cruise__keys">Tasten: <kbd>C</kbd> Tempomat, <kbd>R</kbd> wieder aufnehmen, <kbd>+</kbd>/<kbd>−</kbd> ±1 (Shift ±10), <kbd>L</kbd> Limiter. Kickdown: am Limit <kbd>W</kbd> loslassen und erneut halten.</p>
       <div class="cruise__notes" aria-live="polite">
         <p class="note note--warning" data-out="cruise-not-holdable" hidden>Tempo nicht haltbar</p>
         <p class="note note--warning" data-out="cruise-downshift" hidden>Runterschalten</p>
@@ -83,10 +88,10 @@ export class CruisePanel {
       </div>`;
     this.el = el;
     const q = <T extends Element>(s: string) => el.querySelector<T>(s)!;
-    this.cruiseLamp = q("[data-out=cruise-lamp]");
-    this.limitLamp = q("[data-out=limit-lamp]");
+    this.cruiseBtn = q("[data-control=cruise-set]");
+    this.resumeBtn = q("[data-control=cruise-resume]");
     this.setOut = q("[data-out=cruise-set]");
-    this.limitSel = q("[data-control=limit-value]");
+    this.limitOut = q("[data-out=limit-val]");
     this.limitBtn = q("[data-control=limit-toggle]");
     this.notes = {
       notHoldable: q("[data-out=cruise-not-holdable]"), downshift: q("[data-out=cruise-downshift]"),
@@ -94,7 +99,10 @@ export class CruisePanel {
       kickdown: q("[data-out=cruise-kickdown]"), tooSlow: q("[data-out=cruise-too-slow]"),
     };
     q("[data-control=cruise-set]").addEventListener("click", () => this.setOrOff());
-    q("[data-control=cruise-resume]").addEventListener("click", () => this.dt.cruise.resume());
+    q("[data-control=cruise-resume]").addEventListener("click", () => {
+      if (this.resumeBtn.getAttribute("aria-disabled") === "true") return;
+      this.dt.cruise.resume();
+    });
     for (const [sel, dir] of [["[data-control=cruise-minus]", -1], ["[data-control=cruise-plus]", 1]] as const) {
       const b = q<HTMLButtonElement>(sel);
       // short click ±1, Shift-click or long press ±10 (like the stalk in the car)
@@ -108,7 +116,10 @@ export class CruisePanel {
         }
       });
     }
-    this.limitSel.addEventListener("change", () => this.dt.cruise.setLimit(Number(this.limitSel.value), this.unitKmh));
+    // limit: ±10 km/h (±5 mph) per tap, within the presets' range
+    for (const [sel, dir] of [["[data-control=limit-minus]", -1], ["[data-control=limit-plus]", 1]] as const) {
+      q<HTMLButtonElement>(sel).addEventListener("click", () => this.stepLimit(dir));
+    }
     this.limitBtn.addEventListener("click", () => this.dt.cruise.toggleLimiter());
     this.syncUnits();
   }
@@ -118,14 +129,21 @@ export class CruisePanel {
     this.unit = unit === "mph" ? "mph" : "km/h";
     this.unitKmh = this.unit === "mph" ? MPH_KMH : 1;
     const opts = this.unit === "mph" ? LIMITER_OPTIONS_MPH : LIMITER_OPTIONS;
-    // option values in km/h (core unit); a limit chosen in the other unit is snapped to the nearest whole value
-    this.limitSel.innerHTML = opts.map((v) => `<option value="${v * this.unitKmh}">${this.formatSpeed(v * this.unitKmh)}</option>`).join("");
     // the limit follows to the nearest preset of the new unit (50 km/h → 30 mph, 80 mph → 130 km/h), so a unit
     // switch never leaves an odd value like 31 mph
     const c = this.dt.cruise;
     const near = opts.reduce((a, v) => (Math.abs(v * this.unitKmh - c.state.limitKmh) < Math.abs(a * this.unitKmh - c.state.limitKmh) ? v : a));
     if (Math.abs(c.state.limitKmh / this.unitKmh - Math.round(c.state.limitKmh / this.unitKmh)) > 1e-6) c.setLimit(near * this.unitKmh, this.unitKmh);
     this.last = "";
+  }
+
+  /** Limiter value one step up/down: 10 km/h or 5 mph, between the smallest and largest preset. */
+  private stepLimit(dir: 1 | -1) {
+    const opts = this.unit === "mph" ? LIMITER_OPTIONS_MPH : LIMITER_OPTIONS;
+    const step = this.unit === "mph" ? 5 : 10;
+    const shown = Math.round(this.dt.cruise.state.limitKmh / this.unitKmh);
+    const next = Math.min(opts[opts.length - 1]!, Math.max(opts[0]!, (Math.round(shown / step) + dir) * step));
+    this.dt.cruise.setLimit(next * this.unitKmh, this.unitKmh);
   }
 
   private setOrOff() {
@@ -188,27 +206,19 @@ export class CruisePanel {
     if (key === this.last) return;
     this.last = key;
     const on = c.mode !== "off";
-    // green = active (holds / limits), grey = ready (dark lamp)
-    this.cruiseLamp.dataset.state = on ? "on" : "off";
-    this.cruiseLamp.title = on ? (c.mode === "override" ? "Tempomat aktiv, Fahrer übersteuert" : "Tempomat aktiv") : "Tempomat bereit";
-    this.limitLamp.dataset.state = c.limiterOn ? "on" : "off";
-    this.limitLamp.title = c.limiterOn ? "Limiter aktiv" : "Limiter bereit";
+    // the symbol button is the lamp: green = active (holds / limits), dark = ready
+    this.cruiseBtn.dataset.state = on ? (c.mode === "override" ? "override" : "on") : "off";
+    this.cruiseBtn.setAttribute("aria-pressed", String(on));
+    this.cruiseBtn.title = on ? (c.mode === "override" ? "Tempomat aktiv, Fahrer übersteuert – antippen: aus" : "Tempomat aktiv – antippen: aus") : "Tempomat: aktuelles Tempo halten";
+    this.limitBtn.dataset.state = c.limiterOn ? "on" : "off";
+    this.limitBtn.setAttribute("aria-pressed", String(c.limiterOn));
     this.setOut.textContent = c.setKmh === null ? "–" : this.formatSpeed(c.setKmh);
     this.setOut.classList.toggle("is-off", !on);
+    // aria-disabled (not disabled): the focus stays on the button after resuming
+    this.resumeBtn.setAttribute("aria-disabled", String(on || c.setKmh === null));
+    this.limitOut.textContent = this.formatSpeed(c.limitKmh);
+    this.limitOut.classList.toggle("is-off", !c.limiterOn);
     this.el.classList.toggle("is-override", c.mode === "override");
-    const same = (o: HTMLOptionElement) => Math.abs(Number(o.value) - c.limitKmh) < 1e-6;
-    const match = [...this.limitSel.options].find(same);
-    if (!match) {
-      // a free value set with ± gets its own option
-      const o = document.createElement("option");
-      o.value = String(c.limitKmh);
-      o.textContent = this.formatSpeed(c.limitKmh);
-      o.dataset.free = "1";
-      this.limitSel.querySelectorAll("[data-free]").forEach((x) => x.remove());
-      this.limitSel.append(o);
-    }
-    this.limitSel.value = (match ?? [...this.limitSel.options].find(same))?.value ?? "";
-    this.limitBtn.setAttribute("aria-pressed", String(c.limiterOn));
     this.notes.notHoldable.hidden = !c.notHoldable;
     this.notes.downshift.hidden = !c.downshift;
     this.notes.overspeed.hidden = !c.overspeed;

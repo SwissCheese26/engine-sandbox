@@ -606,3 +606,86 @@
 .hall__credit a:focus-visible {
   color: #fff;
 }
+
+/* "Wähle eine Strecke" (route picker before the sandbox) */
+.routepick {
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  padding: 0;
+  border: 1px solid var(--alu-shade);
+  border-radius: 8px;
+  background: var(--hammer-deep);
+  color: var(--alu);
+}
+.routepick::backdrop {
+  background: rgba(10, 14, 12, 0.72);
+}
+.routepick__form {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+.routepick__title {
+  margin: 0;
+  font-size: var(--fs-25);
+}
+.routepick__lead {
+  margin: 0;
+  font-size: var(--fs-14);
+  color: var(--alu-shade);
+}
+.routepick__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-2);
+}
+.routepick__card {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  gap: var(--space-1);
+  align-content: start;
+  padding: var(--space-3);
+  border: 1px solid #56655e;
+  border-radius: 6px;
+  background: var(--hammer);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.routepick__card:hover,
+.routepick__card:focus-visible {
+  border-color: var(--signal);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--signal);
+}
+.routepick__name {
+  font-weight: 700;
+  font-size: var(--fs-16);
+}
+.routepick__card svg {
+  width: 100%;
+  height: 28px;
+}
+.routepick__card svg path {
+  fill: none;
+  stroke: var(--signal);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.routepick__text {
+  font-size: var(--fs-12);
+  color: var(--alu-shade);
+}
+.routepick__foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}

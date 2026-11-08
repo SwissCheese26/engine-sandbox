@@ -1,6 +1,7 @@
 // Hauptmenü (#42, stage 1): the front of the workshop hall. Three roller doors lead to the modes, a
 // narrow side door to the settings. Only the sandbox door opens for now; Car Builder and Karriere are shown
 // closed with "kommt bald". No engine sound here (planned later).
+import { RoutePicker } from "./route-picker.ts";
 
 interface Door {
   no: string;
@@ -49,6 +50,13 @@ export class MainMenu {
       </footer>`;
     this.el = el;
     this.heading = el.querySelector(".hall__name")!;
+    // the Sandbox door asks for the route first (Wähle eine Strecke)
+    const picker = new RoutePicker();
+    el.append(picker.el);
+    el.querySelector<HTMLAnchorElement>('a.door[data-mode="sandbox"]')?.addEventListener("click", (e) => {
+      e.preventDefault();
+      picker.open();
+    });
     // a locked door does nothing; the sign says why
     el.querySelectorAll<HTMLButtonElement>(".door.is-closed").forEach((b) => b.addEventListener("click", (e) => e.preventDefault()));
   }

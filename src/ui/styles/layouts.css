@@ -733,3 +733,16 @@
 .ck.is-engine-dyno .ck__grade {
   display: none;
 }
+
+/* Tempomat-Leiste in the centre display (the app moves the one cruise panel here while the cockpit is shown) */
+.ck__cruisectl {
+  grid-column: 1 / -1;
+}
+.ck__cruisectl:empty,
+.ck.is-engine-dyno .ck__cruisectl {
+  display: none;
+}
+.ck__cruisectl .cruise {
+  background: transparent;
+  padding: 0;
+}
