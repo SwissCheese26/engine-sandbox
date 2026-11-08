@@ -2064,6 +2064,7 @@ kbd {
   .pedals > .shiftpad,
   .pedals > .brakepedal {
     align-self: flex-start;
-    margin-top: calc(var(--fs-14) * 1.2 + var(--space-1) + 4px);
+    /* the gas value row: --fs-14 at the body line height 1.45, then the pedal row gap */
+    margin-top: calc(var(--fs-14) * 1.45 + var(--space-1));
   }
 }
