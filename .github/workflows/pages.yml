@@ -20,14 +20,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      # setup-bun downloads Bun from GitHub; on a 504 from there it is tried once more after a pause
+      # setup-bun downloads Bun from GitHub releases; when that fails (504 during GitHub outages) Bun comes from
+      # the npm registry instead (same release, platform binary package)
       - uses: oven-sh/setup-bun@v2
         id: bun1
         continue-on-error: true
       - if: steps.bun1.outcome == 'failure'
-        run: sleep 30
-      - if: steps.bun1.outcome == 'failure'
-        uses: oven-sh/setup-bun@v2
+        run: npm install -g bun@1.4.4 && bun --version
       - run: bun install
       - run: bun run test
       - run: bun run build
