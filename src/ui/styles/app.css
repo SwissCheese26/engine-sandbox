@@ -1819,7 +1819,8 @@ kbd {
 /* one row per function: symbol button (the lamp) · − · value · + (· resume) */
 .cruise__unit {
   display: grid;
-  grid-template-columns: auto 44px minmax(0, 1fr) 44px 44px;
+  /* same first column in both rows, so Tempomat and Limiter line up */
+  grid-template-columns: 9.5rem 44px minmax(0, 1fr) 44px 44px;
   align-items: center;
   gap: var(--space-1);
 }
@@ -1852,6 +1853,9 @@ kbd {
   .cruise__sym {
     justify-content: center;
     min-width: 56px;
+  }
+  .cruise__unit {
+    grid-template-columns: 56px 44px minmax(0, 1fr) 44px 44px;
   }
 }
 .cruise__sym svg {

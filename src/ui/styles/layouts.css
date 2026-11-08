@@ -734,9 +734,16 @@
   display: none;
 }
 
-/* Tempomat-Leiste in the centre display (the app moves the one cruise panel here while the cockpit is shown) */
+/* Tempomat-Leiste (the app moves the one cruise panel here while the cockpit is shown) */
+/* under the small instruments, like the cruise stalk below the cluster */
 .ck__cruisectl {
-  grid-column: 1 / -1;
+  margin-top: var(--space-3);
+  padding: var(--space-2);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.25);
+  width: 100%;
+  max-width: 640px;
+  margin-inline: auto;
 }
 .ck__cruisectl:empty,
 .ck.is-engine-dyno .ck__cruisectl {
