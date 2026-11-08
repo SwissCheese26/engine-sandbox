@@ -62,11 +62,23 @@ export class GearboxPanel {
   /** Tempomat-Leiste (issue #30). */
   private tankOut!: HTMLElement;
   private lastTank = "";
-  private tankWrites = 0;
+  private tankSavedAt = 0;
+  private tankSavedL = Number.NaN;
+  private refuelBtn!: HTMLButtonElement;
+  private saveTank() {
+    const t = this.drivetrain.tank;
+    this.tankSavedAt = performance.now();
+    this.tankSavedL = t.levelL;
+    try {
+      localStorage.setItem(TANK_KEY, JSON.stringify({ ...t.toJSON(), vehicle: this.vehiclePanel.carId }));
+    } catch {
+      /* storage unavailable */
+    }
+  }
   private tankAbort = new AbortController();
   /** Saves the tank once more and removes the page listeners (App.dispose). */
   disposeTank() {
-    saveTank(this.drivetrain.tank);
+    this.saveTank();
     this.tankAbort.abort();
   }
   readonly cruise: CruisePanel;
@@ -145,17 +157,17 @@ export class GearboxPanel {
     el.querySelector("[data-slot=trip]")!.replaceWith(this.trip.el);
     const q = <T extends Element>(s: string) => el.querySelector<T>(s)!;
     this.tankOut = q("[data-out=tank]");
-    q("[data-control=refuel]").addEventListener("click", () => {
+    this.refuelBtn = q("[data-control=refuel]");
+    // at the pump: only standing still (the button is disabled while rolling)
+    this.refuelBtn.addEventListener("click", () => {
+      if (this.drivetrain.state.speedKmh > 0.5) return;
       this.drivetrain.tank.refill();
-      saveTank(this.drivetrain.tank);
+      this.saveTank();
       this.lastTank = "";
     });
-    // the tank level of the last visit (same capacity = same vehicle), else full
-    const saved = loadTank();
-    if (saved && Math.abs(saved.capacityL - this.drivetrain.tank.capacityL) < 0.01) this.drivetrain.tank.setLevel(saved.levelL);
     const signal = this.tankAbort.signal;
-    addEventListener("pagehide", () => saveTank(this.drivetrain.tank), { signal });
-    document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && saveTank(this.drivetrain.tank), { signal });
+    addEventListener("pagehide", () => this.saveTank(), { signal });
+    document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && this.saveTank(), { signal });
     this.typeSel = q("[data-control=gearbox]");
     this.vehicleSel = q("[data-control=vehicle]");
     this.hintEl = q("[data-out=vehicle-hint]");
@@ -177,6 +189,11 @@ export class GearboxPanel {
     this.spinEl = q("[data-out=wheelspin]");
     this.lockEl = q("[data-out=wheels-locked]");
     this.vehiclePanel = new VehiclePanel(this.drivetrain);
+    // the tank level of the last visit, if it was the same vehicle (library id, or the own vehicle), else full
+    const saved = loadTank();
+    if (saved && saved.vehicle === this.vehiclePanel.carId && Math.abs(saved.tank.capacityL - this.drivetrain.tank.capacityL) < 0.01) {
+      this.drivetrain.tank.setLevel(saved.tank.levelL);
+    }
     this.vehiclePanel.onChange = () => {
       this.onResetVehicle();
       this.syncSetup();
@@ -372,8 +389,11 @@ export class GearboxPanel {
       this.lastTank = tankText;
       this.tankOut.textContent = tankText;
       this.tankOut.classList.toggle("is-low", t.reserve);
-      if (++this.tankWrites % 50 === 0) saveTank(t);
     }
+    // saved every 5 s while the level changes (and on leaving the page)
+    const now = performance.now();
+    if (now - this.tankSavedAt > 5000 && Math.abs(t.levelL - this.tankSavedL) > 0.01) this.saveTank();
+    this.refuelBtn.disabled = s.speedKmh > 0.5 || t.fraction >= 0.999;
     const gear = s.shifting && s.type === "manual" ? "–" : d.gearLabel();
     const mph = prefs().speed === "mph";
     const speed = fmt0(toUnit("speed", s.speedKmh));
@@ -418,18 +438,12 @@ export class GearboxPanel {
 
 const TANK_KEY = "pruefzelle.tank";
 
-function saveTank(t: FuelTank) {
+/** Saved tank and the vehicle it belongs to ("" = own vehicle). */
+function loadTank(): { tank: FuelTank; vehicle: string } | null {
   try {
-    localStorage.setItem(TANK_KEY, JSON.stringify(t.toJSON()));
-  } catch {
-    /* storage unavailable */
-  }
-}
-
-function loadTank(): FuelTank | null {
-  try {
-    const raw = localStorage.getItem(TANK_KEY);
-    return raw ? FuelTank.fromJSON(JSON.parse(raw)) : null;
+    const raw = JSON.parse(localStorage.getItem(TANK_KEY) ?? "null") as Record<string, unknown> | null;
+    const tank = FuelTank.fromJSON(raw);
+    return tank && raw ? { tank, vehicle: typeof raw.vehicle === "string" ? raw.vehicle : "" } : null;
   } catch {
     return null;
   }

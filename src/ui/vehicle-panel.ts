@@ -38,6 +38,10 @@ const FIELDS: NumField[] = [
 export class VehiclePanel {
   readonly el: HTMLElement;
   private carSel: HTMLSelectElement;
+  /** Library id of the loaded vehicle, "" for an own one (the tank level is saved per vehicle). */
+  get carId(): string {
+    return this.carSel.value;
+  }
   private loadBtn: HTMLButtonElement;
   private layoutSel: HTMLSelectElement;
   private tyreSel: HTMLSelectElement;

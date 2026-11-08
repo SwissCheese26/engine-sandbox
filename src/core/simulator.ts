@@ -280,7 +280,8 @@ export class EngineSimulator {
       op.fuelCut = x.limiterCut || (overrun && m.fuel === "petrol") || input.fuelEmpty === true;
       // pops & bangs (issue #16): in overrun (pedal 0, rpm > idle + 500) a little fuel with very late spark instead
       // of the full fuel cut; never on the rev limiter and only with a running, firing engine
-      const popW = pops && overrun && !x.limiterCut && combust ? clamp((rpm - idle - 500) / 500, 0, 1) : 0;
+      // an empty tank has no pop fuel either
+      const popW = pops && overrun && !x.limiterCut && combust && input.fuelEmpty !== true ? clamp((rpm - idle - 500) / 500, 0, 1) : 0;
       op.afterfireFuel = pops ? pops.fuel * popW : 0;
       afterfireSum += pops ? pops.intensity * popW : 0;
       // ECU torque limit (issue #18): quantity cap (diesel) / manifold pressure cap (petrol) from the steady table

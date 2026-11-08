@@ -42,3 +42,25 @@ test("an empty tank starves the engine: it stalls and does not start again", () 
   for (let i = 0; i < 180; i++) r.sim.step(1 / 60, { ...r.inp, starter: true, fuelEmpty: true, vehicle: r.dt.inputs(1 / 60, r.sim.state, 0) });
   expect(r.sim.state.running).toBe(false);
 });
+
+test("an empty tank also gives no pops (petrol with pops in overrun)", () => {
+  const overrun = (empty: boolean) => {
+    const r = cruiseRig("car-vw-golf7-gti");
+    const cfg = structuredClone(r.cfg);
+    cfg.exhaust.overrunPops = "brutal";
+    r.sim.setConfig(cfg); // resets the engine: crank it again
+    r.inp.starter = true;
+    for (let i = 0; i < 120; i++) r.step(0);
+    r.inp.starter = false;
+    for (let i = 0; i < 60; i++) r.step(0);
+    r.accelerateTo(70, 1, 6000, 2); // 2nd gear, high revs: overrun pops on lift-off
+    let fired = 0;
+    for (let i = 0; i < 90; i++) {
+      const s = r.sim.step(1 / 60, { ...r.inp, pedal: 0, fuelEmpty: empty, vehicle: r.dt.inputs(1 / 60, r.sim.state, 0) });
+      if (s.afterfire > 0) fired++;
+    }
+    return fired;
+  };
+  expect(overrun(false)).toBeGreaterThan(0); // the setup does pop with fuel
+  expect(overrun(true)).toBe(0);
+});
