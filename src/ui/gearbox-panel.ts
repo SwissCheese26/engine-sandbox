@@ -191,8 +191,11 @@ export class GearboxPanel {
     this.vehiclePanel = new VehiclePanel(this.drivetrain);
     // the tank level of the last visit, if it was the same vehicle (library id, or the own vehicle), else full
     const saved = loadTank();
-    if (saved && saved.vehicle === this.vehiclePanel.carId && Math.abs(saved.tank.capacityL - this.drivetrain.tank.capacityL) < 0.01) {
+    // (an own vehicle keeps its own tank size too)
+    if (saved && saved.vehicle === this.vehiclePanel.carId) {
+      this.drivetrain.tank.setCapacity(saved.tank.capacityL, false);
       this.drivetrain.tank.setLevel(saved.tank.levelL);
+      this.vehiclePanel.sync();
     }
     this.vehiclePanel.onChange = () => {
       this.onResetVehicle();

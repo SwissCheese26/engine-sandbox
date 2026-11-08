@@ -17,7 +17,7 @@ const INDEX_CHOICES: SpeedIndex[] = ["Q", "S", "T", "H", "V", "W", "Y", "(Y)"];
 const fmt = (n: number, d: number) => n.toLocaleString("de-DE", { minimumFractionDigits: d, maximumFractionDigits: d });
 
 interface NumField {
-  key: "mass" | "cw" | "area" | "front" | "cg" | "wb";
+  key: "mass" | "cw" | "area" | "front" | "cg" | "wb" | "tank";
   label: string;
   unit: string;
   min: number;
@@ -33,6 +33,7 @@ const FIELDS: NumField[] = [
   { key: "front", label: "Gewicht vorn", unit: "%", min: 25, max: 75, step: 1, digits: 0 },
   { key: "cg", label: "Schwerpunkthöhe", unit: "m", min: 0.3, max: 1.2, step: 0.01, digits: 2 },
   { key: "wb", label: "Radstand", unit: "m", min: 1.2, max: 3.6, step: 0.01, digits: 2 },
+  { key: "tank", label: "Tankgröße", unit: "l", min: 2, max: 400, step: 1, digits: 0 },
 ];
 
 export class VehiclePanel {
@@ -180,6 +181,15 @@ export class VehiclePanel {
       case "front": return this.edit({ cgToRearAxleM: (n / 100) * wb, wheelbaseM: wb });
       case "cg": return this.edit({ cgHeightM: n });
       case "wb": return this.edit({ wheelbaseM: n, cgToRearAxleM: share * n });
+      case "tank": {
+        // another tank: the litres in it stay (up to the new size); an own vehicle from now on
+        if (this.moving) return this.sync();
+        const t = this.drivetrain.tank;
+        const litres = t.levelL;
+        t.setCapacity(n, false);
+        t.setLevel(litres);
+        return this.edit({});
+      }
     }
   }
 
@@ -214,7 +224,7 @@ export class VehiclePanel {
     const t = this.drivetrain.tyre;
     const values: Record<NumField["key"], number> = {
       mass: v.massKg, cw: v.dragCoefficient, area: v.frontalAreaM2, front: frontAxleShare(v) * 100,
-      cg: v.cgHeightM ?? 0.55, wb: v.wheelbaseM ?? 2.6,
+      cg: v.cgHeightM ?? 0.55, wb: v.wheelbaseM ?? 2.6, tank: this.drivetrain.tank.capacityL,
     };
     for (const f of FIELDS) this.inputs.get(f.key)!.value = values[f.key].toFixed(f.digits);
     // motorcycles drive the rear wheel; the layout is fixed there
