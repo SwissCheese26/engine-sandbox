@@ -56,20 +56,30 @@ export class RoutePicker {
             </button></li>`).join("")}
         </ul>
         <div class="routepick__foot">
+          <button type="submit" class="btn btn--small" value="resume" data-pick="resume">Weiter wie zuletzt</button>
           <button type="submit" class="btn btn--small" value="engine" data-pick="engine">Nur Motorprüfstand (ohne Strecke)</button>
           <button type="submit" class="btn btn--small" value="">Abbrechen</button>
         </div>
       </form>`;
     d.addEventListener("close", () => {
-      const v = d.returnValue as RoutePick | "";
+      const v = d.returnValue as RoutePick | "resume" | "";
       d.returnValue = "";
       if (!v) return;
-      pending = v;
+      // "Weiter wie zuletzt": into the sandbox as it was (route, position, mode unchanged)
+      pending = v === "resume" ? null : v;
       location.hash = "#sandbox";
     });
     // a click on the backdrop closes like Abbrechen
+    // only a press that starts AND ends outside the dialog box counts (not a drag out of it, not its scrollbar)
+    let downOutside = false;
+    const outside = (e: MouseEvent) => {
+      const r = d.getBoundingClientRect();
+      return e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom;
+    };
+    d.addEventListener("pointerdown", (e) => (downOutside = e.target === d && outside(e)));
     d.addEventListener("click", (e) => {
-      if (e.target === d) d.close("");
+      if (downOutside && e.target === d && outside(e)) d.close("");
+      downOutside = false;
     });
     this.el = d;
   }

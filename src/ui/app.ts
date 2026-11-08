@@ -418,6 +418,11 @@ export class App {
   applyPendingRoute() {
     const t = takePendingRoute();
     if (!t) return;
+    // the car is still rolling (left the sandbox while driving): the route is not switched under it
+    if (this.gearbox.drivetrain.state.speedKmh > 0.5) {
+      this.announce("Das Fahrzeug rollt noch: erst anhalten, dann die Strecke unter Umwelt wählen.");
+      return;
+    }
     if (t === "engine") {
       const m = this.root.querySelector<HTMLSelectElement>("select[data-control=mode]");
       if (m && m.value === "vehicle") {

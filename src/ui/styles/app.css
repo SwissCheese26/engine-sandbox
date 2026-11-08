@@ -1889,7 +1889,7 @@ kbd {
   user-select: none;
   -webkit-user-select: none;
 }
-.cruise__resume:disabled {
+.cruise__resume[aria-disabled="true"] {
   opacity: 0.35;
   cursor: default;
 }

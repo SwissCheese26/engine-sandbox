@@ -99,7 +99,10 @@ export class CruisePanel {
       kickdown: q("[data-out=cruise-kickdown]"), tooSlow: q("[data-out=cruise-too-slow]"),
     };
     q("[data-control=cruise-set]").addEventListener("click", () => this.setOrOff());
-    q("[data-control=cruise-resume]").addEventListener("click", () => this.dt.cruise.resume());
+    q("[data-control=cruise-resume]").addEventListener("click", () => {
+      if (this.resumeBtn.getAttribute("aria-disabled") === "true") return;
+      this.dt.cruise.resume();
+    });
     for (const [sel, dir] of [["[data-control=cruise-minus]", -1], ["[data-control=cruise-plus]", 1]] as const) {
       const b = q<HTMLButtonElement>(sel);
       // short click ±1, Shift-click or long press ±10 (like the stalk in the car)
@@ -211,7 +214,8 @@ export class CruisePanel {
     this.limitBtn.setAttribute("aria-pressed", String(c.limiterOn));
     this.setOut.textContent = c.setKmh === null ? "–" : this.formatSpeed(c.setKmh);
     this.setOut.classList.toggle("is-off", !on);
-    this.resumeBtn.disabled = on || c.setKmh === null;
+    // aria-disabled (not disabled): the focus stays on the button after resuming
+    this.resumeBtn.setAttribute("aria-disabled", String(on || c.setKmh === null));
     this.limitOut.textContent = this.formatSpeed(c.limitKmh);
     this.limitOut.classList.toggle("is-off", !c.limiterOn);
     this.el.classList.toggle("is-override", c.mode === "override");
