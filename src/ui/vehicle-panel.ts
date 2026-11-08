@@ -60,10 +60,12 @@ export class VehiclePanel {
     el.innerHTML = `
       <h3 class="vehicle__title">Fahrzeug &amp; Reifen</h3>
       <div class="vehicle__car">
-        <label class="gearbox__field"><span>Fertiges Auto</span>
+        <label class="gearbox__field"><span>Fertiges Fahrzeug</span>
           <select data-control="car">
             <option value="">– eigenes Fahrzeug –</option>
-            ${VEHICLE_LIBRARY.map((c) => `<option value="${c.id}">${c.name}</option>`).join("")}
+            ${([["Autos", false], ["Motorräder", true]] as const).map(([label, bike]) => `<optgroup label="${label}">${VEHICLE_LIBRARY
+              .filter((c) => ((c.setup.kind ?? "car") !== "car") === bike)
+              .map((c) => `<option value="${c.id}">${c.name}</option>`).join("")}</optgroup>`).join("")}
           </select>
         </label>
         <button type="button" class="btn btn--small" data-control="load-car">Laden</button>
@@ -134,7 +136,7 @@ export class VehiclePanel {
     const car = VEHICLE_LIBRARY.find((c) => c.id === id);
     if (!car || this.moving) return;
     if (!this.onLoadCar(car)) {
-      this.carNote.textContent = "Erst den Motor abstellen, dann lässt sich ein fertiges Auto laden.";
+      this.carNote.textContent = "Erst den Motor abstellen, dann lässt sich ein fertiges Fahrzeug laden.";
       return;
     }
     this.applyCar(car);
@@ -155,7 +157,7 @@ export class VehiclePanel {
   private applyCar(car: LibraryCar) {
     this.drivetrain.applyCar(structuredClone(car.setup));
     const f = car.factory;
-    this.carNote.textContent = `${car.name}: Werk ${fmt(f.t0to100S, 1)} s ${prefs().speed === "mph" ? "von 0 auf 62 mph (100 km/h, Werksangabe)" : "von 0 auf 100 km/h"}, Vmax ${spd(f.vmaxKmh)}${f.vmaxGoverned ? " (abgeregelt)" : ""}, ${f.kerbKg} kg (${f.kerbNorm}).`;
+    this.carNote.textContent = `${car.name}: Werk ${fmt(f.t0to100S, 1)} s ${prefs().speed === "mph" ? "von 0 auf 62 mph (100 km/h, Werksangabe)" : "von 0 auf 100 km/h"}, Vmax ${spd(f.vmaxKmh)}${f.vmaxGoverned ? " (abgeregelt)" : ""}, ${f.kerbKg} kg (${f.kerbNorm === "wet" ? "fahrbereit, ohne Fahrer" : f.kerbNorm}).`;
     this.sync();
     this.onChange();
   }

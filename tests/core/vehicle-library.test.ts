@@ -25,11 +25,12 @@ const KNOWN_0_100_OUTLIERS: Record<string, { expected: number; band: number; rea
 
 describe("vehicle library: data", () => {
   test("at least 10 of the cars within ±12 % by construction of the outlier list", () => {
-    expect(VEHICLE_LIBRARY.length - Object.keys(KNOWN_0_100_OUTLIERS).length).toBeGreaterThanOrEqual(10);
+    const cars = VEHICLE_LIBRARY.filter((c) => (c.setup.kind ?? "car") === "car");
+    expect(cars.length - Object.keys(KNOWN_0_100_OUTLIERS).length).toBeGreaterThanOrEqual(10);
   });
 
   test("at least 13 cars with unique ids, engines from the engine library, sources", () => {
-    expect(VEHICLE_LIBRARY.length).toBeGreaterThanOrEqual(13);
+    expect(VEHICLE_LIBRARY.filter((c) => (c.setup.kind ?? "car") === "car").length).toBeGreaterThanOrEqual(13);
     expect(new Set(VEHICLE_LIBRARY.map((c) => c.id)).size).toBe(VEHICLE_LIBRARY.length);
     for (const c of VEHICLE_LIBRARY) {
       expect(ENGINE_LIBRARY.some((e) => e.config.id === c.engineId)).toBe(true);
@@ -63,7 +64,8 @@ describe("vehicle library: data", () => {
 });
 
 describe("vehicle library: simulated 0–100 and Vmax vs. factory (±12 %)", () => {
-  for (const car of VEHICLE_LIBRARY) {
+  // cars only: the motorcycles have their own rider/launch model and test (motorcycle.test.ts)
+  for (const car of VEHICLE_LIBRARY.filter((c) => (c.setup.kind ?? "car") === "car")) {
     test(car.name, () => {
       const r = driveCar(car, 90);
       expect(r.running).toBe(true);

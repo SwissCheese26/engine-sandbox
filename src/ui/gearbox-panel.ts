@@ -270,9 +270,11 @@ export class GearboxPanel {
     this.vehicleSel.value = this.drivetrain.kind;
     const v = this.drivetrain.vehicle;
     const spec = this.drivetrain.gearbox;
+    // the loaded vehicle's own values (a library bike is not the preset's 270/350 kg)
+    const cwA = (v.dragCoefficient * v.frontalAreaM2).toFixed(2).replace(".", ",");
     this.hintEl.textContent = this.drivetrain.kind === "car"
       ? `Fahrzeug: ${fmt0(v.massKg)} kg, cW ${v.dragCoefficient.toFixed(2).replace(".", ",")}, ${LAYOUT_SHORT[v.driveLayout ?? "fwd"]}.`
-      : preset.hint;
+      : `${preset.label}: ${fmt0(v.massKg)} kg mit Fahrer, cW·A ${cwA} m², Quickshifter.`;
     // gear count and kind of automatic follow the loaded car's gearbox (issue #22)
     for (const o of this.typeSel.options) {
       const t = o.value as GearboxType;
