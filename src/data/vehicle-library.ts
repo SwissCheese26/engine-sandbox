@@ -24,7 +24,8 @@ export interface LibraryCar {
   factory: {
     /** Kerb weight as published (kg) and its norm. */
     kerbKg: number;
-    kerbNorm: "EU" | "DIN";
+    /** EU (incl. 75 kg driver), DIN (without driver), wet = motorcycle ready to ride, fuelled, without rider. */
+    kerbNorm: "EU" | "DIN" | "wet";
     t0to100S: number;
     vmaxKmh: number;
     /** True when the published Vmax is the governor. */
@@ -35,7 +36,7 @@ export interface LibraryCar {
 }
 
 const DRIVER_KG = 75;
-const mass = (kerb: number, norm: "EU" | "DIN") => (norm === "EU" ? kerb : kerb + DRIVER_KG);
+const mass = (kerb: number, norm: "EU" | "DIN" | "wet") => (norm === "EU" ? kerb : kerb + DRIVER_KG);
 
 /** Body helper: cgToRearAxleM from the static front axle share. */
 function body(m: number, cw: number, area: number, layout: VehicleParams["driveLayout"], front: number, cgH: number, wb: number): VehicleParams {
@@ -60,7 +61,7 @@ function moto(kind: "superbike" | "tourer", wetKg: number, cw: number, area: num
   const base = VEHICLES[kind].params;
   return {
     kind,
-    vehicle: withTyre({ ...base, massKg: wetKg + DRIVER_KG, dragCoefficient: cw, frontalAreaM2: area, cgHeightM: cg.h, cgToRearAxleM: cg.rear, wheelbaseM: cg.wb }, tyre),
+    vehicle: withTyre({ ...base, massKg: mass(wetKg, "wet"), dragCoefficient: cw, frontalAreaM2: area, cgHeightM: cg.h, cgToRearAxleM: cg.rear, wheelbaseM: cg.wb }, tyre),
     tyre,
     gearbox: "sequential",
     gearboxSpec: { ...GEARBOXES.sequential, finalDrive },
@@ -260,43 +261,43 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
   {
     id: "moto-honda-cbr1000rr-sc59", name: "Honda CBR1000RR Fireblade (SC59)", maker: "Honda", years: "2008–2011", engineId: "lib-honda-cbr1000rr-sc59",
     setup: moto("superbike", 199, 0.6, 0.5, [190, 50, 17], "(Y)", 4.2, { h: 0.6, rear: 0.7, wb: 1.41 }),
-    factory: { kerbKg: 199, kerbNorm: "DIN", t0to100S: 3.0, vmaxKmh: 290, vmaxGoverned: false },
+    factory: { kerbKg: 199, kerbNorm: "wet", t0to100S: 3.0, vmaxKmh: 290, vmaxGoverned: false },
     source: "Honda CBR1000RR 2008: 199 kg vollgetankt, 131 kW; Vmax/0–100 Testwerte (Motorrad, PS) [S]",
   },
   {
     id: "moto-yamaha-r1-cp4", name: "Yamaha YZF-R1 Crossplane", maker: "Yamaha", years: "2009–2014", engineId: "lib-yamaha-r1-cp4",
     setup: moto("superbike", 206, 0.6, 0.5, [190, 55, 17], "(Y)", 4.73, { h: 0.62, rear: 0.7, wb: 1.415 }),
-    factory: { kerbKg: 206, kerbNorm: "DIN", t0to100S: 3.0, vmaxKmh: 285, vmaxGoverned: false },
+    factory: { kerbKg: 206, kerbNorm: "wet", t0to100S: 3.0, vmaxKmh: 285, vmaxGoverned: false },
     source: "Yamaha YZF-R1 2009: 206 kg vollgetankt, 134 kW; Vmax/0–100 Testwerte [S]",
   },
   {
     id: "moto-ducati-1199-panigale", name: "Ducati 1199 Panigale", maker: "Ducati", years: "2012–2014", engineId: "lib-ducati-1199-superquadro",
     setup: moto("superbike", 188, 0.58, 0.5, [200, 55, 17], "(Y)", 3.94, { h: 0.6, rear: 0.69, wb: 1.437 }),
-    factory: { kerbKg: 188, kerbNorm: "DIN", t0to100S: 3.0, vmaxKmh: 295, vmaxGoverned: false },
+    factory: { kerbKg: 188, kerbNorm: "wet", t0to100S: 3.0, vmaxKmh: 295, vmaxGoverned: false },
     source: "Ducati 1199 Panigale: 188 kg fahrbereit (164 kg trocken), 143 kW; Vmax/0–100 Testwerte [S]",
   },
   {
     id: "moto-triumph-street-triple-765rs", name: "Triumph Street Triple 765 RS", maker: "Triumph", years: "2020–2022", engineId: "lib-triumph-765-triple",
     setup: moto("superbike", 188, 0.7, 0.55, [180, 55, 17], "W", 4.8, { h: 0.62, rear: 0.68, wb: 1.405 }),
-    factory: { kerbKg: 188, kerbNorm: "DIN", t0to100S: 3.3, vmaxKmh: 250, vmaxGoverned: false },
+    factory: { kerbKg: 188, kerbNorm: "wet", t0to100S: 3.3, vmaxKmh: 250, vmaxGoverned: false },
     source: "Triumph Street Triple RS 2020: 166 kg trocken, ≈ 188 kg fahrbereit, 90 kW; naked bike ohne Verkleidung (cW·A höher) [S]",
   },
   {
     id: "moto-ktm-690-duke", name: "KTM 690 Duke", maker: "KTM", years: "2016–2019", engineId: "lib-ktm-690-lc4",
-    setup: moto("superbike", 162, 0.75, 0.55, [160, 60, 17], "W", 4.13, { h: 0.65, rear: 0.68, wb: 1.466 }),
-    factory: { kerbKg: 162, kerbNorm: "DIN", t0to100S: 3.6, vmaxKmh: 195, vmaxGoverned: false },
-    source: "KTM 690 Duke 2016: 150 kg fahrbereit ohne Kraftstoff (+ 14 l ≈ 162 kg), 54 kW; Vmax/0–100 Testwerte [S]",
+    setup: moto("superbike", 160, 0.75, 0.55, [160, 60, 17], "W", 4.13, { h: 0.65, rear: 0.68, wb: 1.466 }),
+    factory: { kerbKg: 160, kerbNorm: "wet", t0to100S: 3.6, vmaxKmh: 195, vmaxGoverned: false },
+    source: "KTM 690 Duke 2016: 150 kg fahrbereit ohne Kraftstoff (+ 14 l ≈ 160 kg), 54 kW; Vmax/0–100 Testwerte [S]",
   },
   {
     id: "moto-bmw-r1250gs", name: "BMW R 1250 GS", maker: "BMW", years: "2019–2023", engineId: "lib-bmw-r1250-boxer",
     setup: moto("tourer", 249, 0.68, 0.95, [170, 60, 17], "V", 3.6, { h: 0.68, rear: 0.72, wb: 1.525 }),
-    factory: { kerbKg: 249, kerbNorm: "DIN", t0to100S: 3.7, vmaxKmh: 210, vmaxGoverned: false },
+    factory: { kerbKg: 249, kerbNorm: "wet", t0to100S: 3.7, vmaxKmh: 210, vmaxGoverned: false },
     source: "BMW R 1250 GS: 249 kg fahrbereit (90 % getankt), 100 kW, Vmax „über 200 km/h“; 0–100 Testwert [S]",
   },
   {
     id: "moto-harley-street-glide-m8", name: "Harley-Davidson Street Glide (Milwaukee-Eight 107)", maker: "Harley-Davidson", years: "2017–2020", engineId: "lib-harley-m8-107",
     setup: moto("tourer", 375, 0.7, 0.95, [180, 65, 16], "H", 3.2, { h: 0.6, rear: 0.75, wb: 1.625 }),
-    factory: { kerbKg: 375, kerbNorm: "DIN", t0to100S: 4.9, vmaxKmh: 180, vmaxGoverned: false },
+    factory: { kerbKg: 375, kerbNorm: "wet", t0to100S: 4.9, vmaxKmh: 180, vmaxGoverned: false },
     source: "Harley-Davidson Street Glide 2017: 375 kg fahrbereit, 64 kW / 150 Nm; Vmax/0–100 Testwerte [S]",
   },
 

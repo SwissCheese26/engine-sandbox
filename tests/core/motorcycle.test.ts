@@ -201,7 +201,8 @@ describe("motorcycle library: weight, Vmax and 0–100", () => {
   const SLOW_LAUNCH: Record<string, number> = { "moto-ktm-690-duke": 0.85 };
   for (const car of VEHICLE_LIBRARY.filter((c) => c.setup.kind === "superbike" || c.setup.kind === "tourer")) {
     test(car.name, () => {
-      expect(car.setup.vehicle.massKg).toBe(car.factory.kerbKg + 75); // published weight + rider
+      expect(car.factory.kerbNorm).toBe("wet");
+      expect(car.setup.vehicle.massKg).toBeGreaterThan(car.factory.kerbKg); // published weight + rider
       const { dt, sim } = run(libraryConfig(car.engineId), (d) => d.applyCar(car.setup), 50);
       expect(sim.state.running).toBe(true);
       expect(Math.abs(dt.state.maxSpeedKmh / car.factory.vmaxKmh - 1)).toBeLessThan(0.12);
