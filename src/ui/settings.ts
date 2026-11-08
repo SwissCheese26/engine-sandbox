@@ -59,9 +59,11 @@ export interface Settings {
   speedoCustomKmh: number;
   /** Gas lever on the chassis dyno: "spring" = back to 0 when let go (pedal), "hold" = stays (hand throttle). */
   throttle: "spring" | "hold";
+  /** Shift buttons (▲ gear ▼) in the bottom control bar: "auto" = on touch screens, "on" = always, "off" = never. */
+  shiftPad: "auto" | "on" | "off";
 }
 
-export const DEFAULT_SETTINGS: Settings = { preset: "metric-kw", custom: { ...METRIC }, layout: "pruefzelle", speedo: "standard", speedoCustomKmh: 240, throttle: "spring" };
+export const DEFAULT_SETTINGS: Settings = { preset: "metric-kw", custom: { ...METRIC }, layout: "pruefzelle", speedo: "standard", speedoCustomKmh: 240, throttle: "spring", shiftPad: "auto" };
 
 export const SETTINGS_KEY = "pruefzelle.settings";
 
@@ -78,7 +80,8 @@ export function validateSettings(raw: unknown): Settings {
   const layout = isLayoutId(r.layout) ? r.layout : DEFAULT_SETTINGS.layout;
   const speedo = isSpeedoScale(r.speedo) ? r.speedo : DEFAULT_SETTINGS.speedo;
   const throttle = r.throttle === "hold" ? "hold" : "spring";
-  return { preset, custom, layout, speedo, speedoCustomKmh: clampSpeedoKmh(r.speedoCustomKmh), throttle };
+  const shiftPad = r.shiftPad === "on" || r.shiftPad === "off" ? r.shiftPad : "auto";
+  return { preset, custom, layout, speedo, speedoCustomKmh: clampSpeedoKmh(r.speedoCustomKmh), throttle, shiftPad };
 }
 
 /** The units in effect for these settings. */

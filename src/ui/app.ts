@@ -2,6 +2,7 @@
 // simulator and runs the main loop.
 import { EngineSimulator, TERRAIN_LABELS, defaultInputs, summarize } from "../core/index.ts";
 import { takePendingRoute } from "./route-picker.ts";
+import { ShiftPad } from "./shift-pad.ts";
 import type { EngineConfig, EngineState, EngineSummary } from "../core/index.ts";
 import { defaultConfig } from "../data/presets.ts";
 import { ControlPanel } from "./controls.ts";
@@ -62,6 +63,7 @@ export class App {
   /** Sandbox views (#26): the Prüfzelle itself or one of the views in src/ui/layouts/, created on first use. */
   private layoutId: LayoutId = "pruefzelle";
   private views = new Map<LayoutId, LayoutView>();
+  private shiftPad!: ShiftPad;
   private viewSlot!: HTMLElement;
   private cell!: HTMLElement;
   private layoutSel!: HTMLSelectElement;
@@ -195,6 +197,9 @@ export class App {
     const deck = document.createElement("footer");
     deck.className = "deck";
     deck.append(this.console.el, this.console.pedalsEl);
+    // ▲ gear ▼ next to brake and gas (setting "Schaltknöpfe in der Bedienleiste")
+    this.shiftPad = new ShiftPad(() => this.gearbox.drivetrain);
+    this.console.pedalsEl.prepend(this.shiftPad.el);
 
     cell.append(top, this.bench.el, stage, deck, this.announcer);
     this.root.replaceChildren(cell);
@@ -385,6 +390,7 @@ export class App {
       this.recorder.update(s, dt);
       this.console.update(s);
       if (this.inputs.dynoMode === "vehicle") this.gearbox.update(this.console.brakeHeld);
+      this.shiftPad.update(this.inputs.dynoMode === "vehicle");
       // board computer counts only while the car drives on the chassis dyno (#40, #41)
       this.gearbox.trip.step(dt, s, this.inputs.dynoMode === "vehicle");
       if (this.soundStarted) this.sound.update(s, this.inputs.pedal);
