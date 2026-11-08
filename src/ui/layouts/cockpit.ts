@@ -92,7 +92,6 @@ export class CockpitView implements LayoutView {
           <p class="ck__grade num" data-ck="grade-row">
             <button type="button" class="ck__road" data-ck="road" title="Strecke und Umwelt einstellen"><span data-ck="grade">Strecke: eben</span> <span aria-hidden="true">›</span><span class="sr-only"> – Umwelt einstellen</span></button>
           </p>
-          <div class="ck__cruisectl" data-slot="cruise"></div>
           <dl class="ck__trip num">
             <div><dt>Außen</dt><dd><span data-ck="ambient">–</span></dd></div>
             <div><dt>Gesamt</dt><dd><span data-ck="total">0</span></dd></div>
@@ -104,7 +103,8 @@ export class CockpitView implements LayoutView {
           <p class="ck__read num" aria-live="off"><span data-ck="rpm">0</span> <small>1/min</small></p>
         </div>
       </div>
-      <div class="ck__minis"></div>`;
+      <div class="ck__minis"></div>
+      <div class="ck__cruisectl" data-slot="cruise"></div>`;
     this.el = el;
     el.querySelectorAll<HTMLElement>("[data-ck]").forEach((n) => (this.out[n.dataset.ck!] = n));
     el.querySelectorAll<HTMLElement>("[data-lamp]").forEach((n) => this.lampEls.set(n.dataset.lamp as LampKey, n));
