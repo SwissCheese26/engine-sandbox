@@ -70,7 +70,7 @@ export class GearboxPanel {
     this.tankSavedAt = performance.now();
     this.tankSavedL = t.levelL;
     try {
-      localStorage.setItem(TANK_KEY, JSON.stringify({ ...t.toJSON(), vehicle: this.vehiclePanel.carId }));
+      localStorage.setItem(TANK_KEY, JSON.stringify({ ...t.toJSON(), vehicle: this.vehiclePanel.carId, kind: this.drivetrain.kind }));
     } catch {
       /* storage unavailable */
     }
@@ -191,8 +191,11 @@ export class GearboxPanel {
     this.vehiclePanel = new VehiclePanel(this.drivetrain);
     // the tank level of the last visit, if it was the same vehicle (library id, or the own vehicle), else full
     const saved = loadTank();
-    if (saved && saved.vehicle === this.vehiclePanel.carId && Math.abs(saved.tank.capacityL - this.drivetrain.tank.capacityL) < 0.01) {
+    // (an own vehicle keeps its own tank size too)
+    if (saved && saved.vehicle === this.vehiclePanel.carId && saved.kind === this.drivetrain.kind) {
+      this.drivetrain.tank.setCapacity(saved.tank.capacityL, false);
       this.drivetrain.tank.setLevel(saved.tank.levelL);
+      this.vehiclePanel.sync();
     }
     this.vehiclePanel.onChange = () => {
       this.onResetVehicle();
@@ -439,11 +442,12 @@ export class GearboxPanel {
 const TANK_KEY = "pruefzelle.tank";
 
 /** Saved tank and the vehicle it belongs to ("" = own vehicle). */
-function loadTank(): { tank: FuelTank; vehicle: string } | null {
+function loadTank(): { tank: FuelTank; vehicle: string; kind: string } | null {
   try {
     const raw = JSON.parse(localStorage.getItem(TANK_KEY) ?? "null") as Record<string, unknown> | null;
     const tank = FuelTank.fromJSON(raw);
-    return tank && raw ? { tank, vehicle: typeof raw.vehicle === "string" ? raw.vehicle : "" } : null;
+    // older saves have no kind: they were made with a car
+    return tank && raw ? { tank, vehicle: typeof raw.vehicle === "string" ? raw.vehicle : "", kind: typeof raw.kind === "string" ? raw.kind : "car" } : null;
   } catch {
     return null;
   }
