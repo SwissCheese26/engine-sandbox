@@ -57,9 +57,11 @@ export interface Settings {
   /** Full scale of the cockpit speedometer, and the value of the "Eigene" scale in km/h. */
   speedo: SpeedoScale;
   speedoCustomKmh: number;
+  /** Gas lever on the chassis dyno: "spring" = back to 0 when let go (pedal), "hold" = stays (hand throttle). */
+  throttle: "spring" | "hold";
 }
 
-export const DEFAULT_SETTINGS: Settings = { preset: "metric-kw", custom: { ...METRIC }, layout: "pruefzelle", speedo: "standard", speedoCustomKmh: 240 };
+export const DEFAULT_SETTINGS: Settings = { preset: "metric-kw", custom: { ...METRIC }, layout: "pruefzelle", speedo: "standard", speedoCustomKmh: 240, throttle: "spring" };
 
 export const SETTINGS_KEY = "pruefzelle.settings";
 
@@ -75,7 +77,8 @@ export function validateSettings(raw: unknown): Settings {
   }
   const layout = isLayoutId(r.layout) ? r.layout : DEFAULT_SETTINGS.layout;
   const speedo = isSpeedoScale(r.speedo) ? r.speedo : DEFAULT_SETTINGS.speedo;
-  return { preset, custom, layout, speedo, speedoCustomKmh: clampSpeedoKmh(r.speedoCustomKmh) };
+  const throttle = r.throttle === "hold" ? "hold" : "spring";
+  return { preset, custom, layout, speedo, speedoCustomKmh: clampSpeedoKmh(r.speedoCustomKmh), throttle };
 }
 
 /** The units in effect for these settings. */

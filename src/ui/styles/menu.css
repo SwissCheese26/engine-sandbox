@@ -689,3 +689,30 @@
   gap: var(--space-2);
   justify-content: flex-end;
 }
+
+/* settings → Bedienung: radio choice with a sentence per option */
+.office__choice {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.office__choice legend {
+  margin-bottom: var(--space-2);
+  font-weight: 600;
+}
+.office__choice label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-height: 36px;
+  font-size: var(--fs-14);
+  cursor: pointer;
+}
+.office__choice input {
+  margin-top: 3px;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--signal);
+}
