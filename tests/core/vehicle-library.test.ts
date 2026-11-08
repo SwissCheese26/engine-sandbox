@@ -63,7 +63,8 @@ describe("vehicle library: data", () => {
 });
 
 describe("vehicle library: simulated 0–100 and Vmax vs. factory (±12 %)", () => {
-  for (const car of VEHICLE_LIBRARY) {
+  // cars only: the motorcycles have their own rider/launch model and test (motorcycle.test.ts)
+  for (const car of VEHICLE_LIBRARY.filter((c) => (c.setup.kind ?? "car") === "car")) {
     test(car.name, () => {
       const r = driveCar(car, 90);
       expect(r.running).toBe(true);

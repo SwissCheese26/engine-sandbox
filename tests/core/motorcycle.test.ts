@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Drivetrain, EngineSimulator, VEHICLES, defaultInputs, summarize, validateConfig } from "../../src/core/index.ts";
 import type { EngineConfig, VehicleKind } from "../../src/core/index.ts";
 import { ENGINE_LIBRARY, libraryConfig } from "../../src/data/engine-library.ts";
+import { VEHICLE_LIBRARY } from "../../src/data/vehicle-library.ts";
 import { defaultConfig } from "../../src/data/presets.ts";
 import { REFERENCE_ENGINES } from "../../src/data/reference-engines.ts";
 import { valveFloatRpm } from "../../src/core/limits.ts";
@@ -189,4 +190,24 @@ describe("air / oil-air cooling", () => {
     const rb = run(b, () => {}, 30, 1, "hold-rpm").sim.state.coolantC;
     expect(rb).toBeCloseTo(ra, 6);
   });
+});
+
+/**
+ * Ready-made motorcycles with their own weight (vehicle library): Vmax within ±12 % of the published value.
+ * 0–100: the model's launch (clutch slipped at ≈ 60 % of the limiter, wheelie limit) is conservative, so the
+ * simulated times are 0–35 % slower than magazine runs; the KTM single (low launch torque) is a known outlier.
+ */
+describe("motorcycle library: weight, Vmax and 0–100", () => {
+  const SLOW_LAUNCH: Record<string, number> = { "moto-ktm-690-duke": 0.85 };
+  for (const car of VEHICLE_LIBRARY.filter((c) => c.setup.kind === "superbike" || c.setup.kind === "tourer")) {
+    test(car.name, () => {
+      expect(car.setup.vehicle.massKg).toBe(car.factory.kerbKg + 75); // published weight + rider
+      const { dt, sim } = run(libraryConfig(car.engineId), (d) => d.applyCar(car.setup), 50);
+      expect(sim.state.running).toBe(true);
+      expect(Math.abs(dt.state.maxSpeedKmh / car.factory.vmaxKmh - 1)).toBeLessThan(0.12);
+      const d100 = dt.state.t0to100S! / car.factory.t0to100S - 1;
+      expect(d100).toBeGreaterThan(-0.1);
+      expect(d100).toBeLessThan(SLOW_LAUNCH[car.id] ?? 0.35);
+    }, 30000);
+  }
 });
