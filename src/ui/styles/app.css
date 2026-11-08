@@ -2055,3 +2055,16 @@ kbd {
     width: 56px;
   }
 }
+
+/* phones: shift buttons and brake pedal start at the same height as the gas lever (below its % value) */
+@media (max-width: 700px) {
+  .pedals {
+    align-items: flex-start;
+  }
+  .pedals > .shiftpad,
+  .pedals > .brakepedal {
+    align-self: flex-start;
+    /* the gas value row: --fs-14 at the body line height 1.45, then the pedal row gap */
+    margin-top: calc(var(--fs-14) * 1.45 + var(--space-1));
+  }
+}
