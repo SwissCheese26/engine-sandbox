@@ -115,6 +115,12 @@ export class App {
           sel.dispatchEvent(new Event("change", { bubbles: true }));
           this.announce("Rollenprüfstand mit Getriebe gewählt.");
         };
+        // tap on the road line in the cockpit: to the Umwelt panel, route select focused
+        c.onWantEnvironment = () => {
+          const panel = this.gearbox.environmentPanel.el;
+          panel.scrollIntoView({ behavior: "smooth", block: "start" });
+          panel.querySelector<HTMLSelectElement>("[data-control=terrain]")?.focus({ preventScroll: true });
+        };
         v = c;
       } else v = id === "race" ? new RaceView() : new CompactView();
       v.configure(this.cfg, this.summary, this.info);

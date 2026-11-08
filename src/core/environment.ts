@@ -8,6 +8,8 @@
  */
 import type { RoadSurface } from "./tyres.ts";
 
+import type { Terrain } from "./terrain.ts";
+
 export type Weather = "dry" | "wet" | "heavy-rain" | "snow" | "ice";
 
 export interface Environment {
@@ -16,8 +18,13 @@ export interface Environment {
   ambientC: number;
   /** Altitude above sea level, m (sets the air pressure, ISA). */
   altitudeM: number;
-  /** Road gradient in % (rise per 100 m); + = uphill, − = downhill. */
+  /** Road gradient in % (rise per 100 m); + = uphill, − = downhill. Used with terrain "static". */
   gradePct: number;
+  /**
+   * Route with an elevation profile (issue #48, terrain.ts); "static" (default) = the fixed altitude and gradient
+   * above. With a profile the altitude and gradient follow the position along the route.
+   */
+  terrain?: Terrain;
 }
 
 export const DEFAULT_ENVIRONMENT: Environment = { weather: "dry", ambientC: 20, altitudeM: 0, gradePct: 0 };

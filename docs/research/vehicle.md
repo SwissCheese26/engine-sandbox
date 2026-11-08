@@ -31,3 +31,14 @@ Bergab rollt das Auto los, sobald der Hangabtrieb den Rollwiderstand übersteigt
 - [B3] ADAC: Aquaplaning-Tests (Reifentests, Profiltiefe und Wasserhöhe).
 - [B4] Horne, W. B.; Dreher, R. C.: Phenomena of Pneumatic Tire Hydroplaning, NASA TN D-2056 (1963).
 - [B5] Mitschke, M.; Wallentowitz, H.: Dynamik der Kraftfahrzeuge, Kapitel „Fahrwiderstände“.
+
+## Umwelt/Strecke: Höhenprofile (#48)
+
+- **Steigung:** Die Steigung in % ist die Ableitung der Höhe nach dem Weg (100 · dh/dx). Die Hangabtriebskraft ist m · g · sin(atan(s/100)) und läuft wie bisher über `VehicleCoupling.gradePct`.
+- **Luft:** Luftdruck und Luftdichte kommen aus der Höhe nach ISA (barometrische Höhenformel, `environment.ts`). Sie wirken auf die Ansaugluft des Motors und auf den Luftwiderstand.
+- **Typische Steigungen:**
+  - Flachland unter 2–3 %
+  - Mittelgebirgsstraßen 4–8 %
+  - Alpenpässe 8–12 % mit einzelnen Rampen bis ≈ 15 %. Beispiele: Großglockner-Hochalpenstraße max. 12 %, Sustenpass ≈ 9 %, Stilfser Joch im Mittel ≈ 7–9 %. Quellen sind die Angaben der Passstraßen-Betreiber bzw. die Straßenbeschilderung.
+- **Modell:** Jede Strecke ist eine geschlossene Summe von Sinuswellen mit ganzzahligen Perioden über die Streckenlänge. Höhe und Steigung sind dadurch stetig, ohne Sprünge in der Hangabtriebskraft, und die Strecke wiederholt sich nahtlos.
+- **Berg hoch/runter:** konstant 8 %, nach 1600 m Höhenunterschied beginnt der nächste Berg.

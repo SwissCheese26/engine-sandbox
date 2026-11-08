@@ -3,8 +3,8 @@
 // built so the cockpit (issue #26) can take the same element.
 // Like the vehicle data, everything here can only be changed at standstill (review PR #39); the choice is kept per
 // browser in localStorage (pruefzelle.environment, pruefzelle.assists).
-import { DEFAULT_ASSISTS, WEATHER_LABELS, altitudeToKpa } from "../core/index.ts";
-import type { AssistSettings, Drivetrain, Environment, Weather } from "../core/index.ts";
+import { DEFAULT_ASSISTS, TERRAIN_LABELS, WEATHER_LABELS, altitudeToKpa, isTerrain, terrainSamples } from "../core/index.ts";
+import type { AssistSettings, Drivetrain, Environment, Terrain, Weather } from "../core/index.ts";
 import { prefs } from "./settings.ts";
 import { toUnit } from "./units.ts";
 
@@ -41,6 +41,7 @@ export function parseEnvironment(v: unknown): Partial<Environment> {
   if (a !== undefined) out.ambientC = a;
   if (h !== undefined) out.altitudeM = h;
   if (g !== undefined) out.gradePct = g;
+  if (isTerrain(o.terrain)) out.terrain = o.terrain;
   return out;
 }
 
@@ -146,6 +147,14 @@ export class EnvironmentPanel {
   private ranges = new Map<Range["key"], { input: HTMLInputElement; out: HTMLOutputElement }>();
   private checks = new Map<keyof AssistSettings, HTMLInputElement>();
   private airOut: HTMLElement;
+  private terrainSel: HTMLSelectElement;
+  private profileBox: HTMLElement;
+  private profileCanvas: HTMLCanvasElement;
+  private profileOut: HTMLElement;
+  /** Sampled route (redrawn only when the route changes) and the last drawn marker position. */
+  private profile: { terrain: Terrain; lengthM: number; altitudeM: number[]; lo: number; hi: number } | null = null;
+  private colors: { line: string; mark: string } | null = null;
+  private lastMark = "";
   private lockNote: HTMLElement;
   private moving = false;
   /** Called after any change (the app updates the simulator ambient inputs from the drivetrain). */
@@ -157,12 +166,20 @@ export class EnvironmentPanel {
     el.innerHTML = `
       <h3 class="vehicle__title">Umwelt &amp; Assistenten</h3>
       <div class="vehicle__grid">
+        <label class="vehicle__num vehicle__num--wide"><span>Strecke</span>
+          <select data-control="terrain">${(Object.keys(TERRAIN_LABELS) as Terrain[])
+            .map((t) => `<option value="${t}">${TERRAIN_LABELS[t]}</option>`).join("")}</select>
+        </label>
+        <figure class="environment__profile" data-out="profile" hidden>
+          <canvas width="320" height="72" role="img" aria-label="Höhenprofil der Strecke"></canvas>
+          <figcaption class="num" data-out="profile-now"></figcaption>
+        </figure>
         <label class="vehicle__num vehicle__num--wide"><span>Fahrbahn</span>
           <select data-control="weather">${(Object.keys(WEATHER_LABELS) as Weather[])
             .map((w) => `<option value="${w}">${WEATHER_LABELS[w]}</option>`).join("")}</select>
         </label>
         ${RANGES.map((r) => `
-          <label class="environment__range"><span>${r.label}</span>
+          <label class="environment__range" data-range="${r.key}"><span>${r.label}</span>
             <input type="range" data-control="${r.key}" min="${r.min}" max="${r.max}" step="${r.step}" />
             <output class="num"></output>
           </label>`).join("")}
@@ -181,6 +198,11 @@ export class EnvironmentPanel {
     this.weatherSel = el.querySelector("[data-control=weather]")!;
     this.airOut = el.querySelector("[data-out=air]")!;
     this.lockNote = el.querySelector("[data-out=env-lock]")!;
+    this.terrainSel = el.querySelector("[data-control=terrain]")!;
+    this.profileBox = el.querySelector("[data-out=profile]")!;
+    this.profileCanvas = this.profileBox.querySelector("canvas")!;
+    this.profileOut = el.querySelector("[data-out=profile-now]")!;
+    this.terrainSel.addEventListener("change", () => this.apply());
     // stored choice of this browser (validated; the defaults stay for anything missing or broken)
     const env = parseEnvironment(readJson(ENV_KEY));
     if (Object.keys(env).length) this.drivetrain.setEnvironment(env);
@@ -216,6 +238,7 @@ export class EnvironmentPanel {
       ambientC: v("ambient"),
       altitudeM: v("altitude"),
       gradePct: v("grade"),
+      terrain: isTerrain(this.terrainSel.value) ? this.terrainSel.value : "static",
     });
     writeJson(ENV_KEY, this.drivetrain.environment);
     this.sync();
@@ -224,10 +247,12 @@ export class EnvironmentPanel {
 
   /** Per frame: controls locked while the vehicle moves (> 0,5 km/h), with a note. */
   update(speedKmh: number) {
+    this.drawMarker();
     const moving = speedKmh > 0.5;
     if (moving === this.moving) return;
     this.moving = moving;
     this.weatherSel.disabled = moving;
+    this.terrainSel.disabled = moving;
     for (const { input } of this.ranges.values()) input.disabled = moving;
     for (const c of this.checks.values()) c.disabled = moving;
     this.lockNote.hidden = !moving;
@@ -249,10 +274,106 @@ export class EnvironmentPanel {
       out.textContent = text;
       input.setAttribute("aria-valuetext", text);
     }
-    const kpa = altitudeToKpa(e.altitudeM);
-    const gr = e.gradePct === 0 ? "eben" : e.gradePct > 0 ? `${fmt(e.gradePct)} % bergauf` : `${fmt(-e.gradePct)} % bergab`;
-    this.airOut.textContent = `Luftdruck ${fmt(kpa, 1)} kPa, Fahrbahn ${gr}.`;
+    // route (#48): with a profile the fixed altitude and gradient sliders give way to the elevation map
+    const t = e.terrain ?? "static";
+    this.terrainSel.value = t;
+    const route = t !== "static";
+    for (const k of ["altitude", "grade"] as const) (this.ranges.get(k)!.input.closest("[data-range]") as HTMLElement).hidden = route;
+    this.profileBox.hidden = !route;
+    if (route) {
+      if (this.profile?.terrain !== t) {
+        const smp = terrainSamples(t, 160);
+        this.profile = { terrain: t, ...smp, lo: Math.min(...smp.altitudeM), hi: Math.max(...smp.altitudeM) };
+      }
+      this.lastMark = "";
+      this.drawMarker();
+      this.airOut.textContent = "Höhe und Steigung folgen der Strecke; die Luft wird mit der Höhe dünner.";
+    } else {
+      this.profile = null;
+      const kpa = altitudeToKpa(e.altitudeM);
+      const gr = e.gradePct === 0 ? "eben" : e.gradePct > 0 ? `${fmt(e.gradePct)} % bergauf` : `${fmt(-e.gradePct)} % bergab`;
+      this.airOut.textContent = `Luftdruck ${fmt(kpa, 1)} kPa, Fahrbahn ${gr}.`;
+    }
     const a = this.drivetrain.assists;
     for (const [k, c] of this.checks) c.checked = a[k];
+  }
+
+  /** Elevation map: the route profile with a marker where the car is, plus altitude and gradient (#48). */
+  private drawMarker() {
+    const p = this.profile;
+    if (!p) return;
+    const st = this.drivetrain.state;
+    const pos = st.positionM ?? 0;
+    const alt = st.roadAltitudeM ?? 0;
+    const g = st.roadGradePct ?? 0;
+    const u = (((pos % p.lengthM) + p.lengthM) % p.lengthM) / p.lengthM;
+    const cw = Math.round(this.profileCanvas.clientWidth);
+    if (cw === 0) return; // hidden: drawn when it is shown (width is part of the key)
+    const key = `${Math.round(u * 400)}|${Math.round(alt)}|${g.toFixed(1)}|${Math.round(pos / 100)}|${prefs().distance}|${cw}`;
+    if (key === this.lastMark) return;
+    this.lastMark = key;
+    const metric = prefs().distance !== "mi";
+    const altText = metric ? `${fmt(alt)} m` : `${fmt(alt * 3.28084)} ft`;
+    const km = pos / 1000;
+    const dist = metric ? `${fmt(km, 1)} km` : `${fmt(km * 0.621371, 1)} mi`;
+    const slope = Math.abs(g) < 0.05 ? "eben" : `${g > 0 ? "+" : "−"}${fmt(Math.abs(g), 1)} %`;
+    this.profileOut.textContent = `${altText} · ${slope} · Position ${dist}`;
+    const c = this.profileCanvas;
+    const ctx = c.getContext("2d");
+    if (!ctx) return;
+    const dpr = Math.min(2, globalThis.devicePixelRatio || 1);
+    const w = cw;
+    const h = 72;
+    if (c.width !== Math.round(w * dpr)) {
+      c.width = Math.round(w * dpr);
+      c.height = Math.round(h * dpr);
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    const a = p.altitudeM;
+    const { lo, hi } = p;
+    const span = Math.max(20, hi - lo);
+    const pad = 6;
+    const X = (i: number) => (i / (a.length - 1)) * w;
+    const Y = (v: number) => h - pad - ((v - lo) / span) * (h - 2 * pad);
+    if (!this.colors) {
+      const css = getComputedStyle(this.el);
+      this.colors = { line: css.getPropertyValue("--alu").trim() || "#d3d6cf", mark: css.getPropertyValue("--signal").trim() || "#f6a800" };
+    }
+    const { line, mark } = this.colors;
+    ctx.beginPath();
+    ctx.moveTo(0, h);
+    a.forEach((v, i) => ctx.lineTo(X(i), Y(v)));
+    ctx.lineTo(w, h);
+    ctx.closePath();
+    ctx.fillStyle = "rgba(211, 214, 207, 0.12)";
+    ctx.fill();
+    ctx.beginPath();
+    a.forEach((v, i) => (i ? ctx.lineTo(X(i), Y(v)) : ctx.moveTo(X(i), Y(v))));
+    ctx.strokeStyle = line;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    // the car: a dot on the profile and a thin vertical line
+    const mx = u * w;
+    const my = Y(alt);
+    ctx.strokeStyle = mark;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(mx, 0);
+    ctx.lineTo(mx, h);
+    ctx.stroke();
+    ctx.fillStyle = mark;
+    ctx.beginPath();
+    ctx.arc(mx, my, 4, 0, 2 * Math.PI);
+    ctx.fill();
+    // min / max altitude labels
+    ctx.fillStyle = line;
+    ctx.font = "11px Barlow, sans-serif";
+    // labels on the right edge, clear of the start where the car begins
+    ctx.textAlign = "right";
+    ctx.textBaseline = "top";
+    ctx.fillText(metric ? `${fmt(hi)} m` : `${fmt(hi * 3.28084)} ft`, w - 4, 2);
+    ctx.textBaseline = "bottom";
+    ctx.fillText(metric ? `${fmt(lo)} m` : `${fmt(lo * 3.28084)} ft`, w - 4, h - 1);
   }
 }
