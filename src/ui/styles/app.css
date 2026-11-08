@@ -2034,14 +2034,24 @@ kbd {
 
 /* phones with shift buttons: ignition and starter stack, pedals a little narrower, so all fits in 390 px */
 @media (max-width: 700px) {
-  .deck:has(.shiftpad:not([hidden])) .console__group--main {
+  .deck:has(.shiftpad:not([hidden]):not(.is-auto)) .console__group--main {
     grid-template-columns: auto;
     gap: var(--space-2);
   }
   .shiftpad__btn {
     width: 48px;
   }
-  .deck:has(.shiftpad:not([hidden])) .brakepedal__plate {
+  .deck:has(.shiftpad:not([hidden]):not(.is-auto)) .brakepedal__plate {
+    width: 56px;
+  }
+}
+/* "automatisch" shows the buttons only on touch screens, so it compacts the bar only there */
+@media (max-width: 700px) and (pointer: coarse), (max-width: 700px) and (hover: none) {
+  .deck:has(.shiftpad.is-auto:not([hidden])) .console__group--main {
+    grid-template-columns: auto;
+    gap: var(--space-2);
+  }
+  .deck:has(.shiftpad.is-auto:not([hidden])) .brakepedal__plate {
     width: 56px;
   }
 }

@@ -24,15 +24,17 @@ export class ShiftPad {
       const dir = Number(b.dataset.shift) as 1 | -1;
       // pointerdown: the shift happens with the finger, not after it lifts (like a paddle)
       b.addEventListener("pointerdown", (e) => {
+        if (e.button !== 0) return;
         e.preventDefault();
         this.dt().shift(dir);
       });
+      // keyboard (Enter/Space) and assistive tech (VoiceOver, TalkBack, Voice Control) fire a click without a
+      // pointer press (detail 0); a real tap already shifted on pointerdown
+      b.addEventListener("click", (e) => {
+        if (e.detail === 0) this.dt().shift(dir);
+      });
       b.addEventListener("keydown", (e) => {
-        if ((e.key === "Enter" || e.key === " ") && !e.repeat) {
-          e.preventDefault();
-          e.stopPropagation();
-          this.dt().shift(dir);
-        }
+        if (e.key === "Enter" || e.key === " ") e.stopPropagation(); // not the gas key
       });
       b.addEventListener("contextmenu", (e) => e.preventDefault());
     });
