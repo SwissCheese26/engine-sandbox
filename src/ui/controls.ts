@@ -229,7 +229,7 @@ export class ControlPanel {
     this.mode.addEventListener("change", () => {
       this.inputs.dynoMode = this.mode.value as SimInputs["dynoMode"];
       // a hand-throttle setting from the engine dyno must not drive the car away
-      if (this.inputs.dynoMode === "vehicle" && this.lever > 0 && getSettings().throttle !== "hold") {
+      if (this.inputs.dynoMode === "vehicle" && this.lever > 0) {
         this.lever = 0;
         this.renderPedal();
       }
@@ -393,7 +393,7 @@ export class ControlPanel {
     this.brakeEl.setAttribute("aria-pressed", String(on));
   }
 
-  /** Releases held keys when the window loses focus, so the throttle never sticks open. */
+  /** Releases held keys when the window loses focus, so held keys never stick (a hand-throttle lever stays). */
   releaseAll() {
     this.gasHeld = false;
     this.gasLevel = 0;
