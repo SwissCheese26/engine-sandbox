@@ -21,6 +21,7 @@ import type { CruiseState } from "./cruise.ts";
 import { DEFAULT_ASSISTS, ASSIST_LAMP_HOLD_S, TractionControl } from "./assists.ts";
 import type { AssistSettings } from "./assists.ts";
 import { DEFAULT_ENVIRONMENT, airDensity, altitudeToKpa, iceWarning, weatherSurface } from "./environment.ts";
+import { isTerrain, roadAt } from "./terrain.ts";
 import type { Environment } from "./environment.ts";
 import { DEFAULT_TYRE, TYRE_TYPES, aquaplaningFactor, compoundFactor, speedRatingKmh, stepTyreTemp, tyreGrip, tyreRadii } from "./tyres.ts";
 import type { RoadSurface, TyreSetup } from "./tyres.ts";
@@ -165,6 +166,13 @@ export interface DrivetrainState {
   aquaplaning?: boolean;
   /** Issue #30: cruise control and driver speed limiter (optional for older consumers). */
   cruise?: Readonly<CruiseState>;
+  /**
+   * Issue #48: position along the route (m), and the gradient (%) and altitude (m) the car is on – from the
+   * route profile, or the fixed values of the environment on terrain "static".
+   */
+  positionM?: number;
+  roadGradePct?: number;
+  roadAltitudeM?: number;
 }
 
 /** A complete vehicle setup (issue #22, src/data/vehicle-library.ts): kind, body, tyre, gearbox, governor. */
@@ -205,6 +213,9 @@ export class Drivetrain {
   private launchCap = 1;
   private gearDwell = 0;
   private lastSpeedMs = 0;
+  /** Issue #48: distance along the route and the road there (gradient, altitude). */
+  private positionM = 0;
+  private road = { altitudeM: 0, gradePct: 0 };
   private govActive = false;
   private govI = 0;
   private govCap = 1;
@@ -246,6 +257,7 @@ export class Drivetrain {
   ) {
     this.spec = GEARBOXES[type];
     this.st = this.fresh(type, GEARBOXES[type].finalDrive, DEFAULT_SPEED_LIMIT_KMH);
+    this.updateRoad();
   }
 
   private fresh(type: GearboxType, finalDrive: number, speedLimitKmh: number | null): DrivetrainState {
@@ -322,7 +334,11 @@ export class Drivetrain {
     n.ambientC = Math.min(50, Math.max(-30, Number.isFinite(n.ambientC) ? n.ambientC : 20));
     n.altitudeM = Math.min(5000, Math.max(-400, Number.isFinite(n.altitudeM) ? n.altitudeM : 0));
     n.gradePct = Math.min(30, Math.max(-30, Number.isFinite(n.gradePct) ? n.gradePct : 0));
+    n.terrain = isTerrain(n.terrain) ? n.terrain : "static";
+    // a new route starts at its beginning
+    if (n.terrain !== (this.env.terrain ?? "static")) this.positionM = 0;
     this.env = n;
+    this.updateRoad();
     const w = weatherSurface(n.weather);
     this.surfaceKind = w.surface;
     this.gripFactor = w.factor;
@@ -335,9 +351,22 @@ export class Drivetrain {
     return this.env;
   }
 
-  /** ambientC / ambientKpa for SimInputs (engine intake air) from the environment. */
+  /** ambientC / ambientKpa for SimInputs (engine intake air) from the environment (altitude of the road, #48). */
   simInputs(): { ambientC: number; ambientKpa: number } {
-    return { ambientC: this.env.ambientC, ambientKpa: altitudeToKpa(this.env.altitudeM) };
+    return { ambientC: this.env.ambientC, ambientKpa: altitudeToKpa(this.road.altitudeM) };
+  }
+
+  /** Position along the route (#48), e.g. to start over. */
+  setPosition(m: number) {
+    this.positionM = Number.isFinite(m) ? m : 0;
+    this.updateRoad();
+  }
+
+  private updateRoad() {
+    this.road = roadAt(this.env, this.positionM);
+    this.st.positionM = this.positionM;
+    this.st.roadGradePct = this.road.gradePct;
+    this.st.roadAltitudeM = this.road.altitudeM;
   }
 
   /** Driver assistance on/off (issue #23), partial updates merged. */
@@ -406,6 +435,8 @@ export class Drivetrain {
     const keep = { maxSpeedKmh: this.st.maxSpeedKmh, t0to100S: this.st.t0to100S, maxSpeedLimited: this.st.maxSpeedLimited };
     this.clearTransient();
     Object.assign(this.st, this.fresh(this.st.type, this.st.finalDrive, this.st.speedLimitKmh), keep);
+    this.positionM = 0;
+    this.updateRoad();
   }
 
   /** Shift timer, pending gear and launch-clutch memory back to rest (review #19). */
@@ -550,6 +581,11 @@ export class Drivetrain {
     const vRoad = engine.vehicleSpeedMs ?? 0;
     const v = engine.wheelSpeedMs ?? vRoad;
     this.lastSpeedMs = v;
+    // route position from the road speed (#48): the gradient and altitude follow the profile
+    if (Number.isFinite(vRoad) && dt > 0 && dt < 1) {
+      this.positionM += vRoad * dt;
+    }
+    this.updateRoad();
     const rpm = engine.rpm;
     const idle = this.cfg.idleRpm;
     const limit = this.cfg.revLimitRpm;
@@ -781,8 +817,8 @@ export class Drivetrain {
       grip: s.grip,
       ...(torqueRatio > 1 ? { torqueRatio } : {}),
       abs: a.abs,
-      gradePct: this.env.gradePct,
-      airDensityKgM3: airDensity(altitudeToKpa(this.env.altitudeM), this.env.ambientC),
+      gradePct: this.road.gradePct,
+      airDensityKgM3: airDensity(altitudeToKpa(this.road.altitudeM), this.env.ambientC),
       ...(cut > 0 ? { torqueCut: cut } : {}),
     };
   }

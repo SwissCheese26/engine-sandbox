@@ -57,3 +57,5 @@ export type { TripComputerData, TripCounter } from "./trip-computer.ts";
 // issue #30: cruise control and driver speed limiter
 export { CruiseControl, CRUISE_MIN_KMH, CRUISE_MIN_MPH, LIMITER_OPTIONS, LIMITER_OPTIONS_MPH, MPH_KMH, KICKDOWN_S } from "./cruise.ts";
 export type { CruiseState, CruiseMode } from "./cruise.ts";
+export { TERRAIN_LABELS, RAMP_PCT, isTerrain, roadAt, terrainAt, terrainLengthM, terrainSamples } from "./terrain.ts";
+export type { Terrain } from "./terrain.ts";

@@ -3,6 +3,7 @@
 // strip. Built for the chassis dyno; on the engine dyno the speedometer rests and reads "–".
 import type { EngineConfig, EngineSummary } from "../../core/index.ts";
 import { fmt } from "../format.ts";
+import { TERRAIN_LABELS } from "../../core/index.ts";
 import { getSettings, prefs, setSettings } from "../settings.ts";
 import { toUnit } from "../units.ts";
 import { Dial, type DialScale } from "./dial.ts";
@@ -55,6 +56,8 @@ export class CockpitView implements LayoutView {
   private fuelKey = "";
   /** Set by the app: switches the console to the chassis dyno. */
   onWantVehicle: () => void = () => {};
+  /** Set by the app: jump to the Umwelt panel (route, weather, gradient). */
+  onWantEnvironment: () => void = () => {};
 
   constructor() {
     const el = document.createElement("section");
@@ -82,7 +85,9 @@ export class CockpitView implements LayoutView {
           <p class="ck__dyno" data-ck="dyno" hidden>Motorprüfstand: kein Tempo.
             <button type="button" class="ck__btn" data-ck="to-vehicle">Auf die Rolle</button></p>
           <p class="ck__cruise num" data-ck="cruise" data-state="off" hidden>${ICON2.cruise}<span data-ck="cruise-text"></span></p>
-          <p class="ck__grade num" data-ck="grade-row" hidden><span data-ck="grade"></span></p>
+          <p class="ck__grade num" data-ck="grade-row">
+            <button type="button" class="ck__road" data-ck="road" title="Strecke und Umwelt einstellen"><span data-ck="grade">Strecke: eben</span> <span aria-hidden="true">›</span><span class="sr-only"> – Umwelt einstellen</span></button>
+          </p>
           <dl class="ck__trip num">
             <div><dt>Außen</dt><dd><span data-ck="ambient">–</span></dd></div>
             <div><dt>Gesamt</dt><dd><span data-ck="total">0</span></dd></div>
@@ -99,6 +104,7 @@ export class CockpitView implements LayoutView {
     el.querySelectorAll<HTMLElement>("[data-ck]").forEach((n) => (this.out[n.dataset.ck!] = n));
     el.querySelectorAll<HTMLElement>("[data-lamp]").forEach((n) => this.lampEls.set(n.dataset.lamp as LampKey, n));
     this.out["to-vehicle"]!.addEventListener("click", () => this.onWantVehicle());
+    this.out["road"]!.addEventListener("click", () => this.onWantEnvironment());
 
     const blank: DialScale = { min: 0, max: 100, major: 20, minor: 10, caption: "" };
     this.speedo = new Dial(blank, { label: "Tacho" });
@@ -249,10 +255,20 @@ export class CockpitView implements LayoutView {
     const { total, tripA } = f.trip;
     this.put("ambient", `${fmt(toUnit("temp", d.environment.ambientC, u.temp))} ${u.temp}`);
     // a gradient set under Umwelt is driven as a hill: shown here so a car rolling away in N is explained
-    const g = d.environment.gradePct;
-    const gradeRow = this.out["grade-row"]!;
-    if (gradeRow.hidden !== (g === 0)) gradeRow.hidden = g === 0;
-    if (g !== 0) this.put("grade", `${g > 0 ? "Steigung" : "Gefälle"} ${fmt(Math.abs(g), Number.isInteger(g) ? 0 : 1)} % (Umwelt)`);
+    // the road (#48): route with altitude, or the fixed gradient; a tap leads to the Umwelt panel
+    const env = d.environment;
+    const g = d.state.roadGradePct ?? env.gradePct;
+    const slope = Math.abs(g) < 0.05 ? "eben" : `${g > 0 ? "Steigung" : "Gefälle"} ${fmt(Math.abs(g), Number.isInteger(g) ? 0 : 1)} %`;
+    const terrain = env.terrain ?? "static";
+    let road: string;
+    if (terrain === "static") road = `Strecke: ${slope}`;
+    else {
+      const alt = d.state.roadAltitudeM ?? 0;
+      const altText = u.distance === "mi" ? `${fmt(alt * 3.28084)} ft` : `${fmt(alt)} m`;
+      road = `${TERRAIN_LABELS[terrain]} · ${altText} · ${slope}`;
+    }
+    this.put("grade", road);
+    this.out["grade-row"]!.classList.toggle("is-hill", Math.abs(g) >= 0.05);
     this.put("total", `${fmt(Math.floor(toUnit("distance", total.km, u.distance)))} ${u.distance}`);
     this.put("trip", `${fmt(toUnit("distance", tripA.km, u.distance), 1)} ${u.distance}`);
     const avg = toUnit("fuel", avgL100(tripA.km, tripA.fuelL), u.fuel);
