@@ -215,3 +215,9 @@ test("settings: speedometer scale defaults to Standard and is validated", () => 
   expect(validateSettings({ speedo: "warp", speedoCustomKmh: "x" })).toMatchObject({ speedo: "standard", speedoCustomKmh: 240 });
   expect(validateSettings({ speedo: "killer", speedoCustomKmh: 451 })).toMatchObject({ speedo: "killer", speedoCustomKmh: 460 });
 });
+
+test("settings: gas lever on the chassis dyno springs back by default, 'hold' is kept", () => {
+  expect(DEFAULT_SETTINGS.throttle).toBe("spring");
+  expect(validateSettings({ throttle: "hold" }).throttle).toBe("hold");
+  expect(validateSettings({ throttle: "x" }).throttle).toBe("spring");
+});

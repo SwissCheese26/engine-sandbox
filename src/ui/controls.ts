@@ -3,6 +3,7 @@
 // arrow keys move the pedal lever in 5 % steps.
 import type { EngineState, SimInputs } from "../core/index.ts";
 import { clamp, fmt } from "./format.ts";
+import { getSettings } from "./settings.ts";
 
 const PEDAL_STEP = 0.05;
 
@@ -376,9 +377,12 @@ export class ControlPanel {
     return false;
   }
 
-  /** On the chassis dyno the gas lever is a pedal: back to 0 when let go. Engine dyno: hand throttle, stays. */
+  /**
+   * On the chassis dyno the gas lever is a pedal: back to 0 when let go – unless the settings say "Handgas"
+   * (throttle "hold"), then it stays like on the engine dyno.
+   */
   private springBack() {
-    if (this.inputs.dynoMode !== "vehicle" || this.lever === 0) return;
+    if (this.inputs.dynoMode !== "vehicle" || this.lever === 0 || getSettings().throttle === "hold") return;
     this.lever = 0;
     this.renderPedal();
   }
@@ -389,7 +393,7 @@ export class ControlPanel {
     this.brakeEl.setAttribute("aria-pressed", String(on));
   }
 
-  /** Releases held keys when the window loses focus, so the throttle never sticks open. */
+  /** Releases held keys when the window loses focus, so held keys never stick (a hand-throttle lever stays). */
   releaseAll() {
     this.gasHeld = false;
     this.gasLevel = 0;

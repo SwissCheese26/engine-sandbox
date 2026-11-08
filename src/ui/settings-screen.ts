@@ -75,6 +75,16 @@ export class SettingsScreen {
             </label>
           </div>
         </section>
+        <section class="plate office__plate" aria-labelledby="set-controls">
+          <span class="screw screw--tl" aria-hidden="true"></span><span class="screw screw--tr" aria-hidden="true"></span>
+          <span class="screw screw--bl" aria-hidden="true"></span><span class="screw screw--br" aria-hidden="true"></span>
+          <h2 class="plate__title" id="set-controls">Bedienung</h2>
+          <fieldset class="office__choice">
+            <legend>Gashebel auf dem Rollenprüfstand</legend>
+            <label><input type="radio" name="throttle" value="spring" /> <span><b>Federt zurück</b> wie ein Gaspedal: loslassen heißt Gas weg.</span></label>
+            <label><input type="radio" name="throttle" value="hold" /> <span><b>Bleibt stehen</b> (Handgas): der Hebel hält seine Stellung, auch nach dem Loslassen.</span></label>
+          </fieldset>
+        </section>
         <section class="plate office__plate" aria-labelledby="set-units">
           <span class="screw screw--tl" aria-hidden="true"></span><span class="screw screw--tr" aria-hidden="true"></span>
           <span class="screw screw--bl" aria-hidden="true"></span><span class="screw screw--br" aria-hidden="true"></span>
@@ -139,6 +149,11 @@ export class SettingsScreen {
         if (r.checked) setSettings({ layout: r.value as LayoutId });
       }),
     );
+    el.querySelectorAll<HTMLInputElement>("input[name=throttle]").forEach((r) =>
+      r.addEventListener("change", () => {
+        if (r.checked) setSettings({ throttle: r.value === "hold" ? "hold" : "spring" });
+      }),
+    );
     const scaleSel = el.querySelector<HTMLSelectElement>("[data-control=speedo-scale]")!;
     scaleSel.addEventListener("change", () => {
       if (isSpeedoScale(scaleSel.value)) setSettings({ speedo: scaleSel.value });
@@ -177,6 +192,7 @@ export class SettingsScreen {
     this.el.querySelectorAll<HTMLInputElement>("input[name=preset]").forEach((r) => (r.checked = r.value === s.preset));
     this.el.querySelectorAll<HTMLInputElement>("input[name=layout]").forEach((r) => (r.checked = r.value === s.layout));
     this.el.querySelector<HTMLSelectElement>("[data-control=speedo-scale]")!.value = s.speedo;
+    this.el.querySelectorAll<HTMLInputElement>("input[name=throttle]").forEach((r) => (r.checked = r.value === s.throttle));
     this.el.querySelector<HTMLInputElement>("[data-control=speedo-custom]")!.value = String(s.speedoCustomKmh);
     this.el.querySelector<HTMLElement>("[data-speedo-custom]")!.hidden = s.speedo !== "custom";
     this.el.querySelectorAll<HTMLInputElement>("input[data-q]").forEach((r) => (r.checked = u[r.dataset.q as Quantity] === r.value));
