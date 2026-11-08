@@ -59,3 +59,4 @@ export { CruiseControl, CRUISE_MIN_KMH, CRUISE_MIN_MPH, LIMITER_OPTIONS, LIMITER
 export type { CruiseState, CruiseMode } from "./cruise.ts";
 export { TERRAIN_LABELS, RAMP_PCT, isTerrain, roadAt, terrainAt, terrainLengthM, terrainSamples } from "./terrain.ts";
 export type { Terrain } from "./terrain.ts";
+export { DEFAULT_TANK_L, FuelTank, RESERVE_SHARE } from "./fuel-tank.ts";

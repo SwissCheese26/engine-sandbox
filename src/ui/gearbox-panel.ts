@@ -4,7 +4,7 @@
 // fitted tyre's speed index.
 // Issue #23: Umwelt- und Assistenz-Platte (environment-panel.ts) and the warning-lamp strip under the gear indicator.
 import { TripPanel } from "./trip-panel.ts";
-import { Drivetrain, GEARBOXES, VEHICLES, theoreticalVmax, dynoSweep, SPEED_LIMIT_OPTIONS } from "../core/index.ts";
+import { Drivetrain, FuelTank, GEARBOXES, VEHICLES, theoreticalVmax, dynoSweep, SPEED_LIMIT_OPTIONS } from "../core/index.ts";
 import type { EngineConfig, EngineSummary, GearboxType, VehicleKind } from "../core/index.ts";
 import { EnvironmentPanel, WarningLamps } from "./environment-panel.ts";
 import { VehiclePanel } from "./vehicle-panel.ts";
@@ -60,6 +60,15 @@ export class GearboxPanel {
   readonly environmentPanel: EnvironmentPanel;
   readonly lamps = new WarningLamps();
   /** Tempomat-Leiste (issue #30). */
+  private tankOut!: HTMLElement;
+  private lastTank = "";
+  private tankWrites = 0;
+  private tankAbort = new AbortController();
+  /** Saves the tank once more and removes the page listeners (App.dispose). */
+  disposeTank() {
+    saveTank(this.drivetrain.tank);
+    this.tankAbort.abort();
+  }
   readonly cruise: CruisePanel;
   private cruiseAnchor: Element;
   /** Puts the Tempomat-Leiste back in this panel (the cockpit borrows it). */
@@ -122,6 +131,8 @@ export class GearboxPanel {
         <div><dt>Tempo</dt><dd class="num"><span data-out="speed">0</span> <span data-unit="speed">km/h</span></dd></div>
         <div><dt>Vmax gemessen</dt><dd class="num"><span data-out="vmax">0</span> <span data-unit="speed">km/h</span><small class="gearbox__vmax-note" hidden> (abgeregelt)</small></dd></div>
         <div><dt data-out="sprint-label">0–100 km/h</dt><dd class="num"><span data-out="t100">–</span> s</dd></div>
+        <div class="gearbox__tank"><dt>Tank</dt><dd class="num"><span data-out="tank">–</span>
+          <button type="button" class="btn btn--small" data-control="refuel">Volltanken</button></dd></div>
       </dl>
       <div data-slot="trip"></div>
       <div class="gearbox__notes" aria-live="polite">
@@ -133,6 +144,18 @@ export class GearboxPanel {
     this.trip = new TripPanel();
     el.querySelector("[data-slot=trip]")!.replaceWith(this.trip.el);
     const q = <T extends Element>(s: string) => el.querySelector<T>(s)!;
+    this.tankOut = q("[data-out=tank]");
+    q("[data-control=refuel]").addEventListener("click", () => {
+      this.drivetrain.tank.refill();
+      saveTank(this.drivetrain.tank);
+      this.lastTank = "";
+    });
+    // the tank level of the last visit (same capacity = same vehicle), else full
+    const saved = loadTank();
+    if (saved && Math.abs(saved.capacityL - this.drivetrain.tank.capacityL) < 0.01) this.drivetrain.tank.setLevel(saved.levelL);
+    const signal = this.tankAbort.signal;
+    addEventListener("pagehide", () => saveTank(this.drivetrain.tank), { signal });
+    document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && saveTank(this.drivetrain.tank), { signal });
     this.typeSel = q("[data-control=gearbox]");
     this.vehicleSel = q("[data-control=vehicle]");
     this.hintEl = q("[data-out=vehicle-hint]");
@@ -339,6 +362,18 @@ export class GearboxPanel {
   update(braking = false): void {
     const d = this.drivetrain;
     const s = d.state;
+    // tank: content, reserve and empty (amber, "Gelb heißt Grenze"); saved every few seconds while it changes
+    const t = d.tank;
+    const gal = prefs().fuel === "mpg";
+    const lv = gal ? t.levelL / 3.785411784 : t.levelL;
+    const cap = gal ? t.capacityL / 3.785411784 : t.capacityL;
+    const tankText = `${fmt0(lv)} / ${fmt0(cap)} ${gal ? "gal" : "l"}${t.empty ? " – leer" : t.reserve ? " – Reserve" : ""}`;
+    if (tankText !== this.lastTank) {
+      this.lastTank = tankText;
+      this.tankOut.textContent = tankText;
+      this.tankOut.classList.toggle("is-low", t.reserve);
+      if (++this.tankWrites % 50 === 0) saveTank(t);
+    }
     const gear = s.shifting && s.type === "manual" ? "–" : d.gearLabel();
     const mph = prefs().speed === "mph";
     const speed = fmt0(toUnit("speed", s.speedKmh));
@@ -378,5 +413,24 @@ export class GearboxPanel {
       this.vehicleSel.disabled = moving;
       this.fdInput.disabled = moving;
     }
+  }
+}
+
+const TANK_KEY = "pruefzelle.tank";
+
+function saveTank(t: FuelTank) {
+  try {
+    localStorage.setItem(TANK_KEY, JSON.stringify(t.toJSON()));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+function loadTank(): FuelTank | null {
+  try {
+    const raw = localStorage.getItem(TANK_KEY);
+    return raw ? FuelTank.fromJSON(JSON.parse(raw)) : null;
+  } catch {
+    return null;
   }
 }

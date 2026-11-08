@@ -5,6 +5,8 @@ export { ICON as BASE_ICON } from "../environment-panel.ts";
 const S = `fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"`;
 
 export const ICON2 = {
+  // fuel pump (ISO 7000-0245)
+  fuel: `<svg viewBox="0 0 40 28" aria-hidden="true"><path ${S} d="M9 25V5h13v20M7 25h17M12 9h7v5h-7M22 10h4l3 3v9a2 2 0 0 0 4 0V11l-4-4"/></svg>`,
   /** Oil can with drop: oil pressure. */
   oil: `<svg viewBox="0 0 40 28" aria-hidden="true"><path ${S} d="M6 12h5l3 4h14l7-5M14 16v6h14v-6M11 12v-2h6v2"/><path d="M36 17c0 2-1.3 3.4-2.4 3.4S31.2 19 31.2 17c0-1.3 1.2-3 2.4-4.6 1.2 1.6 2.4 3.3 2.4 4.6z" fill="currentColor"/></svg>`,
   /** Battery: charge lamp. */

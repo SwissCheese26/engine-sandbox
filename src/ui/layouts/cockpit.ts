@@ -3,7 +3,7 @@
 // strip. Built for the chassis dyno; on the engine dyno the speedometer rests and reads "–".
 import type { EngineConfig, EngineSummary } from "../../core/index.ts";
 import { fmt } from "../format.ts";
-import { TERRAIN_LABELS } from "../../core/index.ts";
+import { RESERVE_SHARE, TERRAIN_LABELS } from "../../core/index.ts";
 import { getSettings, prefs, setSettings } from "../settings.ts";
 import { toUnit } from "../units.ts";
 import { Dial, type DialScale } from "./dial.ts";
@@ -22,6 +22,7 @@ const LAMPS: { k: LampKey; color: "red" | "amber" | "ice"; icon: string; on: str
   { k: "esp", color: "amber", icon: BASE_ICON.esp, on: "ESP/ASR greift ein" },
   { k: "espOff", color: "amber", icon: BASE_ICON.esp, on: "ESP OFF", text: "OFF" },
   { k: "ice", color: "ice", icon: BASE_ICON.ice, on: "Glättegefahr" },
+  { k: "fuel", color: "amber", icon: ICON2.fuel, on: "Tankreserve" },
 ];
 
 const airCooled = (c: EngineConfig) => c.cooling.type === "air" || c.cooling.type === "oil-air";
@@ -40,7 +41,7 @@ export class CockpitView implements LayoutView {
   readonly el: HTMLElement;
   private speedo: Dial;
   private tacho: Dial;
-  private minis: Record<"coolant" | "oilT" | "oilP" | "boost" | "fuel", Mini>;
+  private minis: Record<"coolant" | "oilT" | "oilP" | "boost" | "fuel" | "tank", Mini>;
   private lampEls = new Map<LampKey, HTMLElement>();
   private lastLamps = "";
   private out: Record<string, HTMLElement> = {};
@@ -54,6 +55,7 @@ export class CockpitView implements LayoutView {
   private scaleKey = "";
   /** Unit and range the consumption dial is drawn with (changes when the car starts or stops moving). */
   private fuelKey = "";
+  private tankKey = "";
   /** Set by the app: switches the console to the chassis dyno. */
   onWantVehicle: () => void = () => {};
   /** Set by the app: jump to the Umwelt panel (route, weather, gradient). */
@@ -138,7 +140,7 @@ export class CockpitView implements LayoutView {
       host.append(wrap);
       return { id, dial, wrap, out: wrap.querySelector(".ck-mini__val")!, unit: wrap.querySelector(".ck-mini__unit")!, cap: wrap.querySelector(".ck-mini__cap")!, last: "" };
     };
-    this.minis = { coolant: mk("coolant"), oilT: mk("oil-temp"), oilP: mk("oil-pressure"), boost: mk("boost"), fuel: mk("fuel") };
+    this.minis = { coolant: mk("coolant"), oilT: mk("oil-temp"), oilP: mk("oil-pressure"), boost: mk("boost"), fuel: mk("fuel"), tank: mk("tank") };
   }
 
   configure(cfg: EngineConfig, summary: EngineSummary, info: DriveInfo) {
@@ -185,6 +187,7 @@ export class CockpitView implements LayoutView {
     }
     // momentary consumption: l/100 km (or mpg) while driving, l/h at standstill like a real board computer
     this.fuelKey = "";
+    this.tankKey = "";
     this.out["speed-unit"]!.textContent = this.out["speed-unit2"]!.textContent = u.speed;
     this.speedKey = "";
     for (const k of Object.keys(this.last)) this.last[k] = "";
@@ -308,6 +311,22 @@ export class CockpitView implements LayoutView {
     const l100 = moving && s.running ? (s.fuelFlowLh / kmh) * 100 : Number.NaN;
     const fuelVal = moving ? (s.running ? toUnit("fuel", l100, u.fuel) : Number.NaN) : u.fuel === "mpg" ? s.fuelFlowLh / 3.785411784 : s.fuelFlowLh;
     const fuelText = Number.isFinite(fuelVal) ? fmt(fuelVal, 1) : "–";
+    // tank (chassis dyno): E…F like a real fuel gauge, reserve zone amber, content in l (or US gal)
+    const tank = d.tank;
+    this.minis.tank.wrap.hidden = !vehicle;
+    if (vehicle) {
+      const gal = u.fuel === "mpg";
+      const capShown = gal ? tank.capacityL / 3.785411784 : tank.capacityL;
+      const tk = `${capShown}|${gal}`;
+      if (tk !== this.tankKey) {
+        this.tankKey = tk;
+        this.setMini("tank", "Tank", gal ? "gal" : "l", { min: 0, max: capShown, major: capShown / 2, minor: capShown / 4, zone: { from: 0, to: capShown * RESERVE_SHARE }, caption: "E · F" });
+        this.minis.tank.last = "";
+        this.minis.tank.dial.draw(true);
+      }
+      const lv = gal ? tank.levelL / 3.785411784 : tank.levelL;
+      this.mini("tank", lv, fmt(lv, gal ? 1 : 0), dt);
+    }
     // km/l and mpg: coasting with no fuel reads off the scale end; unknown values rest at 0
     this.mini("fuel", Number.isFinite(fuelVal) ? fuelVal : moving && u.fuel !== "l/100 km" && s.running ? fs.max : 0, fuelText, dt);
 
@@ -354,6 +373,7 @@ export class CockpitView implements LayoutView {
       abs: vehicle ? { enabled: a.abs, active: !!ds.absActive } : undefined,
       esp: vehicle ? { esp: a.esp, asr: a.asr, active: !!(ds.asrActive || ds.espActive) } : undefined,
       ice: !!ds.iceWarning,
+      fuelReserve: vehicle ? d.tank.reserve : undefined,
     });
     const key = Object.values(set).join("|");
     if (key === this.lastLamps) return;

@@ -69,10 +69,12 @@ function moto(kind: "superbike" | "tourer", wetKg: number, cw: number, area: num
   };
 }
 
+/** tankL: tank volume from the manufacturers' data sheets / owner's manuals (rounded) [S]. */
 export const VEHICLE_LIBRARY: LibraryCar[] = [
   {
     id: "car-vw-golf7-gti", name: "VW Golf 7 GTI (DSG)", maker: "VW", years: "2013–2017", engineId: "ref-vw-ea888-gen3-chhb",
     setup: {
+      tankL: 50,
       vehicle: body(1382, 0.31, 2.19, "fwd", 0.62, 0.55, 2.631),
       tyre: tyre("uhp", 225, 45, 17, "W"),
       gearbox: "dsg",
@@ -87,6 +89,7 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
   {
     id: "car-vw-golf6-tdi", name: "VW Golf 6 2.0 TDI (Handschalter)", maker: "VW", years: "2008–2012", engineId: "lib-vw-ea189-20tdi-103kw",
     setup: {
+      tankL: 55,
       vehicle: body(mass(1320, "DIN"), 0.32, 2.22, "fwd", 0.63, 0.55, 2.578),
       tyre: tyre("standard", 205, 55, 16, "V"),
       gearbox: "manual",
@@ -100,6 +103,7 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
   {
     id: "car-citroen-c1-10", name: "Citroën C1 1.0 (68 PS, Basis)", maker: "Citroën", years: "2008–2012", engineId: "lib-toyota-1kr-fe",
     setup: {
+      tankL: 35,
       // kerb weight 875 kg EU (ADAC); cW ≈ 0.33 and frontal area ≈ 2.0 m² (tall small car, 1,63 m × 1,47 m) [S];
       // wheelbase 2,340 m. Simulated Vmax ≈ 169 km/h is ≈ 8 % above the factory 157 km/h (engine model ≈ 8 % strong
       // in the mid range, within the library tolerance)
@@ -116,6 +120,7 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
   {
     id: "car-bmw-530d-e60", name: "BMW 530d E60 (Steptronic)", maker: "BMW", years: "2005–2007", engineId: "lib-bmw-m57d30tu2",
     setup: {
+      tankL: 70,
       vehicle: body(mass(1590, "DIN"), 0.28, 2.26, "rwd", 0.51, 0.53, 2.888),
       tyre: tyre("standard", 245, 45, 17, "W"),
       gearbox: "dsg",
@@ -129,6 +134,7 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
   {
     id: "car-bmw-m3-e46", name: "BMW M3 E46", maker: "BMW", years: "2000–2006", engineId: "ref-bmw-s54b32",
     setup: {
+      tankL: 63,
       vehicle: body(mass(1570, "DIN"), 0.32, 2.07, "rwd", 0.51, 0.5, 2.731),
       tyre: tyre("uhp", 255, 40, 18, "Y"),
       gearbox: "manual",
@@ -142,6 +148,7 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
   {
     id: "car-bmw-m3-e92", name: "BMW M3 E92 (Handschalter)", maker: "BMW", years: "2007–2013", engineId: "lib-bmw-s65b40",
     setup: {
+      tankL: 63,
       vehicle: body(1655, 0.31, 2.17, "rwd", 0.52, 0.5, 2.761),
       tyre: tyre("uhp", 265, 40, 18, "Y"),
       gearbox: "manual",
@@ -155,6 +162,7 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
   {
     id: "car-toyota-supra-mk4", name: "Toyota Supra Mk4 Turbo (JZA80)", maker: "Toyota", years: "1993–2002", engineId: "lib-toyota-2jz-gte",
     setup: {
+      tankL: 70,
       vehicle: body(mass(1570, "DIN"), 0.32, 1.98, "rwd", 0.53, 0.48, 2.55),
       tyre: tyre("uhp", 255, 40, 17, "W"),
       gearbox: "manual",
@@ -168,6 +176,7 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
   {
     id: "car-nissan-skyline-r34", name: "Nissan Skyline GT-R R34", maker: "Nissan", years: "1999–2002", engineId: "lib-nissan-rb26dett",
     setup: {
+      tankL: 65,
       vehicle: body(mass(1560, "DIN"), 0.35, 1.95, "awd", 0.555, 0.5, 2.665),
       tyre: tyre("uhp", 245, 40, 18, "Y"),
       gearbox: "manual",
@@ -182,6 +191,7 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
   {
     id: "car-subaru-impreza-sti", name: "Subaru Impreza WRX STI (GR)", maker: "Subaru", years: "2008–2014", engineId: "lib-subaru-ej257",
     setup: {
+      tankL: 60,
       vehicle: body(1505, 0.36, 2.15, "awd", 0.6, 0.52, 2.625),
       tyre: tyre("uhp", 245, 40, 18, "W"),
       gearbox: "manual",
@@ -195,6 +205,7 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
   {
     id: "car-honda-integra-dc5", name: "Honda Integra Type R (DC5)", maker: "Honda", years: "2001–2006", engineId: "ref-honda-k20a-type-r",
     setup: {
+      tankL: 50,
       vehicle: body(mass(1170, "DIN"), 0.32, 1.95, "fwd", 0.62, 0.5, 2.57),
       tyre: tyre("uhp", 215, 45, 17, "W"),
       gearbox: "manual",
@@ -208,6 +219,7 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
   {
     id: "car-chevrolet-corvette-c6", name: "Chevrolet Corvette C6 (LS3)", maker: "Chevrolet", years: "2008–2013", engineId: "ref-gm-ls3-62",
     setup: {
+      tankL: 68,
       vehicle: body(mass(1461, "DIN"), 0.28, 2.0, "rwd", 0.51, 0.46, 2.685),
       tyre: tyre("uhp", 285, 35, 19, "(Y)"),
       gearbox: "manual",
@@ -221,6 +233,7 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
   {
     id: "car-ferrari-458", name: "Ferrari 458 Italia (F1-DCT)", maker: "Ferrari", years: "2009–2015", engineId: "ref-ferrari-f136fb-458",
     setup: {
+      tankL: 86,
       vehicle: body(mass(1485, "DIN"), 0.33, 2.0, "rwd", 0.42, 0.45, 2.65),
       tyre: tyre("uhp", 295, 35, 20, "(Y)"),
       gearbox: "dsg",
@@ -234,6 +247,7 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
   {
     id: "car-mercedes-e220d", name: "Mercedes-Benz E 220 d (W213)", maker: "Mercedes-Benz", years: "2016–2020", engineId: "ref-mercedes-om654-220d",
     setup: {
+      tankL: 50,
       vehicle: body(1680, 0.23, 2.33, "rwd", 0.53, 0.53, 2.939),
       tyre: tyre("standard", 225, 55, 17, "W"),
       gearbox: "dsg",
@@ -247,6 +261,7 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
   {
     id: "car-toyota-land-cruiser-120", name: "Toyota Land Cruiser Prado 120 3.0 D-4D", maker: "Toyota", years: "2003–2009", engineId: "lib-toyota-1kd-ftv",
     setup: {
+      tankL: 87,
       vehicle: body(mass(1940, "DIN"), 0.4, 2.95, "awd", 0.52, 0.72, 2.79),
       tyre: tyre("offroad", 265, 65, 17, "S"),
       gearbox: "dsg",
@@ -260,43 +275,43 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
   // --- motorcycles (mass = published wet / ready-to-ride weight + 75 kg rider; 0–100 magazine values [S])
   {
     id: "moto-honda-cbr1000rr-sc59", name: "Honda CBR1000RR Fireblade (SC59)", maker: "Honda", years: "2008–2011", engineId: "lib-honda-cbr1000rr-sc59",
-    setup: moto("superbike", 199, 0.6, 0.5, [190, 50, 17], "(Y)", 4.2, { h: 0.6, rear: 0.7, wb: 1.41 }),
+    setup: { ...moto("superbike", 199, 0.6, 0.5, [190, 50, 17], "(Y)", 4.2, { h: 0.6, rear: 0.7, wb: 1.41 }), tankL: 17.7 },
     factory: { kerbKg: 199, kerbNorm: "wet", t0to100S: 3.0, vmaxKmh: 290, vmaxGoverned: false },
     source: "Honda CBR1000RR 2008: 199 kg vollgetankt, 131 kW; Vmax/0–100 Testwerte (Motorrad, PS) [S]",
   },
   {
     id: "moto-yamaha-r1-cp4", name: "Yamaha YZF-R1 Crossplane", maker: "Yamaha", years: "2009–2014", engineId: "lib-yamaha-r1-cp4",
-    setup: moto("superbike", 206, 0.6, 0.5, [190, 55, 17], "(Y)", 4.73, { h: 0.62, rear: 0.7, wb: 1.415 }),
+    setup: { ...moto("superbike", 206, 0.6, 0.5, [190, 55, 17], "(Y)", 4.73, { h: 0.62, rear: 0.7, wb: 1.415 }), tankL: 18 },
     factory: { kerbKg: 206, kerbNorm: "wet", t0to100S: 3.0, vmaxKmh: 285, vmaxGoverned: false },
     source: "Yamaha YZF-R1 2009: 206 kg vollgetankt, 134 kW; Vmax/0–100 Testwerte [S]",
   },
   {
     id: "moto-ducati-1199-panigale", name: "Ducati 1199 Panigale", maker: "Ducati", years: "2012–2014", engineId: "lib-ducati-1199-superquadro",
-    setup: moto("superbike", 188, 0.58, 0.5, [200, 55, 17], "(Y)", 3.94, { h: 0.6, rear: 0.69, wb: 1.437 }),
+    setup: { ...moto("superbike", 188, 0.58, 0.5, [200, 55, 17], "(Y)", 3.94, { h: 0.6, rear: 0.69, wb: 1.437 }), tankL: 17 },
     factory: { kerbKg: 188, kerbNorm: "wet", t0to100S: 3.0, vmaxKmh: 295, vmaxGoverned: false },
     source: "Ducati 1199 Panigale: 188 kg fahrbereit (164 kg trocken), 143 kW; Vmax/0–100 Testwerte [S]",
   },
   {
     id: "moto-triumph-street-triple-765rs", name: "Triumph Street Triple 765 RS", maker: "Triumph", years: "2020–2022", engineId: "lib-triumph-765-triple",
-    setup: moto("superbike", 188, 0.7, 0.55, [180, 55, 17], "W", 4.8, { h: 0.62, rear: 0.68, wb: 1.405 }),
+    setup: { ...moto("superbike", 188, 0.7, 0.55, [180, 55, 17], "W", 4.8, { h: 0.62, rear: 0.68, wb: 1.405 }), tankL: 15 },
     factory: { kerbKg: 188, kerbNorm: "wet", t0to100S: 3.3, vmaxKmh: 250, vmaxGoverned: false },
     source: "Triumph Street Triple RS 2020: 166 kg trocken, ≈ 188 kg fahrbereit, 90 kW; naked bike ohne Verkleidung (cW·A höher) [S]",
   },
   {
     id: "moto-ktm-690-duke", name: "KTM 690 Duke", maker: "KTM", years: "2016–2019", engineId: "lib-ktm-690-lc4",
-    setup: moto("superbike", 160, 0.75, 0.55, [160, 60, 17], "W", 4.13, { h: 0.65, rear: 0.68, wb: 1.466 }),
+    setup: { ...moto("superbike", 160, 0.75, 0.55, [160, 60, 17], "W", 4.13, { h: 0.65, rear: 0.68, wb: 1.466 }), tankL: 14 },
     factory: { kerbKg: 160, kerbNorm: "wet", t0to100S: 3.6, vmaxKmh: 195, vmaxGoverned: false },
     source: "KTM 690 Duke 2016: 150 kg fahrbereit ohne Kraftstoff (+ 14 l ≈ 160 kg), 54 kW; Vmax/0–100 Testwerte [S]",
   },
   {
     id: "moto-bmw-r1250gs", name: "BMW R 1250 GS", maker: "BMW", years: "2019–2023", engineId: "lib-bmw-r1250-boxer",
-    setup: moto("tourer", 249, 0.68, 0.95, [170, 60, 17], "V", 3.6, { h: 0.68, rear: 0.72, wb: 1.525 }),
+    setup: { ...moto("tourer", 249, 0.68, 0.95, [170, 60, 17], "V", 3.6, { h: 0.68, rear: 0.72, wb: 1.525 }), tankL: 20 },
     factory: { kerbKg: 249, kerbNorm: "wet", t0to100S: 3.7, vmaxKmh: 210, vmaxGoverned: false },
     source: "BMW R 1250 GS: 249 kg fahrbereit (90 % getankt), 100 kW, Vmax „über 200 km/h“; 0–100 Testwert [S]",
   },
   {
     id: "moto-harley-street-glide-m8", name: "Harley-Davidson Street Glide (Milwaukee-Eight 107)", maker: "Harley-Davidson", years: "2017–2020", engineId: "lib-harley-m8-107",
-    setup: moto("tourer", 375, 0.7, 0.95, [180, 65, 16], "H", 3.2, { h: 0.6, rear: 0.75, wb: 1.625 }),
+    setup: { ...moto("tourer", 375, 0.7, 0.95, [180, 65, 16], "H", 3.2, { h: 0.6, rear: 0.75, wb: 1.625 }), tankL: 22.7 },
     factory: { kerbKg: 375, kerbNorm: "wet", t0to100S: 4.9, vmaxKmh: 180, vmaxGoverned: false },
     source: "Harley-Davidson Street Glide 2017: 375 kg fahrbereit, 64 kW / 150 Nm; Vmax/0–100 Testwerte [S]",
   },
