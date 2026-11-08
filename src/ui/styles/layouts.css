@@ -728,3 +728,8 @@
     font-size: var(--fs-14);
   }
 }
+
+/* the road line only matters on the chassis dyno */
+.ck.is-engine-dyno .ck__grade {
+  display: none;
+}

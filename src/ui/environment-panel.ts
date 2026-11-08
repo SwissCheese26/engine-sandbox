@@ -152,7 +152,8 @@ export class EnvironmentPanel {
   private profileCanvas: HTMLCanvasElement;
   private profileOut: HTMLElement;
   /** Sampled route (redrawn only when the route changes) and the last drawn marker position. */
-  private profile: { terrain: Terrain; lengthM: number; altitudeM: number[] } | null = null;
+  private profile: { terrain: Terrain; lengthM: number; altitudeM: number[]; lo: number; hi: number } | null = null;
+  private colors: { line: string; mark: string } | null = null;
   private lastMark = "";
   private lockNote: HTMLElement;
   private moving = false;
@@ -280,7 +281,10 @@ export class EnvironmentPanel {
     for (const k of ["altitude", "grade"] as const) (this.ranges.get(k)!.input.closest("[data-range]") as HTMLElement).hidden = route;
     this.profileBox.hidden = !route;
     if (route) {
-      if (this.profile?.terrain !== t) this.profile = { terrain: t, ...terrainSamples(t, 160) };
+      if (this.profile?.terrain !== t) {
+        const smp = terrainSamples(t, 160);
+        this.profile = { terrain: t, ...smp, lo: Math.min(...smp.altitudeM), hi: Math.max(...smp.altitudeM) };
+      }
       this.lastMark = "";
       this.drawMarker();
       this.airOut.textContent = "Höhe und Steigung folgen der Strecke; die Luft wird mit der Höhe dünner.";
@@ -303,36 +307,40 @@ export class EnvironmentPanel {
     const alt = st.roadAltitudeM ?? 0;
     const g = st.roadGradePct ?? 0;
     const u = (((pos % p.lengthM) + p.lengthM) % p.lengthM) / p.lengthM;
-    const key = `${Math.round(u * 600)}|${Math.round(alt)}|${g.toFixed(1)}|${Math.round(pos / 100)}|${prefs().distance}`;
+    const cw = Math.round(this.profileCanvas.clientWidth);
+    if (cw === 0) return; // hidden: drawn when it is shown (width is part of the key)
+    const key = `${Math.round(u * 400)}|${Math.round(alt)}|${g.toFixed(1)}|${Math.round(pos / 100)}|${prefs().distance}|${cw}`;
     if (key === this.lastMark) return;
     this.lastMark = key;
     const metric = prefs().distance !== "mi";
     const altText = metric ? `${fmt(alt)} m` : `${fmt(alt * 3.28084)} ft`;
     const km = pos / 1000;
     const dist = metric ? `${fmt(km, 1)} km` : `${fmt(km * 0.621371, 1)} mi`;
-    this.profileOut.textContent = `${altText} · ${g > 0.05 ? "+" : ""}${fmt(g, 1)} % · ${dist} gefahren`;
+    const slope = Math.abs(g) < 0.05 ? "eben" : `${g > 0 ? "+" : "−"}${fmt(Math.abs(g), 1)} %`;
+    this.profileOut.textContent = `${altText} · ${slope} · Position ${dist}`;
     const c = this.profileCanvas;
     const ctx = c.getContext("2d");
     if (!ctx) return;
     const dpr = Math.min(2, globalThis.devicePixelRatio || 1);
-    const w = Math.max(160, Math.round(c.clientWidth || 320));
+    const w = cw;
     const h = 72;
-    if (c.width !== w * dpr) {
-      c.width = w * dpr;
-      c.height = h * dpr;
+    if (c.width !== Math.round(w * dpr)) {
+      c.width = Math.round(w * dpr);
+      c.height = Math.round(h * dpr);
     }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, w, h);
     const a = p.altitudeM;
-    const lo = Math.min(...a);
-    const hi = Math.max(...a);
+    const { lo, hi } = p;
     const span = Math.max(20, hi - lo);
     const pad = 6;
     const X = (i: number) => (i / (a.length - 1)) * w;
     const Y = (v: number) => h - pad - ((v - lo) / span) * (h - 2 * pad);
-    const css = getComputedStyle(this.el);
-    const line = css.getPropertyValue("--alu").trim() || "#d3d6cf";
-    const mark = css.getPropertyValue("--signal").trim() || "#f6a800";
+    if (!this.colors) {
+      const css = getComputedStyle(this.el);
+      this.colors = { line: css.getPropertyValue("--alu").trim() || "#d3d6cf", mark: css.getPropertyValue("--signal").trim() || "#f6a800" };
+    }
+    const { line, mark } = this.colors;
     ctx.beginPath();
     ctx.moveTo(0, h);
     a.forEach((v, i) => ctx.lineTo(X(i), Y(v)));

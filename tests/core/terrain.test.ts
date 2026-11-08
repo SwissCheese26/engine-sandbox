@@ -76,3 +76,18 @@ test("driving a route: position follows the distance, the gradient changes and c
   h.dt.setEnvironment({ terrain: "alps" });
   expect(h.dt.state.positionM).toBe(0);
 });
+
+test("where a ramp route starts over, the air pressure changes slowly (no jump into the engine)", () => {
+  const r = cruiseRig("car-vw-golf6-tdi");
+  r.dt.setEnvironment({ terrain: "downhill" });
+  r.dt.setPosition(terrainLengthM("downhill") - 30); // 30 m before the next mountain
+  let maxStep = 0;
+  let last = r.dt.simInputs().ambientKpa;
+  r.run(10, 0.5, 0, () => {
+    const k = r.dt.simInputs().ambientKpa;
+    maxStep = Math.max(maxStep, Math.abs(k - last));
+    last = k;
+  });
+  expect(r.dt.state.positionM!).toBeGreaterThan(terrainLengthM("downhill")); // it did wrap
+  expect(maxStep).toBeLessThan(0.2); // kPa per frame (≈ 50 m/s altitude rate)
+});

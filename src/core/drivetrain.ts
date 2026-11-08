@@ -204,6 +204,9 @@ const GOV_KI = 0.06; // pedal per (km/h · s)
 
 const RAD_TO_RPM = 30 / Math.PI;
 
+/** Max. rate of the air altitude (m/s), see updateRoad (#48). Fast real climbs reach ≈ 5 m/s. */
+const AIR_ALT_RATE = 50;
+
 export class Drivetrain {
   private st: DrivetrainState;
   private shiftT = 0;
@@ -216,6 +219,7 @@ export class Drivetrain {
   /** Issue #48: distance along the route and the road there (gradient, altitude). */
   private positionM = 0;
   private road = { altitudeM: 0, gradePct: 0 };
+  private airAltM = 0;
   private govActive = false;
   private govI = 0;
   private govCap = 1;
@@ -353,7 +357,7 @@ export class Drivetrain {
 
   /** ambientC / ambientKpa for SimInputs (engine intake air) from the environment (altitude of the road, #48). */
   simInputs(): { ambientC: number; ambientKpa: number } {
-    return { ambientC: this.env.ambientC, ambientKpa: altitudeToKpa(this.road.altitudeM) };
+    return { ambientC: this.env.ambientC, ambientKpa: altitudeToKpa(this.airAltM) };
   }
 
   /** Position along the route (#48), e.g. to start over. */
@@ -362,8 +366,15 @@ export class Drivetrain {
     this.updateRoad();
   }
 
-  private updateRoad() {
+  /**
+   * Road at the current position. The altitude used for the air (pressure, density) follows the road altitude at
+   * most AIR_ALT_RATE m/s: where a ramp route starts over ("Berg hoch/runter", next mountain) the air changes over
+   * half a minute instead of in one frame (no torque jump in the engine). dt = 0: set directly (new route/setting).
+   */
+  private updateRoad(dt = 0) {
     this.road = roadAt(this.env, this.positionM);
+    const target = this.road.altitudeM;
+    this.airAltM = dt > 0 ? this.airAltM + Math.max(-AIR_ALT_RATE * dt, Math.min(AIR_ALT_RATE * dt, target - this.airAltM)) : target;
     this.st.positionM = this.positionM;
     this.st.roadGradePct = this.road.gradePct;
     this.st.roadAltitudeM = this.road.altitudeM;
@@ -382,6 +393,9 @@ export class Drivetrain {
 
   /** Loads a complete car (issue #22): body, tyre, gearbox incl. its own ratios, governor. Vehicle at standstill. */
   applyCar(car: CarSetup) {
+    // another car starts at the beginning of the route (#48)
+    this.positionM = 0;
+    this.updateRoad();
     const wasCar = this.kind === "car";
     this.kind = car.kind ?? "car";
     // motorcycles (issue #25 presets: CBR1000RR-class superbike, tourer) have ABS but no ESP; traction control is
@@ -584,8 +598,8 @@ export class Drivetrain {
     // route position from the road speed (#48): the gradient and altitude follow the profile
     if (Number.isFinite(vRoad) && dt > 0 && dt < 1) {
       this.positionM += vRoad * dt;
+      this.updateRoad(dt);
     }
-    this.updateRoad();
     const rpm = engine.rpm;
     const idle = this.cfg.idleRpm;
     const limit = this.cfg.revLimitRpm;
@@ -818,7 +832,7 @@ export class Drivetrain {
       ...(torqueRatio > 1 ? { torqueRatio } : {}),
       abs: a.abs,
       gradePct: this.road.gradePct,
-      airDensityKgM3: airDensity(altitudeToKpa(this.road.altitudeM), this.env.ambientC),
+      airDensityKgM3: airDensity(altitudeToKpa(this.airAltM), this.env.ambientC),
       ...(cut > 0 ? { torqueCut: cut } : {}),
     };
   }
