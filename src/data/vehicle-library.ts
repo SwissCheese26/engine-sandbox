@@ -77,6 +77,22 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
     source: "VW Preisliste/Technische Daten Golf VI 2.0 TDI 103 kW (9,3 s, 210 km/h)",
   },
   {
+    id: "car-citroen-c1-10", name: "Citroën C1 1.0 (68 PS, Basis)", maker: "Citroën", years: "2008–2012", engineId: "lib-toyota-1kr-fe",
+    setup: {
+      // kerb weight 875 kg EU (ADAC); cW ≈ 0.33 and frontal area ≈ 2.0 m² (tall small car, 1,63 m × 1,47 m) [S];
+      // wheelbase 2,340 m. Simulated Vmax ≈ 169 km/h is ≈ 8 % above the factory 157 km/h (engine model ≈ 8 % strong
+      // in the mid range, within the library tolerance)
+      vehicle: body(mass(875, "EU"), 0.33, 2.0, "fwd", 0.63, 0.52, 2.34),
+      tyre: tyre("standard", 155, 65, 14, "T"),
+      gearbox: "manual",
+      // Toyota C551 5-speed: 3.545/1.913/1.310/1.027/0.850, final drive 3.550 (Aygo/C1/107)
+      gearboxSpec: box([3.545, 1.913, 1.31, 1.027, 0.85], 3.55, 0.93, 0.4),
+      speedLimitKmh: null,
+    },
+    factory: { kerbKg: 875, kerbNorm: "EU", t0to100S: 13.7, vmaxKmh: 157, vmaxGoverned: false, cw: 0.33 },
+    source: "ADAC-Autokatalog Citroën C1 1.0 (2008): 50 kW, 875 kg EU, 13,7 s, 157 km/h, 155/65 R14; Getriebe C551 laut arithmophobia.squarespace.com (Toyota C-Series)",
+  },
+  {
     id: "car-bmw-530d-e60", name: "BMW 530d E60 (Steptronic)", maker: "BMW", years: "2005–2007", engineId: "lib-bmw-m57d30tu2",
     setup: {
       vehicle: body(mass(1590, "DIN"), 0.28, 2.26, "rwd", 0.51, 0.53, 2.888),

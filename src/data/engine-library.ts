@@ -131,6 +131,20 @@ const EXTRA: LibraryEngine[] = [
     expected: { peakTorqueNm: 400, peakTorqueRpm: 3900, peakPowerKw: 309, peakPowerRpm: 8300 },
     source: "BMW (S65B40: 92 × 75,2 mm, ε 12,0, 309 kW @ 8300, 400 Nm @ 3900)",
   },
+  {
+    maker: "Toyota", cars: "Citroën C1, Peugeot 107, Toyota Aygo", years: "2005–2014",
+    config: {
+      id: "lib-toyota-1kr-fe", name: "Toyota 1KR-FE (1.0 R3, 50 kW)", fuel: "petrol",
+      block: blk("inline", 3, 71, 84, 115, 10.5, "aluminium", { crankshaft: "cast", conrods: "cast-steel" }),
+      head: { valvetrain: "dohc", valvesPerCylinder: 4, camProfile: 0.2, variableTiming: "intake-cam" },
+      induction: { ...NA, intakeRunnerLengthMm: 400 },
+      fuelSystem: { kind: "petrol", mixture: "port-injection", fuel: "ron95", fullLoadLambda: 0.9, ignitionAdvanceOffsetDeg: 0 },
+      exhaust: { manifold: "cast-log", egr: false, catalyst: true, particulateFilter: false, scr: false },
+      cooling: { radiatorCapacityKw: 60, thermostatOpenC: 88, oilCooler: false }, revLimitRpm: 6500, idleRpm: 750,
+    },
+    expected: { peakTorqueNm: 93, peakTorqueRpm: 3600, peakPowerKw: 50, peakPowerRpm: 6000 },
+    source: "Toyota 1KR-FE (71 × 84 mm, ε 10,5, 998 cm³, DOHC 12V, VVT-i); Citroën C1 1.0 (2008): 50 kW (68 PS) @ 6000, 93 Nm @ 3600 laut ADAC-Autokatalog; Pleuel, Nocken, Saugrohr geschätzt [S]",
+  },
 ];
 
 /**
