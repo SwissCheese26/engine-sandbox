@@ -3,7 +3,7 @@
 // onSettingsChange().
 import { SPEEDO_SCALES, clampSpeedoKmh, isSpeedoScale } from "./layouts/logic.ts";
 import {
-  DEFAULT_SETTINGS, FUEL_PRICE_MAX, FUEL_PRICE_MIN, GAS_RAMPS, LAYOUTS, PRESETS, QUANTITIES, REALISM, clampFuelPrice, clearAllStorage, getSettings,
+  DEFAULT_SETTINGS, FUEL_PRICE_MAX, FUEL_PRICE_MIN, GAS_RAMPS, LAYOUTS, PRESETS, QUANTITIES, REALISM, WIPE_FLAG, clampFuelPrice, clearAllStorage, getSettings,
   resetSettings, setSettings, unitsOf, type GasRamp, type LayoutId, type PresetId, type Quantity, type Settings,
 } from "./settings.ts";
 import { clearUnitOverrides, fmtQ, overrideCount } from "./units.ts";
@@ -290,6 +290,12 @@ export class SettingsScreen {
     });
     el.querySelector("[data-control=reset-all-yes]")!.addEventListener("click", () => {
       clearAllStorage();
+      try {
+        // pagehide handlers (board computer, tank) write their keys back while unloading: main.ts wipes again
+        sessionStorage.setItem(WIPE_FLAG, "1");
+      } catch {
+        /* no sessionStorage: the first wipe has to do */
+      }
       this.resetStatus.textContent = "Alles gelöscht. Die Seite lädt neu …";
       // modules keep their state in memory: a fresh start is the only clean reset
       location.hash = "#menu";

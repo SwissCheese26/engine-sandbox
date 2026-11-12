@@ -173,6 +173,16 @@ function storage(): Storage | null {
 /** Per-instrument unit choices (#21), owned by units.ts; named here for the one-time migration. */
 export const UNIT_OVERRIDES_KEY = "pruefzelle.units";
 
+/** Stores migrated settings and drops the legacy keys; a failing write keeps the migrated values for this visit. */
+function persistMigration(st: Storage, s: Settings) {
+  try {
+    st.setItem(SETTINGS_KEY, JSON.stringify(s));
+    for (const k of Object.values(LEGACY_KEYS)) st.removeItem(k);
+  } catch {
+    /* storage full or blocked: the legacy keys stay and are migrated again next time */
+  }
+}
+
 export function loadSettings(): Settings {
   const st = storage();
   try {
@@ -183,17 +193,19 @@ export function loadSettings(): Settings {
       if (!st || !Object.values(LEGACY_KEYS).some((k) => st.getItem(k) !== null)) return validateSettings(obj);
       // one source of truth (#66): the old single keys go into the settings and are removed
       const s = validateSettings(migrateLegacy(obj, (k) => st.getItem(k)));
-      st.setItem(SETTINGS_KEY, JSON.stringify(s));
-      for (const k of Object.values(LEGACY_KEYS)) st.removeItem(k);
+      persistMigration(st, s);
       return s;
     }
     // first visit with settings (#24): unit clicks from before #21 were chosen without a global default
     // and would hide the new setting, so they are dropped once; storing the settings marks it as done
     const s = validateSettings(st ? migrateLegacy({}, (k) => st.getItem(k)) : null);
     if (st) {
-      for (const k of Object.values(LEGACY_KEYS)) st.removeItem(k);
-      st.removeItem(UNIT_OVERRIDES_KEY);
-      st.setItem(SETTINGS_KEY, JSON.stringify(s));
+      try {
+        st.removeItem(UNIT_OVERRIDES_KEY);
+      } catch {
+        /* keep going: the settings below matter more */
+      }
+      persistMigration(st, s);
     }
     return s;
   } catch {
@@ -237,6 +249,9 @@ export function onSettingsChange(fn: (s: Settings) => void): () => void {
 export function resetSettings() {
   setSettings(DEFAULT_SETTINGS);
 }
+
+/** sessionStorage flag: "Alles zurücksetzen" wipes once more right after the reload (main.ts). */
+export const WIPE_FLAG = "pruefzelle.wipe";
 
 /** Every key this game stores in localStorage (prefix `pruefzelle.`). */
 export const STORAGE_PREFIX = "pruefzelle.";
