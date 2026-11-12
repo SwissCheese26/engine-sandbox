@@ -1,7 +1,7 @@
 // Issue #55: in-app bug report (diagnosis text, issue link, trimming, ring buffer).
 import { expect, test } from "bun:test";
 import {
-  FIELD_IDS, MAX_URL_LENGTH, RingBuffer, TRIM_NOTE, buildDiagnosis, buildIssueUrl, errorLine, issueTitle, samplesText, shortUserAgent,
+  FIELD_IDS, MAX_URL_LENGTH, codeFence, RingBuffer, TRIM_NOTE, buildDiagnosis, buildIssueUrl, errorLine, issueTitle, samplesText, shortUserAgent,
   type BugReport, type ValueSample,
 } from "../../src/ui/bug-report.ts";
 
@@ -88,4 +88,11 @@ test("error lines are short and keep only the file name", () => {
   expect(errorLine("TypeError: x is undefined", "https://swisscheese26.github.io/engine-sandbox/main.js?v=1", 12)).toBe("TypeError: x is undefined (main.js:12)");
   expect(errorLine("a\n   b")).toBe("a b");
   expect(errorLine("y".repeat(500)).length).toBe(240);
+});
+
+test("the diagnosis fence is longer than any backtick run inside", () => {
+  expect(codeFence("abc")).toBe("```");
+  expect(codeFence("a ``` b ````` c")).toBe("``````");
+  const d = new URL(buildIssueUrl(report({ diagnosis: "x ```\n# fake" })).url).searchParams.get(FIELD_IDS.diagnosis)!;
+  expect(d).toBe("````\nx ```\n# fake\n````");
 });

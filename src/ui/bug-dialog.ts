@@ -95,8 +95,6 @@ export class BugDialog {
     return this.el.querySelector<T>(sel)!;
   }
   private opener: HTMLElement | null = null;
-  /** The diagnosis text was edited by hand: ticking sections asks before overwriting it. */
-  private edited = false;
 
   constructor() {
     const d = document.createElement("dialog");
@@ -116,7 +114,7 @@ export class BugDialog {
           <textarea name="expected" rows="2"></textarea></label>
         <fieldset class="bugreport__diag">
           <legend>Diagnose (wird mitgeschickt)</legend>
-          <p class="bugreport__hint">Keine persönlichen Daten: nur Version, Gerätetyp, Spielzustand und die letzten Sekunden der Werte. Abwählen, was nicht mit soll; der Text lässt sich auch bearbeiten.</p>
+          <p class="bugreport__hint">Keine persönlichen Daten: nur Version, Gerätetyp, Spielzustand und die letzten Sekunden der Werte. Abwählen, was nicht mit soll; der Text lässt sich danach auch bearbeiten (Häkchen setzen ihn neu).</p>
           <div class="bugreport__checks" data-out="checks"></div>
           <textarea name="diagnosis" rows="8" class="num bugreport__text" spellcheck="false" aria-label="Diagnose-Text"></textarea>
           <p class="bugreport__note" data-out="note" role="status"></p>
@@ -132,10 +130,7 @@ export class BugDialog {
     // keys typed here must not drive the engine (document handlers) or leave the sandbox (window Esc handler);
     // the dialog's own Esc (cancel) is the browser default and still works
     for (const t of ["keydown", "keyup"] as const) d.addEventListener(t, (e) => e.stopPropagation());
-    d.addEventListener("input", (e) => {
-      if ((e.target as HTMLElement).getAttribute("name") === "diagnosis") this.edited = true;
-      this.refreshLink();
-    });
+    d.addEventListener("input", () => this.refreshLink());
     d.addEventListener("change", (e) => {
       if ((e.target as HTMLInputElement).type === "checkbox") this.rebuildDiagnosis();
     });
@@ -172,7 +167,6 @@ export class BugDialog {
         return l;
       }),
     );
-    this.edited = false;
     this.rebuildDiagnosis();
     if (typeof this.el.showModal === "function") this.el.showModal();
     else this.el.setAttribute("open", "");
@@ -181,10 +175,9 @@ export class BugDialog {
 
   private rebuildDiagnosis() {
     const ta = this.q<HTMLTextAreaElement>('[name="diagnosis"]');
-    if (this.edited && !confirm("Deine Änderungen am Diagnose-Text werden überschrieben. Fortfahren?")) return;
     const on = new Set([...this.el.querySelectorAll<HTMLInputElement>("[data-section]:checked")].map((c) => c.dataset.section!));
+    // ticking rebuilds the text from the sections (hand edits are replaced; the hint says so)
     ta.value = buildDiagnosis(this.sections, on);
-    this.edited = false;
     this.refreshLink();
   }
 
@@ -202,15 +195,20 @@ export class BugDialog {
       diagnosis: this.val("diagnosis").trim(),
     });
     this.q<HTMLAnchorElement>('[data-action="send"]').href = url;
-    this.q<HTMLElement>('[data-out="note"]').textContent = trimmed
+    this.setNote(trimmed
       ? "Die Diagnose ist für den Link zu lang und wird gekürzt. Mit „Diagnose kopieren“ kannst du den vollständigen Text auf GitHub einfügen."
-      : `Label „${ISSUE_LABEL}“, Vorlage „Fehlermeldung“.`;
+      : `Label „${ISSUE_LABEL}“, Vorlage „Fehlermeldung“.`);
     return url;
+  }
+
+  /** Live region: written only when the text changes, so screen readers do not repeat it on every keystroke. */
+  private setNote(text: string) {
+    const note = this.q<HTMLElement>('[data-out="note"]');
+    if (note.textContent !== text) note.textContent = text;
   }
 
   private async copy() {
     const ta = this.q<HTMLTextAreaElement>('[name="diagnosis"]');
-    const note = this.q<HTMLElement>('[data-out="note"]');
     try {
       await navigator.clipboard.writeText(ta.value);
     } catch {
@@ -218,10 +216,10 @@ export class BugDialog {
       ta.focus();
       ta.select();
       if (!document.execCommand?.("copy")) {
-        note.textContent = "Kopieren nicht möglich: Text ist markiert, bitte selbst kopieren (Strg+C).";
+        this.setNote("Kopieren nicht möglich: Text ist markiert, bitte selbst kopieren (Strg+C).");
         return;
       }
     }
-    note.textContent = "Diagnose kopiert.";
+    this.setNote("Diagnose kopiert.");
   }
 }

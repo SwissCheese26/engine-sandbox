@@ -110,6 +110,12 @@ export function issueTitle(r: Pick<BugReport, "title" | "description">): string 
   return `[Bug] ${t.length > 80 ? t.slice(0, 79) + "…" : t}`;
 }
 
+/** Markdown code fence longer than the longest backtick run in `text` (at least ```), so the text cannot close it. */
+export function codeFence(text: string): string {
+  const longest = Math.max(0, ...(text.match(/`+/g) ?? []).map((m) => m.length));
+  return "`".repeat(Math.max(3, longest + 1));
+}
+
 function linkFor(r: BugReport): string {
   const q = new URLSearchParams();
   q.set("template", ISSUE_TEMPLATE);
@@ -118,7 +124,10 @@ function linkFor(r: BugReport): string {
   q.set(FIELD_IDS.description, r.description);
   q.set(FIELD_IDS.steps, r.steps);
   q.set(FIELD_IDS.expected, r.expected);
-  if (r.diagnosis) q.set(FIELD_IDS.diagnosis, "```\n" + r.diagnosis + "\n```");
+  if (r.diagnosis) {
+    const fence = codeFence(r.diagnosis);
+    q.set(FIELD_IDS.diagnosis, `${fence}\n${r.diagnosis}\n${fence}`);
+  }
   return `${REPO_URL}/issues/new?${q.toString()}`;
 }
 
