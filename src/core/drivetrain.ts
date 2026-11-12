@@ -304,6 +304,8 @@ export class Drivetrain {
   private emptyKg = DEFAULT_VEHICLE.massKg;
   private fullKg: number | null = null;
   private loadSh = 0;
+  /** Limiter of the car/motorcycle before a truck/bus was loaded (review PR #82). */
+  private carLimitKmh: number | null = DEFAULT_SPEED_LIMIT_KMH;
   /** Gear ratios in use (GEARBOXES[type] or a car's own, issue #22). */
   private spec: GearboxSpec;
   private tyreSetup: TyreSetup = DEFAULT_TYRE;
@@ -478,6 +480,8 @@ export class Drivetrain {
     this.positionM = 0;
     this.updateRoad();
     const wasCar = !isMotorcycleKind(this.kind);
+    // leaving a car/bike for a truck/bus: remember its limiter, setVehicle restores it on the way back (review PR #82)
+    if (!isCommercialKind(this.kind) && isCommercialKind(car.kind ?? "car") && this.st) this.carLimitKmh = this.st.speedLimitKmh;
     this.kind = car.kind ?? "car";
     // the car's own tank, full
     this.tank.setCapacity(car.tankL ?? DEFAULT_TANK_L[this.kind]);
@@ -524,8 +528,8 @@ export class Drivetrain {
   /** Vehicle preset: sets mass/aero/wheel, the default gearbox and final drive of that vehicle (issue #25). */
   setVehicle(kind: VehicleKind) {
     const p = VEHICLES[kind];
-    // commercial presets bring their own limiter (EU 92/6/EEC); back on a car/bike the previous one stays
-    const limit = p.speedLimitKmh ?? (isCommercialKind(this.kind) ? DEFAULT_SPEED_LIMIT_KMH : this.st.speedLimitKmh);
+    // commercial presets bring their own limiter (EU 92/6/EEC); back from a truck/bus the car's previous limiter returns
+    const limit = p.speedLimitKmh ?? (isCommercialKind(this.kind) ? this.carLimitKmh : this.st.speedLimitKmh);
     this.applyCar({
       kind, vehicle: p.params, tyre: p.tyre, gearbox: p.gearboxes[0]!,
       gearboxSpec: { ...(p.gearboxSpec ?? GEARBOXES[p.gearboxes[0]!]), finalDrive: p.finalDrive }, speedLimitKmh: limit,
@@ -732,9 +736,10 @@ export class Drivetrain {
 
     // --- DSG automatic shift schedule (Drive mode) [S]: upshift point rises with pedal, downshift keeps torque
     if (s.type === "dsg" && !s.shifting && s.gear > 0) {
-      // top of the schedule below the diesel governor ramp (it starts ≈ 200 rpm under the limit, diesel.md §3.2d), so
-      // low-revving truck engines (limit ≈ 2000 rpm) still upshift at full load (issue #31); cars ≥ 5000 rpm unchanged
-      const upTop = Math.min(limit * 0.97, limit - 150);
+      // low-revving truck engines (limit < 3000 rpm, issue #31): top of the schedule 150 rpm below the limit, i.e.
+      // ahead of the diesel governor ramp (starts ≈ 200 rpm under the limit, diesel.md §3.2d), so they still upshift
+      // at full load; all other engines keep 0.97 × limit unchanged
+      const upTop = limit < 3000 ? Math.min(limit * 0.97, limit - 150) : limit * 0.97;
       const upRpm = Math.min(upTop, idle + 900 + Math.pow(req, 0.8) * (upTop - idle - 900));
       const downRpm = Math.max(idle * 1.35, upRpm * 0.42);
       if (!s.manualMode) {
@@ -953,6 +958,7 @@ export class Drivetrain {
       gradePct: this.road.gradePct,
       airDensityKgM3: airDensity(altitudeToKpa(this.airAltM), this.env.ambientC),
       ...(cut > 0 ? { torqueCut: cut } : {}),
+      ...(s.shifting ? { shifting: true } : {}),
     };
   }
 

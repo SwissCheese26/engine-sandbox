@@ -239,7 +239,8 @@ export class GearboxPanel {
     this.limitSel.addEventListener("change", () => {
       this.drivetrain.setSpeedLimit(this.limitSel.value === "off" ? null : Number(this.limitSel.value));
       try {
-        localStorage.setItem(LIMIT_KEY, this.limitSel.value);
+        // the truck/bus limiter (85 / 100 km/h) is not the car's choice and is not remembered (review PR #82)
+        if (!isCommercialKind(this.drivetrain.kind)) localStorage.setItem(LIMIT_KEY, this.limitSel.value);
       } catch {
         // storage blocked: setting lasts for this session only
       }
