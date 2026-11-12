@@ -1,5 +1,6 @@
 // Global settings (issue #24): unit preset for the whole game. Stored per browser in localStorage
 // (`pruefzelle.settings`), validated on load. No DOM here, so the module runs in unit tests.
+import { DEFAULT_FIELDS, isCockpitChoice, validateFields, type CockpitChoice, type FieldSet } from "./layouts/designs.ts";
 import { clampSpeedoKmh, isSpeedoScale, type SpeedoScale } from "./layouts/logic.ts";
 
 /** Quantities the player can choose a unit for. The physics stays SI; this is display only. */
@@ -57,6 +58,10 @@ export interface Settings {
   /** Full scale of the cockpit speedometer, and the value of the "Eigene" scale in km/h. */
   speedo: SpeedoScale;
   speedoCustomKmh: number;
+  /** Look of the cockpit (#83): colours, dials and arrangement; the values stay the same. */
+  cockpitDesign: CockpitChoice;
+  /** What the three switchable fields of the digital cockpit show (#83). */
+  ckFields: FieldSet;
   /** Gas lever on the chassis dyno: "spring" = back to 0 when let go (pedal), "hold" = stays (hand throttle). */
   throttle: "spring" | "hold";
   /** Shift buttons (▲ gear ▼) in the bottom control bar: "auto" = on touch screens, "on" = always, "off" = never. */
@@ -95,7 +100,7 @@ export const FUEL_PRICE_MIN = 0.1;
 export const FUEL_PRICE_MAX = 10;
 
 export const DEFAULT_SETTINGS: Settings = {
-  preset: "metric-kw", custom: { ...METRIC }, layout: "pruefzelle", speedo: "standard", speedoCustomKmh: 240, throttle: "spring", shiftPad: "auto",
+  preset: "metric-kw", custom: { ...METRIC }, layout: "pruefzelle", speedo: "standard", speedoCustomKmh: 240, cockpitDesign: "classic", ckFields: [...DEFAULT_FIELDS], throttle: "spring", shiftPad: "auto",
   gasRamp: 0, startWarm: false, autoMeasure: true, pedalSide: "right", wakeLock: true, vibration: "auto", realism: "real",
   fuelPrice: { diesel: 1.65, petrol: 1.75 },
 };
@@ -131,6 +136,8 @@ export function validateSettings(raw: unknown): Settings {
   const fp = (r.fuelPrice && typeof r.fuelPrice === "object" ? r.fuelPrice : {}) as Record<string, unknown>;
   return {
     preset, custom, layout, speedo, speedoCustomKmh: clampSpeedoKmh(r.speedoCustomKmh), throttle, shiftPad,
+    cockpitDesign: isCockpitChoice(r.cockpitDesign) ? r.cockpitDesign : d.cockpitDesign,
+    ckFields: validateFields(r.ckFields),
     gasRamp: oneOf(r.gasRamp, GAS_RAMPS.map((g) => g.s), d.gasRamp),
     startWarm: typeof r.startWarm === "boolean" ? r.startWarm : d.startWarm,
     autoMeasure: typeof r.autoMeasure === "boolean" ? r.autoMeasure : d.autoMeasure,

@@ -279,6 +279,7 @@ async function layouts(page, label) {
   if (!(parseInt(held ?? "0", 10) >= 30)) failures.push(`${label}: Gashebel lässt sich nicht ziehen (${held})`);
   if (after !== "0 %") failures.push(`${label}: Gashebel federt auf der Rolle nicht zurück (${held} → ${after})`);
   await page.keyboard.down("w");
+  await cockpitDesigns(page, label);
   for (const id of ["race", "compact"]) {
     await page.selectOption('select[data-control="layout"]', id);
     await page.waitForTimeout(400);
@@ -290,6 +291,52 @@ async function layouts(page, label) {
   await page.selectOption('select[data-control="layout"]', "pruefzelle");
   await page.waitForTimeout(200);
   if (!(await page.isVisible(RPM_READOUT))) failures.push(`${label}: zurück zur Prüfzelle fehlen die Instrumente`);
+}
+
+const DESIGNS = ["classic", "night-orange", "italian", "oldschool", "digital", "hud", "motorrad"];
+
+/**
+ * Cockpit designs (#83): switch through every design with the select in the cockpit while driving, one screenshot of
+ * the cluster each, no horizontal scroll; the digital fields cycle on click and arrow keys, the presets apply;
+ * "Automatisch nach Fahrzeug" shows the classic cluster for a car. Ends on "classic".
+ */
+async function cockpitDesigns(page, label) {
+  for (const id of DESIGNS) {
+    await page.selectOption('select[data-control="ck-design"]', id);
+    await page.waitForTimeout(450);
+    const st = await page.evaluate(() => ({ design: document.querySelector(".ck")?.dataset.design, sw: document.documentElement.scrollWidth - window.innerWidth }));
+    if (st.design !== id) failures.push(`${label}: Cockpit-Design ${id} nicht angewendet (${st.design})`);
+    if (st.sw > 0) failures.push(`${label}: Cockpit-Design ${id} scrollt horizontal (${st.sw} px)`);
+    if (!(await page.isVisible('[data-ck="speed-big"]'))) failures.push(`${label}: Cockpit-Design ${id} zeigt kein Tempo`);
+    await page.locator(".ck").screenshot({ path: join(outDir, `smoke-${label}-design-${id}.png`) });
+    if (id === "digital") {
+      const field = page.locator('.ck-field[data-field="0"]');
+      const before = await field.getAttribute("aria-label");
+      await field.click();
+      await page.waitForTimeout(120);
+      const after = await field.getAttribute("aria-label");
+      if (!/^Feld 1: [^\d]+ – antippen zum Wechseln$/.test(after ?? "") || after === before) failures.push(`${label}: Feld 1 wechselt nicht (${before} → ${after})`);
+      await field.focus();
+      await page.keyboard.press("ArrowLeft");
+      await page.waitForTimeout(120);
+      if ((await field.getAttribute("aria-label"))?.split(" ")[2] !== before?.split(" ")[2]) failures.push(`${label}: Pfeil links führt nicht zum vorigen Wert zurück`);
+      await page.click('[data-preset="track"]');
+      await page.waitForTimeout(120);
+      const labs = await page.$$eval(".ck-field .ck-field__lab", (n) => n.map((e) => e.textContent));
+      if (labs.join("|") !== "Öltemperatur|Kühlmittel|Ladedruck") failures.push(`${label}: Preset Rennstrecke falsch (${labs.join(", ")})`);
+      const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("pruefzelle.settings") ?? "{}").ckFields);
+      if (JSON.stringify(stored) !== JSON.stringify(["oilT", "coolant", "boost"])) failures.push(`${label}: Feldbelegung nicht gespeichert (${JSON.stringify(stored)})`);
+      await page.click('[data-preset="daily"]');
+      await page.waitForTimeout(150);
+      await page.locator(".ck").screenshot({ path: join(outDir, `smoke-${label}-design-digital-daily.png`) });
+    }
+  }
+  await page.selectOption('select[data-control="ck-design"]', "auto");
+  await page.waitForTimeout(200);
+  const auto = await page.evaluate(() => document.querySelector(".ck")?.dataset.design);
+  if (auto !== "classic") failures.push(`${label}: Automatisch nach Fahrzeug zeigt beim Pkw ${auto}`);
+  await page.selectOption('select[data-control="ck-design"]', "classic");
+  console.log(`${label}: ${DESIGNS.length} Cockpit-Designs geschaltet`);
 }
 
 // "Fehler melden" in the sandbox header (#55): dialog opens, the link targets the issue form with the diagnosis,
