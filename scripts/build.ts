@@ -2,6 +2,19 @@
 import { cp, mkdir, rm, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 
+/** App version shown in bug reports (#55): short commit sha (CI: GITHUB_SHA), else from git, else "dev". */
+function appVersion(): string {
+  if (process.env.GITHUB_SHA) return process.env.GITHUB_SHA.slice(0, 7);
+  try {
+    const r = Bun.spawnSync(["git", "rev-parse", "--short", "HEAD"], { stderr: "ignore" });
+    const v = r.stdout.toString().trim();
+    if (r.exitCode === 0 && v) return v;
+  } catch {
+    /* no git */
+  }
+  return "dev";
+}
+
 const ENTRYPOINTS = ["src/main.ts", "src/audio/engine-worklet.ts"].filter((p) => existsSync(p));
 
 export async function build(opts: { minify?: boolean; outdir?: string } = {}) {
@@ -17,6 +30,7 @@ export async function build(opts: { minify?: boolean; outdir?: string } = {}) {
     minify: opts.minify ?? true,
     sourcemap: "linked",
     naming: "[name].js",
+    define: { __APP_VERSION__: JSON.stringify(appVersion()) },
   });
   if (!result.success) {
     for (const log of result.logs) console.error(log);
