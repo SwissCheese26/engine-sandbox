@@ -20,6 +20,9 @@ import { CompactView } from "./layouts/compact.ts";
 import { RaceView } from "./layouts/race.ts";
 import { DriveInfo, type LayoutView } from "./layouts/view.ts";
 import { fmtQ } from "./units.ts";
+import { bugButton, setBugContext } from "./bug-dialog.ts";
+import { RingBuffer, SAMPLE_COUNT, SAMPLE_INTERVAL_S, samplesText, type DiagnosisSection, type ValueSample } from "./bug-report.ts";
+import { VEHICLE_LIBRARY } from "../data/vehicle-library.ts";
 
 /** Largest simulation step per frame; longer frames (tab in background) are clamped. */
 const MAX_DT = 1 / 30;
@@ -69,6 +72,9 @@ export class App {
   private layoutSel!: HTMLSelectElement;
   private info: DriveInfo;
   private sinceIgnition = 0;
+  /** Last ~5 s of live values for a bug report (#55). */
+  private samples = new RingBuffer<ValueSample>(SAMPLE_COUNT);
+  private sampleT = 0;
 
   constructor(private root: HTMLElement) {
     this.cfg = defaultConfig("diesel");
@@ -86,6 +92,7 @@ export class App {
     this.wire();
     this.applyConfig(this.cfg);
     this.setLayout(getSettings().layout);
+    setBugContext(() => this.bugSections());
     this.unsubscribeSettings = onSettingsChange((st) => {
       if (st.layout !== this.layoutId) this.setLayout(st.layout);
       this.syncUnits();
@@ -162,6 +169,8 @@ export class App {
       </label>
       <button type="button" class="btn bench-toggle" aria-expanded="false" aria-controls="werkbank">Werkbank öffnen</button>`;
     const toggle = top.querySelector<HTMLButtonElement>(".bench-toggle")!;
+    // "Fehler melden" (#55): icon button, compact enough for 390 px phones
+    toggle.before(bugButton(true, "cell__bug"));
     this.cell = cell;
     this.layoutSel = top.querySelector<HTMLSelectElement>("[data-control=layout]")!;
     this.layoutSel.addEventListener("change", () => setSettings({ layout: this.layoutSel.value as LayoutId }));
@@ -338,6 +347,55 @@ export class App {
     this.root.dataset.fuel = cfg.fuel;
   }
 
+  private sample(s: EngineState, dt: number) {
+    this.sampleT += dt;
+    if (this.sampleT < SAMPLE_INTERVAL_S) return;
+    this.sampleT = 0;
+    const vehicle = this.inputs.dynoMode === "vehicle";
+    const d = this.gearbox.drivetrain;
+    this.samples.push({
+      t: s.t, rpm: s.rpm, speedKmh: vehicle ? d.state.speedKmh : 0, gear: vehicle ? d.gearLabel() : "-",
+      pedal: this.inputs.pedal, braking: this.console.brakeHeld, running: s.running,
+    });
+  }
+
+  /** Sandbox part of the bug report diagnosis (#55): only game state, nothing personal. */
+  private bugSections(): DiagnosisSection[] {
+    const d = this.gearbox.drivetrain;
+    const ds = d.state;
+    const env = d.environment;
+    const vehicle = this.inputs.dynoMode === "vehicle";
+    const carId = this.gearbox.vehiclePanel.carId;
+    const car = VEHICLE_LIBRARY.find((c) => c.id === carId);
+    const terrain = env.terrain ?? "static";
+    const n = (v: number | undefined, digits = 1) => (v === undefined || !Number.isFinite(v) ? "–" : v.toFixed(digits));
+    return [
+      {
+        id: "view",
+        label: "Ansicht und Prüfstand",
+        text: `Route ${location.hash || "#sandbox"}, Ansicht ${this.layoutId}, Prüfstand ${this.inputs.dynoMode}${this.paused ? " (pausiert, Menü offen)" : ""}`,
+      },
+      {
+        id: "engine",
+        label: "Motor",
+        text: `${this.cfg.name} (id ${this.cfg.id}, ${this.cfg.fuel}), Begrenzer ${this.cfg.revLimitRpm} U/min, Zündung ${this.inputs.ignition ? "an" : "aus"}, läuft ${this.sim.state.running ? "ja" : "nein"}`,
+      },
+      {
+        id: "vehicle",
+        label: "Fahrzeug",
+        text: vehicle
+          ? `${car ? `${car.name} (id ${car.id})` : "eigenes Fahrzeug"}, Art ${d.kind}, Getriebe ${ds.type}, Gang ${d.gearLabel()} von ${ds.gearCount}, ${n(ds.speedKmh)} km/h, Tank ${Math.round(d.tank.fraction * 100)} %`
+          : "kein Fahrzeug (Motorprüfstand)",
+      },
+      {
+        id: "environment",
+        label: "Umwelt",
+        text: `Strecke ${terrain}${terrain === "static" ? `, Steigung ${n(env.gradePct)} %` : `, Position ${n(ds.positionM, 0)} m, Steigung dort ${n(ds.roadGradePct)} %`}, Höhe ${n(ds.roadAltitudeM ?? env.altitudeM, 0)} m, Wetter ${env.weather}, ${n(env.ambientC)} °C`,
+      },
+      { id: "values", label: "Werte der letzten 5 s", text: samplesText(this.samples.toArray()) },
+    ];
+  }
+
   private announce(text: string) {
     this.announcer.textContent = text;
   }
@@ -376,6 +434,7 @@ export class App {
         s = this.sim.state;
       }
       this.bench.setLocked(App.turning(s));
+      this.sample(s, dt);
       this.sinceIgnition = this.inputs.ignition ? this.sinceIgnition + dt : 0;
       const view = this.activeView;
       if (view) {
@@ -476,6 +535,7 @@ export class App {
     if (this.disposed) return;
     this.disposed = true;
     this.unsubscribeSettings();
+    setBugContext(null);
     cancelAnimationFrame(this.rafId);
     cancelAnimationFrame(this.resizeRaf);
     this.abort.abort();
