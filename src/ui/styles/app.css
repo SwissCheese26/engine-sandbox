@@ -37,6 +37,26 @@ kbd {
   border: 1px solid currentColor;
   opacity: 0.85;
 }
+/* input mode (#44, device.ts): html.is-touch is set by touch detection and switches live (tablet + keyboard).
+   On touch every keyboard hint goes; .touch-only texts replace them. */
+.touch-only {
+  display: none;
+}
+:root.is-touch .touch-only {
+  display: inline;
+}
+:root.is-touch kbd,
+:root.is-touch .kbd-only,
+:root.is-touch .cruise__keys,
+:root.is-touch .gearbox__keys {
+  display: none !important;
+}
+:root.is-touch .brakepedal {
+  display: inline-flex;
+}
+:root.is-touch .shiftpad.is-auto:not([hidden]) {
+  display: grid;
+}
 .num {
   font-family: var(--font-num);
   font-variant-numeric: tabular-nums;

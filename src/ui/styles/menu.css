@@ -717,6 +717,41 @@
   accent-color: var(--signal);
 }
 
+/* settings (#66): more choices per plate, reset with an in-page confirm step */
+.office__plate > .office__choice + .office__choice,
+.office__plate > .office__choice + .office__note {
+  margin-top: var(--space-4);
+}
+.office__note {
+  font-size: var(--fs-12);
+  color: #4a5250;
+}
+.office__note:empty {
+  display: none;
+}
+.office__prices input {
+  width: 7em;
+}
+.office__resets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.office__confirm {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 2px solid #b3261e;
+  border-radius: 4px;
+  font-size: var(--fs-14);
+}
+.office__confirm p {
+  margin: 0 0 var(--space-2);
+}
+.office__danger {
+  border-color: #b3261e;
+  color: #8c1d18;
+  font-weight: 700;
+
 /* "Fehler melden" (#55): button in the hall footer and the sandbox header, dialog based on .routepick */
 .bug-btn {
   gap: var(--space-2);

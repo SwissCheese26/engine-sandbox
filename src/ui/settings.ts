@@ -61,9 +61,55 @@ export interface Settings {
   throttle: "spring" | "hold";
   /** Shift buttons (▲ gear ▼) in the bottom control bar: "auto" = on touch screens, "on" = always, "off" = never. */
   shiftPad: "auto" | "on" | "off";
+  /** Gas key response (#66): seconds from 0 to 100 % (0 = instant full throttle). Also in the Bedienpult. */
+  gasRamp: GasRamp;
+  /** Start with a warm engine (#66). Also in the Bedienpult. */
+  startWarm: boolean;
+  /** Measure a full-load curve automatically after each engine change (#66). Also on the recorder. */
+  autoMeasure: boolean;
+  /** Side of the gas lever on touch screens (#66): "right" = brake left, gas right; "left" = mirrored. */
+  pedalSide: "right" | "left";
+  /** Keep the screen on while the engine runs (Screen Wake Lock API, #44/#66). */
+  wakeLock: boolean;
+  /** Vibration on limiter, ABS and engine damage (#44): "auto" = on touch screens, "on", "off". */
+  vibration: "auto" | "on" | "off";
+  /** Realism level (#66) → SimInputs.damage: "real", "lenient" (warnings only), "off" (sandbox, no damage). */
+  realism: "real" | "lenient" | "off";
+  /** Fuel prices in €/l for the cost in the board computer (#66). */
+  fuelPrice: { diesel: number; petrol: number };
 }
 
-export const DEFAULT_SETTINGS: Settings = { preset: "metric-kw", custom: { ...METRIC }, layout: "pruefzelle", speedo: "standard", speedoCustomKmh: 240, throttle: "spring", shiftPad: "auto" };
+export type GasRamp = 0 | 1 | 3;
+export const GAS_RAMPS: readonly { s: GasRamp; label: string }[] = [
+  { s: 0, label: "Sofort Vollgas" },
+  { s: 1, label: "Zügig (1 s)" },
+  { s: 3, label: "Gefühlvoll (3 s)" },
+];
+export const REALISM: readonly { id: Settings["realism"]; label: string; hint: string }[] = [
+  { id: "real", label: "Realistisch", hint: "Schäden, Überdrehen und Hitzetod: der Motor kann kaputtgehen." },
+  { id: "lenient", label: "Nachsichtig", hint: "Warnungen und Verschleiß, aber der Motor geht nie kaputt." },
+  { id: "off", label: "Sandbox", hint: "Keine Schäden und kein Verschleiß. Warnungen bleiben sichtbar." },
+];
+/** Allowed fuel price range, €/l. */
+export const FUEL_PRICE_MIN = 0.1;
+export const FUEL_PRICE_MAX = 10;
+
+export const DEFAULT_SETTINGS: Settings = {
+  preset: "metric-kw", custom: { ...METRIC }, layout: "pruefzelle", speedo: "standard", speedoCustomKmh: 240, throttle: "spring", shiftPad: "auto",
+  gasRamp: 0, startWarm: false, autoMeasure: true, pedalSide: "right", wakeLock: true, vibration: "auto", realism: "real",
+  fuelPrice: { diesel: 1.65, petrol: 1.75 },
+};
+
+/** A stored price, rounded to cents and clamped; anything else gives the fallback. */
+export function clampFuelPrice(v: unknown, fallback: number): number {
+  const n = typeof v === "string" ? Number(v.replace(",", ".")) : v;
+  if (typeof n !== "number" || !Number.isFinite(n)) return fallback;
+  return Math.round(Math.min(FUEL_PRICE_MAX, Math.max(FUEL_PRICE_MIN, n)) * 100) / 100;
+}
+
+function oneOf<T extends string | number>(v: unknown, allowed: readonly T[], fallback: T): T {
+  return allowed.includes(v as T) ? (v as T) : fallback;
+}
 
 export const SETTINGS_KEY = "pruefzelle.settings";
 
@@ -81,7 +127,34 @@ export function validateSettings(raw: unknown): Settings {
   const speedo = isSpeedoScale(r.speedo) ? r.speedo : DEFAULT_SETTINGS.speedo;
   const throttle = r.throttle === "hold" ? "hold" : "spring";
   const shiftPad = r.shiftPad === "on" || r.shiftPad === "off" ? r.shiftPad : "auto";
-  return { preset, custom, layout, speedo, speedoCustomKmh: clampSpeedoKmh(r.speedoCustomKmh), throttle, shiftPad };
+  const d = DEFAULT_SETTINGS;
+  const fp = (r.fuelPrice && typeof r.fuelPrice === "object" ? r.fuelPrice : {}) as Record<string, unknown>;
+  return {
+    preset, custom, layout, speedo, speedoCustomKmh: clampSpeedoKmh(r.speedoCustomKmh), throttle, shiftPad,
+    gasRamp: oneOf(r.gasRamp, GAS_RAMPS.map((g) => g.s), d.gasRamp),
+    startWarm: typeof r.startWarm === "boolean" ? r.startWarm : d.startWarm,
+    autoMeasure: typeof r.autoMeasure === "boolean" ? r.autoMeasure : d.autoMeasure,
+    pedalSide: oneOf(r.pedalSide, ["right", "left"] as const, d.pedalSide),
+    wakeLock: typeof r.wakeLock === "boolean" ? r.wakeLock : d.wakeLock,
+    vibration: oneOf(r.vibration, ["auto", "on", "off"] as const, d.vibration),
+    realism: oneOf(r.realism, ["real", "lenient", "off"] as const, d.realism),
+    fuelPrice: { diesel: clampFuelPrice(fp.diesel, d.fuelPrice.diesel), petrol: clampFuelPrice(fp.petrol, d.fuelPrice.petrol) },
+  };
+}
+
+/** Keys of the Bedienpult/recorder before #66; their values move into the settings once. */
+export const LEGACY_KEYS = { gasRamp: "pruefzelle.gasRamp", startWarm: "pruefzelle.startWarm", autoMeasure: "pruefzelle.autoMeasure" } as const;
+
+/** Merges the pre-#66 single keys into raw settings (only where the settings lack the field). Pure for tests. */
+export function migrateLegacy(raw: Record<string, unknown>, get: (key: string) => string | null): Record<string, unknown> {
+  const out = { ...raw };
+  const ramp = get(LEGACY_KEYS.gasRamp);
+  if (!("gasRamp" in out) && ramp !== null) out.gasRamp = Number(ramp);
+  const warm = get(LEGACY_KEYS.startWarm);
+  if (!("startWarm" in out) && warm !== null) out.startWarm = warm === "1";
+  const auto = get(LEGACY_KEYS.autoMeasure);
+  if (!("autoMeasure" in out) && auto !== null) out.autoMeasure = auto !== "0";
+  return out;
 }
 
 /** The units in effect for these settings. */
@@ -100,17 +173,39 @@ function storage(): Storage | null {
 /** Per-instrument unit choices (#21), owned by units.ts; named here for the one-time migration. */
 export const UNIT_OVERRIDES_KEY = "pruefzelle.units";
 
+/** Stores migrated settings and drops the legacy keys; a failing write keeps the migrated values for this visit. */
+function persistMigration(st: Storage, s: Settings) {
+  try {
+    st.setItem(SETTINGS_KEY, JSON.stringify(s));
+    for (const k of Object.values(LEGACY_KEYS)) st.removeItem(k);
+  } catch {
+    /* storage full or blocked: the legacy keys stay and are migrated again next time */
+  }
+}
+
 export function loadSettings(): Settings {
   const st = storage();
   try {
     const raw = st?.getItem(SETTINGS_KEY);
-    if (raw) return validateSettings(JSON.parse(raw));
+    if (raw) {
+      const parsed: unknown = JSON.parse(raw);
+      const obj = parsed && typeof parsed === "object" ? (parsed as Record<string, unknown>) : {};
+      if (!st || !Object.values(LEGACY_KEYS).some((k) => st.getItem(k) !== null)) return validateSettings(obj);
+      // one source of truth (#66): the old single keys go into the settings and are removed
+      const s = validateSettings(migrateLegacy(obj, (k) => st.getItem(k)));
+      persistMigration(st, s);
+      return s;
+    }
     // first visit with settings (#24): unit clicks from before #21 were chosen without a global default
     // and would hide the new setting, so they are dropped once; storing the settings marks it as done
-    const s = validateSettings(null);
+    const s = validateSettings(st ? migrateLegacy({}, (k) => st.getItem(k)) : null);
     if (st) {
-      st.removeItem(UNIT_OVERRIDES_KEY);
-      st.setItem(SETTINGS_KEY, JSON.stringify(s));
+      try {
+        st.removeItem(UNIT_OVERRIDES_KEY);
+      } catch {
+        /* keep going: the settings below matter more */
+      }
+      persistMigration(st, s);
     }
     return s;
   } catch {
@@ -148,6 +243,32 @@ export function setSettings(s: Partial<Settings>) {
 export function onSettingsChange(fn: (s: Settings) => void): () => void {
   listeners.add(fn);
   return () => listeners.delete(fn);
+}
+
+/** "Nur Einstellungen zurücksetzen" (#66): back to the defaults, stored and announced like any change. */
+export function resetSettings() {
+  setSettings(DEFAULT_SETTINGS);
+}
+
+/** sessionStorage flag: "Alles zurücksetzen" wipes once more right after the reload (main.ts). */
+export const WIPE_FLAG = "pruefzelle.wipe";
+
+/** Every key this game stores in localStorage (prefix `pruefzelle.`). */
+export const STORAGE_PREFIX = "pruefzelle.";
+
+/** "Alles zurücksetzen" (#66): removes every `pruefzelle.*` key (engines, runs, board computer, settings…).
+ *  Returns the number of removed keys. The caller reloads the page so no module keeps old state in memory. */
+export function clearAllStorage(st: Pick<Storage, "length" | "key" | "removeItem"> | null = storage()): number {
+  if (!st) return 0;
+  const keys: string[] = [];
+  for (let i = 0; i < st.length; i++) {
+    const k = st.key(i);
+    if (k?.startsWith(STORAGE_PREFIX)) keys.push(k);
+  }
+  for (const k of keys) st.removeItem(k);
+  current = null;
+  currentUnits = null;
+  return keys.length;
 }
 
 /** Tests only: forget the cached settings so the next read loads them again. */

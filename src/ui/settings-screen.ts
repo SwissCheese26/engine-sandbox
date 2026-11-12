@@ -2,7 +2,10 @@
 // choices (#21). Changes apply at once (no save button) and reach the running sandbox through
 // onSettingsChange().
 import { SPEEDO_SCALES, clampSpeedoKmh, isSpeedoScale } from "./layouts/logic.ts";
-import { LAYOUTS, PRESETS, QUANTITIES, getSettings, setSettings, unitsOf, type LayoutId, type PresetId, type Quantity } from "./settings.ts";
+import {
+  DEFAULT_SETTINGS, FUEL_PRICE_MAX, FUEL_PRICE_MIN, GAS_RAMPS, LAYOUTS, PRESETS, QUANTITIES, REALISM, WIPE_FLAG, clampFuelPrice, clearAllStorage, getSettings,
+  resetSettings, setSettings, unitsOf, type GasRamp, type LayoutId, type PresetId, type Quantity, type Settings,
+} from "./settings.ts";
 import { clearUnitOverrides, fmtQ, overrideCount } from "./units.ts";
 
 const PRESET_IDS: PresetId[] = ["metric-kw", "metric-ps", "imperial", "custom"];
@@ -41,6 +44,8 @@ export class SettingsScreen {
   private resetBtn: HTMLButtonElement;
   private overridesText: HTMLElement;
   private preview: HTMLElement;
+  private resetStatus: HTMLElement;
+  private confirmBox: HTMLElement;
 
   constructor() {
     const el = document.createElement("div");
@@ -103,8 +108,50 @@ export class SettingsScreen {
               <figcaption>Beispiel: ▲ hoch, Gang, ▼ runter neben Bremse und Gas. Auf dem Rollenprüfstand, ohne Scrollen.</figcaption>
             </figure>
             <label><input type="radio" name="shiftpad" value="auto" /> <span><b>Automatisch</b>: auf Touch-Geräten (Handy, Tablet) zeigen.</span></label>
-            <label><input type="radio" name="shiftpad" value="on" /> <span><b>Immer</b> zeigen, auch am PC (zusätzlich zu E und Q).</span></label>
-            <label><input type="radio" name="shiftpad" value="off" /> <span><b>Nie</b>: geschaltet wird im Getriebe-Pult oder mit E und Q.</span></label>
+            <label><input type="radio" name="shiftpad" value="on" /> <span><b>Immer</b> zeigen, auch am PC<span class="kbd-only"> (zusätzlich zu E und Q)</span>.</span></label>
+            <label><input type="radio" name="shiftpad" value="off" /> <span><b>Nie</b>: geschaltet wird im Getriebe-Pult<span class="kbd-only"> oder mit E und Q</span>.</span></label>
+          </fieldset>
+          <fieldset class="office__choice">
+            <legend>Gas per Taste (W oder Leertaste)</legend>
+            ${GAS_RAMPS.map((g) => `<label><input type="radio" name="gasramp" value="${g.s}" /> <span>${g.s === 0 ? "<b>Sofort Vollgas</b>: die Taste gibt gleich 100 %." : `<b>${g.label}</b>: mit gehaltener Taste steigt das Gas in ${g.s} s von 0 auf 100 %.`}</span></label>`).join("")}
+          </fieldset>
+          <fieldset class="office__choice">
+            <legend>Pedale auf dem Handy</legend>
+            <label><input type="radio" name="pedalside" value="right" /> <span><b>Gas rechts</b>, Bremse links daneben (wie im Auto).</span></label>
+            <label><input type="radio" name="pedalside" value="left" /> <span><b>Gas links</b>, Bremse rechts daneben: für die linke Hand.</span></label>
+          </fieldset>
+          <fieldset class="office__choice">
+            <legend>Prüfstand</legend>
+            <label><input type="checkbox" data-set="startWarm" /> <span><b>Motor warm starten</b>: Kühlmittel und Öl sind schon auf Betriebstemperatur.</span></label>
+            <label><input type="checkbox" data-set="autoMeasure" /> <span><b>Automatisch messen</b>: nach jedem Umbau die Volllastkurve neu aufnehmen.</span></label>
+            <label><input type="checkbox" data-set="wakeLock" /> <span><b>Bildschirm wach halten</b>, solange der Motor läuft.</span></label>
+          </fieldset>
+          <fieldset class="office__choice">
+            <legend>Vibration</legend>
+            <label><input type="radio" name="vibration" value="auto" /> <span><b>Automatisch</b>: auf Touch-Geräten beim Begrenzer, bei ABS-Eingriff und bei Motorschaden.</span></label>
+            <label><input type="radio" name="vibration" value="on" /> <span><b>Immer</b>, wenn das Gerät vibrieren kann.</span></label>
+            <label><input type="radio" name="vibration" value="off" /> <span><b>Aus</b>.</span></label>
+          </fieldset>
+          <p class="office__note" data-out="device-note"></p>
+        </section>
+        <section class="plate office__plate" aria-labelledby="set-sim">
+          <span class="screw screw--tl" aria-hidden="true"></span><span class="screw screw--tr" aria-hidden="true"></span>
+          <span class="screw screw--bl" aria-hidden="true"></span><span class="screw screw--br" aria-hidden="true"></span>
+          <h2 class="plate__title" id="set-sim">Simulation</h2>
+          <fieldset class="office__choice">
+            <legend>Realismus</legend>
+            ${REALISM.map((r) => `<label><input type="radio" name="realism" value="${r.id}" /> <span><b>${r.label}</b>: ${r.hint}</span></label>`).join("")}
+          </fieldset>
+          <fieldset class="office__choice office__prices">
+            <legend>Kraftstoffpreis für den Bordcomputer</legend>
+            <div class="office__speedo">
+              <label class="office__opt"><span>Diesel (€/l)</span>
+                <input type="number" data-price="diesel" min="${FUEL_PRICE_MIN}" max="${FUEL_PRICE_MAX}" step="0.01" inputmode="decimal" />
+              </label>
+              <label class="office__opt"><span>Benzin (€/l)</span>
+                <input type="number" data-price="petrol" min="${FUEL_PRICE_MIN}" max="${FUEL_PRICE_MAX}" step="0.01" inputmode="decimal" />
+              </label>
+            </div>
           </fieldset>
         </section>
         <section class="plate office__plate" aria-labelledby="set-units">
@@ -150,10 +197,30 @@ export class SettingsScreen {
           <button type="button" class="btn btn--dark" data-control="reset-units">Alle Instrumente auf Voreinstellung zurücksetzen</button>
           <p class="office__status" role="status"></p>
         </section>
+        <section class="plate office__plate" aria-labelledby="set-data">
+          <span class="screw screw--tl" aria-hidden="true"></span><span class="screw screw--tr" aria-hidden="true"></span>
+          <span class="screw screw--bl" aria-hidden="true"></span><span class="screw screw--br" aria-hidden="true"></span>
+          <h2 class="plate__title" id="set-data">Zurücksetzen</h2>
+          <p class="plate__effect">Gespeichert wird nur in diesem Browser.</p>
+          <div class="office__resets">
+            <button type="button" class="btn btn--dark" data-control="reset-settings">Nur Einstellungen zurücksetzen</button>
+            <button type="button" class="btn btn--dark" data-control="reset-all" aria-expanded="false" aria-controls="reset-confirm">Alles zurücksetzen …</button>
+          </div>
+          <div class="office__confirm" id="reset-confirm" role="group" aria-labelledby="reset-confirm-text" hidden>
+            <p id="reset-confirm-text"><b>Wirklich alles löschen?</b> Eigene Motoren, Messungen, Bordcomputer, Tank und alle Einstellungen gehen verloren. Danach lädt die Seite neu.</p>
+            <div class="office__resets">
+              <button type="button" class="btn btn--dark office__danger" data-control="reset-all-yes">Ja, alles löschen</button>
+              <button type="button" class="btn btn--dark" data-control="reset-all-no">Abbrechen</button>
+            </div>
+          </div>
+          <p class="office__status" role="status" data-out="reset-status"></p>
+        </section>
       </main>`;
     this.el = el;
     this.heading = el.querySelector(".office__title")!;
     this.status = el.querySelector(".office__status")!;
+    this.resetStatus = el.querySelector("[data-out=reset-status]")!;
+    this.confirmBox = el.querySelector(".office__confirm")!;
     this.resetBtn = el.querySelector("[data-control=reset-units]")!;
     this.overridesText = el.querySelector("[data-out=overrides]")!;
     this.preview = el.querySelector(".preview")!;
@@ -181,6 +248,59 @@ export class SettingsScreen {
         if (r.checked) setSettings({ throttle: r.value === "hold" ? "hold" : "spring" });
       }),
     );
+    const radio = <K extends keyof Settings>(name: string, key: K, parse: (v: string) => Settings[K]) =>
+      el.querySelectorAll<HTMLInputElement>(`input[name=${name}]`).forEach((r) =>
+        r.addEventListener("change", () => {
+          if (r.checked) setSettings({ [key]: parse(r.value) } as Partial<Settings>);
+        }),
+      );
+    radio("gasramp", "gasRamp", (v) => Number(v) as GasRamp);
+    radio("pedalside", "pedalSide", (v) => (v === "left" ? "left" : "right"));
+    radio("vibration", "vibration", (v) => (v === "on" || v === "off" ? v : "auto"));
+    radio("realism", "realism", (v) => (v === "lenient" || v === "off" ? v : "real"));
+    el.querySelectorAll<HTMLInputElement>("input[data-set]").forEach((c) =>
+      c.addEventListener("change", () => setSettings({ [c.dataset.set as "startWarm" | "autoMeasure" | "wakeLock"]: c.checked })),
+    );
+    el.querySelectorAll<HTMLInputElement>("input[data-price]").forEach((inp) =>
+      inp.addEventListener("change", () => {
+        const fuel = inp.dataset.price as "diesel" | "petrol";
+        const cur = getSettings().fuelPrice;
+        setSettings({ fuelPrice: { ...cur, [fuel]: clampFuelPrice(inp.value, cur[fuel]) } });
+        this.sync(); // shows the stored (clamped, rounded) value
+      }),
+    );
+    el.querySelector("[data-control=reset-settings]")!.addEventListener("click", () => {
+      resetSettings();
+      this.sync();
+      this.resetStatus.textContent = "Alle Einstellungen stehen wieder auf Werkseinstellung.";
+    });
+    const allBtn = el.querySelector<HTMLButtonElement>("[data-control=reset-all]")!;
+    const showConfirm = (open: boolean) => {
+      this.confirmBox.hidden = !open;
+      allBtn.setAttribute("aria-expanded", String(open));
+      if (open) this.confirmBox.querySelector<HTMLButtonElement>("[data-control=reset-all-no]")!.focus();
+    };
+    allBtn.addEventListener("click", () => {
+      this.resetStatus.textContent = "";
+      showConfirm(this.confirmBox.hidden !== false);
+    });
+    el.querySelector("[data-control=reset-all-no]")!.addEventListener("click", () => {
+      showConfirm(false);
+      allBtn.focus();
+    });
+    el.querySelector("[data-control=reset-all-yes]")!.addEventListener("click", () => {
+      clearAllStorage();
+      try {
+        // pagehide handlers (board computer, tank) write their keys back while unloading: main.ts wipes again
+        sessionStorage.setItem(WIPE_FLAG, "1");
+      } catch {
+        /* no sessionStorage: the first wipe has to do */
+      }
+      this.resetStatus.textContent = "Alles gelöscht. Die Seite lädt neu …";
+      // modules keep their state in memory: a fresh start is the only clean reset
+      location.hash = "#menu";
+      location.reload();
+    });
     const scaleSel = el.querySelector<HTMLSelectElement>("[data-control=speedo-scale]")!;
     scaleSel.addEventListener("change", () => {
       if (isSpeedoScale(scaleSel.value)) setSettings({ speedo: scaleSel.value });
@@ -222,6 +342,17 @@ export class SettingsScreen {
     this.el.querySelectorAll<HTMLInputElement>("input[name=throttle]").forEach((r) => (r.checked = r.value === s.throttle));
     this.el.querySelectorAll<HTMLInputElement>("input[name=shiftpad]").forEach((r) => (r.checked = r.value === s.shiftPad));
     this.el.querySelector<HTMLInputElement>("[data-control=speedo-custom]")!.value = String(s.speedoCustomKmh);
+    const check = (name: string, v: string) => this.el.querySelectorAll<HTMLInputElement>(`input[name=${name}]`).forEach((r) => (r.checked = r.value === v));
+    check("gasramp", String(s.gasRamp));
+    check("pedalside", s.pedalSide);
+    check("vibration", s.vibration);
+    check("realism", s.realism);
+    this.el.querySelectorAll<HTMLInputElement>("input[data-set]").forEach((c) => (c.checked = s[c.dataset.set as "startWarm" | "autoMeasure" | "wakeLock"]));
+    this.el.querySelectorAll<HTMLInputElement>("input[data-price]").forEach((inp) => (inp.value = s.fuelPrice[inp.dataset.price as "diesel" | "petrol"].toFixed(2)));
+    const nav = globalThis.navigator as { wakeLock?: unknown; vibrate?: unknown } | undefined;
+    const missing = [!nav?.wakeLock && "Bildschirm wach halten", typeof nav?.vibrate !== "function" && "Vibration"].filter(Boolean);
+    this.el.querySelector<HTMLElement>("[data-out=device-note]")!.textContent = missing.length
+      ? `Dieser Browser kann ${missing.join(" und ")} nicht; die Einstellung wirkt dann nicht.` : "";
     this.el.querySelector<HTMLElement>("[data-speedo-custom]")!.hidden = s.speedo !== "custom";
     this.el.querySelectorAll<HTMLInputElement>("input[data-q]").forEach((r) => (r.checked = u[r.dataset.q as Quantity] === r.value));
     const n = overrideCount();
@@ -234,5 +365,8 @@ export class SettingsScreen {
   /** Clears the status line when the screen is left. */
   leave() {
     this.status.textContent = "";
+    this.resetStatus.textContent = "";
+    this.confirmBox.hidden = true;
+    this.el.querySelector("[data-control=reset-all]")!.setAttribute("aria-expanded", "false");
   }
 }

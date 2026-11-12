@@ -210,6 +210,14 @@ export interface SimInputs {
   ambientKpa: number;
   /** Start with a warm engine (coolant at thermostat temperature, oil ≈ 90 °C). Read at the first step after reset(). */
   startWarm?: boolean;
+  /**
+   * Realism level for damage (issue #66), optional, default "real":
+   *  - "real": wear and fatal damage as in limits.ts (engine can be destroyed),
+   *  - "lenient": warnings and wear as usual, but no fatal damage (wear is capped below 1); a would-be fatal event
+   *    is reported as a critical warning instead,
+   *  - "off": sandbox, no wear and no damage (warnings still shown).
+   */
+  damage?: "real" | "lenient" | "off";
   /** Only for dynoMode "vehicle"; produced each frame by `Drivetrain.inputs()`. */
   vehicle?: VehicleCoupling;
   /** The vehicle's tank ran dry (fuel-tank.ts): no injection, the engine stalls and does not start. */
