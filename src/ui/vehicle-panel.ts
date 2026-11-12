@@ -1,7 +1,7 @@
 // Fahrzeug-Platte on the chassis dyno (issue #22): body and chassis data, tyres, ready-made cars.
 // Everything here can only be changed at standstill (like the gearbox). The plate edits the Drivetrain of the
 // Getriebe-Pult; loading a ready-made car also asks the app to load its engine (onLoadCar).
-import { SPEED_INDEX, TYRE_TYPES, formatTyreSize, frontAxleShare, parseTyreSize, speedRatingKmh, tyreRadii } from "../core/index.ts";
+import { SPEED_INDEX, TYRE_TYPES, formatTyreSize, frontAxleShare, isCommercialKind, isMotorcycleKind, parseTyreSize, speedRatingKmh, tyreRadii } from "../core/index.ts";
 import type { Drivetrain, DriveLayout, SpeedIndex, TyreSetup, TyreType, VehicleParams } from "../core/index.ts";
 import { VEHICLE_LIBRARY, type LibraryCar } from "../data/vehicle-library.ts";
 import { prefs } from "./settings.ts";
@@ -12,7 +12,7 @@ const spd = (kmh: number) => `${Math.round(toUnit("speed", kmh)).toLocaleString(
 
 const LAYOUT_LABEL: Record<DriveLayout, string> = { fwd: "Frontantrieb (FWD)", rwd: "Heckantrieb (RWD)", awd: "Allrad (AWD)" };
 /** Speed indices offered in the list (passenger cars and motorcycles). */
-const INDEX_CHOICES: SpeedIndex[] = ["Q", "S", "T", "H", "V", "W", "Y", "(Y)"];
+const INDEX_CHOICES: SpeedIndex[] = ["L", "M", "Q", "S", "T", "H", "V", "W", "Y", "(Y)"];
 
 const fmt = (n: number, d: number) => n.toLocaleString("de-DE", { minimumFractionDigits: d, maximumFractionDigits: d });
 
@@ -27,13 +27,13 @@ interface NumField {
 }
 
 const FIELDS: NumField[] = [
-  { key: "mass", label: "Masse mit Fahrer", unit: "kg", min: 150, max: 4000, step: 5, digits: 0 },
+  { key: "mass", label: "Masse mit Fahrer", unit: "kg", min: 150, max: 44000, step: 5, digits: 0 },
   { key: "cw", label: "cW-Wert", unit: "", min: 0.15, max: 0.9, step: 0.01, digits: 2 },
-  { key: "area", label: "Stirnfläche", unit: "m²", min: 0.3, max: 4.5, step: 0.01, digits: 2 },
+  { key: "area", label: "Stirnfläche", unit: "m²", min: 0.3, max: 12, step: 0.01, digits: 2 },
   { key: "front", label: "Gewicht vorn", unit: "%", min: 25, max: 75, step: 1, digits: 0 },
-  { key: "cg", label: "Schwerpunkthöhe", unit: "m", min: 0.3, max: 1.2, step: 0.01, digits: 2 },
-  { key: "wb", label: "Radstand", unit: "m", min: 1.2, max: 3.6, step: 0.01, digits: 2 },
-  { key: "tank", label: "Tankgröße", unit: "l", min: 2, max: 400, step: 1, digits: 0 },
+  { key: "cg", label: "Schwerpunkthöhe", unit: "m", min: 0.3, max: 2.2, step: 0.01, digits: 2 },
+  { key: "wb", label: "Radstand", unit: "m", min: 1.2, max: 7, step: 0.01, digits: 2 },
+  { key: "tank", label: "Tankgröße", unit: "l", min: 2, max: 1200, step: 1, digits: 0 },
 ];
 
 export class VehiclePanel {
@@ -52,6 +52,9 @@ export class VehiclePanel {
   private tyreHint: HTMLElement;
   private carNote: HTMLElement;
   private inputs = new Map<NumField["key"], HTMLInputElement>();
+  private loadRow: HTMLElement;
+  private loadInput: HTMLInputElement;
+  private loadOut: HTMLElement;
   private moving = false;
   private lastTemp = "";
   /** Set by the app: load the car's engine; returns false when that is not possible right now (engine running). */
@@ -68,14 +71,21 @@ export class VehiclePanel {
         <label class="gearbox__field"><span>Fertiges Fahrzeug</span>
           <select data-control="car">
             <option value="">– eigenes Fahrzeug –</option>
-            ${([["Autos", false], ["Motorräder", true]] as const).map(([label, bike]) => `<optgroup label="${label}">${VEHICLE_LIBRARY
-              .filter((c) => ((c.setup.kind ?? "car") !== "car") === bike)
+            ${([["Autos", "car"], ["Lkw & Busse", "commercial"], ["Motorräder", "bike"]] as const).map(([label, group]) => `<optgroup label="${label}">${VEHICLE_LIBRARY
+              .filter((c) => {
+                const k = c.setup.kind ?? "car";
+                return group === (isMotorcycleKind(k) ? "bike" : isCommercialKind(k) ? "commercial" : "car");
+              })
               .map((c) => `<option value="${c.id}">${c.name}</option>`).join("")}</optgroup>`).join("")}
           </select>
         </label>
         <button type="button" class="btn btn--small" data-control="load-car">Laden</button>
       </div>
       <p class="vehicle__note" data-out="car-note"></p>
+      <label class="gearbox__field vehicle__load" data-out="load-row" hidden><span>Beladung</span>
+        <input type="range" min="0" max="100" step="5" data-control="load" aria-describedby="load-out" />
+        <output class="num" id="load-out" data-out="load"></output>
+      </label>
       <div class="vehicle__grid">
         ${FIELDS.map((f) => `
           <label class="vehicle__num"><span>${f.label}</span>
@@ -113,6 +123,16 @@ export class VehiclePanel {
     this.tyreOut = q("[data-out=tyre]");
     this.tyreHint = q("[data-out=tyre-hint]");
     this.carNote = q("[data-out=car-note]");
+    this.loadRow = q("[data-out=load-row]");
+    this.loadInput = q("[data-control=load]");
+    this.loadOut = q("[data-out=load]");
+    // load of trucks and buses (issue #31): empty … gross mass, only at standstill
+    this.loadInput.addEventListener("input", () => {
+      if (this.moving) return this.sync();
+      this.drivetrain.setLoad(Number(this.loadInput.value) / 100);
+      this.sync();
+      this.onChange();
+    });
     for (const f of FIELDS) this.inputs.set(f.key, q(`[data-field=${f.key}]`));
 
     for (const f of FIELDS) {
@@ -162,7 +182,9 @@ export class VehiclePanel {
   private applyCar(car: LibraryCar) {
     this.drivetrain.applyCar(structuredClone(car.setup));
     const f = car.factory;
-    this.carNote.textContent = `${car.name}: Werk ${fmt(f.t0to100S, 1)} s ${prefs().speed === "mph" ? "von 0 auf 62 mph (100 km/h, Werksangabe)" : "von 0 auf 100 km/h"}, Vmax ${spd(f.vmaxKmh)}${f.vmaxGoverned ? " (abgeregelt)" : ""}, ${f.kerbKg} kg (${f.kerbNorm === "wet" ? "fahrbereit, ohne Fahrer" : f.kerbNorm}).`;
+    this.carNote.textContent = f.t0to100S === null
+      ? `${car.name}: Vmax ${spd(f.vmaxKmh)}${f.vmaxGoverned ? " (abgeregelt)" : ""}, leer ${fmt(f.kerbKg, 0)} kg${f.grossKg ? `, zulässig ${fmt(f.grossKg, 0)} kg` : ""}.`
+      : `${car.name}: Werk ${fmt(f.t0to100S, 1)} s ${prefs().speed === "mph" ? "von 0 auf 62 mph (100 km/h, Werksangabe)" : "von 0 auf 100 km/h"}, Vmax ${spd(f.vmaxKmh)}${f.vmaxGoverned ? " (abgeregelt)" : ""}, ${f.kerbKg} kg (${f.kerbNorm === "wet" ? "fahrbereit, ohne Fahrer" : f.kerbNorm}).`;
     this.sync();
     this.onChange();
   }
@@ -227,8 +249,15 @@ export class VehiclePanel {
       cg: v.cgHeightM ?? 0.55, wb: v.wheelbaseM ?? 2.6, tank: this.drivetrain.tank.capacityL,
     };
     for (const f of FIELDS) this.inputs.get(f.key)!.value = values[f.key].toFixed(f.digits);
+    const load = this.drivetrain.load;
+    this.loadRow.hidden = load === null;
+    if (load) {
+      this.loadInput.value = String(Math.round(load.share * 100));
+      const word = load.share <= 0.001 ? "leer" : load.share >= 0.999 ? "voll" : `${Math.round(load.share * 100)} %`;
+      this.loadOut.textContent = `${word} · ${fmt(v.massKg, 0)} kg`;
+    }
     // motorcycles drive the rear wheel; the layout is fixed there
-    const bike = this.drivetrain.kind !== "car";
+    const bike = isMotorcycleKind(this.drivetrain.kind);
     this.layoutSel.value = v.driveLayout ?? "fwd";
     this.layoutSel.dataset.fixed = bike ? "1" : "";
     this.tyreSel.value = t.type;
@@ -253,7 +282,7 @@ export class VehiclePanel {
   }
 
   private setLocked(moving: boolean) {
-    const bike = this.drivetrain.kind !== "car";
+    const bike = isMotorcycleKind(this.drivetrain.kind);
     for (const c of this.el.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>("input, select, button")) {
       c.disabled = moving || (c === this.layoutSel && bike);
     }

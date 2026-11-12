@@ -4,7 +4,7 @@
 // fitted tyre's speed index.
 // Issue #23: Umwelt- und Assistenz-Platte (environment-panel.ts) and the warning-lamp strip under the gear indicator.
 import { TripPanel } from "./trip-panel.ts";
-import { Drivetrain, FuelTank, GEARBOXES, VEHICLES, theoreticalVmax, dynoSweep, SPEED_LIMIT_OPTIONS } from "../core/index.ts";
+import { Drivetrain, FuelTank, GEARBOXES, VEHICLES, theoreticalVmax, dynoSweep, SPEED_LIMIT_OPTIONS, isCommercialKind } from "../core/index.ts";
 import type { EngineConfig, EngineSummary, GearboxType, VehicleKind } from "../core/index.ts";
 import { EnvironmentPanel, WarningLamps } from "./environment-panel.ts";
 import { VehiclePanel } from "./vehicle-panel.ts";
@@ -239,7 +239,8 @@ export class GearboxPanel {
     this.limitSel.addEventListener("change", () => {
       this.drivetrain.setSpeedLimit(this.limitSel.value === "off" ? null : Number(this.limitSel.value));
       try {
-        localStorage.setItem(LIMIT_KEY, this.limitSel.value);
+        // the truck/bus limiter (85 / 100 km/h) is not the car's choice and is not remembered (review PR #82)
+        if (!isCommercialKind(this.drivetrain.kind)) localStorage.setItem(LIMIT_KEY, this.limitSel.value);
       } catch {
         // storage blocked: setting lasts for this session only
       }
@@ -315,14 +316,18 @@ export class GearboxPanel {
     const spec = this.drivetrain.gearbox;
     // the loaded vehicle's own values (a library bike is not the preset's 270/350 kg)
     const cwA = (v.dragCoefficient * v.frontalAreaM2).toFixed(2).replace(".", ",");
+    const load = this.drivetrain.load;
     this.hintEl.textContent = this.drivetrain.kind === "car"
       ? `Fahrzeug: ${fmt0(v.massKg)} kg, cW ${v.dragCoefficient.toFixed(2).replace(".", ",")}, ${LAYOUT_SHORT[v.driveLayout ?? "fwd"]}.`
-      : `${preset.label}: ${fmt0(v.massKg)} kg mit Fahrer, cW·A ${cwA} m², Quickshifter.`;
+      : isCommercialKind(this.drivetrain.kind)
+        ? `${preset.label}: ${fmt0(v.massKg)} kg${load ? ` (Beladung ${Math.round(load.share * 100)} %)` : ""}, cW·A ${cwA} m², Motorbremse im Schub.`
+        : `${preset.label}: ${fmt0(v.massKg)} kg mit Fahrer, cW·A ${cwA} m², Quickshifter.`;
     // gear count and kind of automatic follow the loaded car's gearbox (issue #22)
     for (const o of this.typeSel.options) {
       const t = o.value as GearboxType;
       const n = t === s.type ? spec.ratios.length : GEARBOXES[t].ratios.length;
       o.textContent = t === "dsg" && t === s.type && spec.converterLockRpm ? `Automatik (Wandler), ${n} Gänge`
+        : t === "dsg" && t === s.type && isCommercialKind(this.drivetrain.kind) ? `Automatisiertes Schaltgetriebe (AMT), ${n} Gänge`
         : t === "manual" ? `Handschalter, ${n} Gänge` : t === "dsg" ? `Doppelkupplung (DSG), ${n} Gänge` : TYPE_LABEL[t];
     }
     // only the gearboxes this vehicle can have (car: manual/DSG/CVT, motorcycle: sequential)

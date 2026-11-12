@@ -36,6 +36,10 @@ export type { VehicleKind, VehiclePreset } from "./drivetrain.ts";
 // vehicle and tyres (issue #22)
 export { withTyre } from "./drivetrain.ts";
 export type { CarSetup, GearboxSpec } from "./drivetrain.ts";
+// commercial vehicles (issue #31)
+export { BUS_AUTOMATIC, TRUCK_AMT, isCommercialKind, isMotorcycleKind } from "./drivetrain.ts";
+export { engineBrakeTorqueNm } from "./engine-brake.ts";
+export type { EngineBrakeConfig } from "./types.ts";
 export {
   TYRE_TYPES, SPEED_INDEX, DEFAULT_TYRE, SLIDE_FACTOR, PEAK_SLIP, tyreForceFactor, tyreGrip, tyreRadii, tyreTempFactor, speedRatingKmh,
   formatTyreSize, parseTyreSize,

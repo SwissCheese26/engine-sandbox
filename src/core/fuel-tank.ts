@@ -9,7 +9,7 @@
 import type { VehicleKind } from "./drivetrain.ts";
 
 /** Tank volume when the vehicle does not say (custom body): a compact car, a superbike, a touring bike. */
-export const DEFAULT_TANK_L: Record<VehicleKind, number> = { car: 55, superbike: 17, tourer: 20 };
+export const DEFAULT_TANK_L: Record<VehicleKind, number> = { car: 55, superbike: 17, tourer: 20, truck: 600, bus: 300 };
 
 /** Share of the tank at which the reserve lamp lights. */
 export const RESERVE_SHARE = 0.125;

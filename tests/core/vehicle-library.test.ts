@@ -70,7 +70,7 @@ describe("vehicle library: simulated 0–100 and Vmax vs. factory (±12 %)", () 
       const r = driveCar(car, 90);
       expect(r.running).toBe(true);
       expect(r.t100).not.toBeNull();
-      const dt100 = r.t100! / car.factory.t0to100S - 1;
+      const dt100 = r.t100! / car.factory.t0to100S! - 1;
       const dv = r.vmax / car.factory.vmaxKmh - 1;
       expect(Math.abs(dv)).toBeLessThan(TOL);
       const out = KNOWN_0_100_OUTLIERS[car.id];

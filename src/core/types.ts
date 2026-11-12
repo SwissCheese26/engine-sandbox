@@ -187,6 +187,27 @@ export interface EngineConfig {
    * Optional, undefined = no limit.
    */
   ecuTorqueLimitNm?: number;
+  /**
+   * ECU power limit at the flywheel in kW (issue #31): above the torque plateau the ECU holds this power (torque
+   * limit P/ω), as truck engines are sold in several power ratings of the same hardware. Optional, undefined = none.
+   */
+  ecuPowerLimitKw?: number;
+  /**
+   * Engine brake (issue #31, commercial vehicles): extra braking torque on overrun (pedal 0, above idle).
+   * "exhaust-flap" = butterfly in the exhaust raises the pumping work; "decompression" = additional valve opening
+   * near TDC releases the compressed charge (Mercedes High Performance Engine Brake, Jacobs). `maxKw` is the braking
+   * power at rated speed; it falls roughly with rpm² below (docs/research/commercial.md §3). Optional, undefined = none.
+   */
+  engineBrake?: EngineBrakeConfig;
+}
+
+/** Engine brake (issue #31). */
+export interface EngineBrakeConfig {
+  kind: "exhaust-flap" | "decompression";
+  /** Braking power at the flywheel at rated speed, kW (positive number). */
+  maxKw: number;
+  /** Speed of maxKw, rpm. Default 0.9 · revLimitRpm. */
+  ratedRpm?: number;
 }
 
 /** Controls coming from the player per simulation tick. */
@@ -285,6 +306,8 @@ export interface VehicleCoupling {
   gradePct?: number;
   airDensityKgM3?: number;
   torqueCut?: number;
+  /** A gear change is in progress (issue #31): the engine brake (EngineConfig.engineBrake) is switched off meanwhile. */
+  shifting?: boolean;
 }
 
 export type Severity = "info" | "warning" | "critical";
@@ -383,6 +406,8 @@ export interface EngineState {
   afterfire?: number;
   /** Torque limit of the ECU currently active (brake torque held at `ecuTorqueLimitNm`, issue #18). */
   torqueLimited?: boolean;
+  /** Engine brake (config.engineBrake, issue #31) acting in this frame; torqueNm then includes its braking torque. */
+  engineBrakeActive?: boolean;
   /**
    * Issue #22 (only with VehicleCoupling.grip): circumferential speed of the driven wheels, m/s (> vehicle speed
    * while they spin), longitudinal tyre slip of the driven wheels (v_wheel − v) / max(v, 1 m/s), wheel spin and

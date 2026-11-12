@@ -16,7 +16,7 @@ export interface LibraryEngine extends ReferenceEngine {
   /** Model years. */
   years: string;
   /** Vehicle category for the library list (issue #25). Default "car". */
-  category?: "car" | "motorcycle";
+  category?: "car" | "motorcycle" | "commercial";
 }
 
 const NA = {
@@ -253,6 +253,63 @@ const MOTO: LibraryEngine[] = [
   },
 ];
 
+// ───────────── Commercial vehicles (issue #31, docs/research/commercial.md) ─────────────
+// Shared [S] modelling choices: steel pistons, CGI / cast-iron block, pushrod-free 4-valve heads modelled as "ohv"
+// cam drive with a mild cam; the wastegate / asymmetric fixed-geometry chargers are modelled as VGT so the model
+// builds boost from ≈ 1000 rpm like the real engines (commercial.md §2); power rating via ecuPowerLimitKw.
+const nfzHead = { valvetrain: "ohv", valvesPerCylinder: 4, camProfile: 0.1, variableTiming: "none" } as const;
+const nfzExhaust = { manifold: "cast-log", egr: true, catalyst: true, particulateFilter: true, scr: true } as const;
+const nfzBlk = (layout: EngineConfig["block"]["layout"], cyl: number, bore: number, stroke: number, rod: number, cr: number, material: EngineConfig["block"]["blockMaterial"]) =>
+  blk(layout, cyl, bore, stroke, rod, cr, material, { pistons: "steel" });
+
+const COMMERCIAL: LibraryEngine[] = [
+  {
+    maker: "Mercedes-Benz", cars: "Actros, Arocs, Setra TopClass", years: "seit 2011", category: "commercial",
+    config: {
+      id: "lib-mercedes-om471", name: "Mercedes-Benz OM 471 (12.8 R6, 330 kW)", fuel: "diesel",
+      block: nfzBlk("inline", 6, 132, 156, 260, 18.3, "cast-iron"),
+      head: nfzHead,
+      induction: { aspiration: "turbo", compressorInducerMm: 80, turbineAR: 0.7, variableGeometry: true, boostTargetBar: 1.9, intercooler: "air-to-air", intakeRunnerLengthMm: 400, individualThrottleBodies: false },
+      fuelSystem: dieselFuel(2100, 1.25), exhaust: nfzExhaust,
+      cooling: { radiatorCapacityKw: 380, thermostatOpenC: 85, oilCooler: true }, revLimitRpm: 2000, idleRpm: 600,
+      ecuTorqueLimitNm: 2200, ecuPowerLimitKw: 330,
+      engineBrake: { kind: "decompression", maxKw: 400, ratedRpm: 2000 },
+    },
+    expected: { peakTorqueNm: 2200, peakTorqueRpm: 1100, peakPowerKw: 330, peakPowerRpm: 1800 },
+    source: "kfz-tech.de „Mercedes OM 471 Euro 6 (2014)“ (132 × 156 mm, 12,8 l, 310–370 kW @ 1800, 2100–2500 Nm @ 1100, X-Pulse bis 2100 bar); Stufe 330 kW / 2200 Nm; Mercedes-Benz Powertrain Truck Euro VI 2021 (OM 471 1091 kg, Motorbremse der Baureihe bis 480 kW → 400 kW [S]); ε 18,3 [S]",
+  },
+  {
+    maker: "Scania", cars: "R 650, S 650 V8, Touring/Interlink", years: "seit 2016", category: "commercial",
+    config: {
+      id: "lib-scania-dc16", name: "Scania DC16 118 V8 (16.4, 479 kW)", fuel: "diesel",
+      block: nfzBlk("v", 8, 130, 154, 255, 17.4, "compacted-graphite-iron"),
+      head: nfzHead,
+      induction: { aspiration: "turbo", compressorInducerMm: 90, turbineAR: 0.7, variableGeometry: true, boostTargetBar: 2.0, intercooler: "air-to-air", intakeRunnerLengthMm: 400, individualThrottleBodies: false },
+      fuelSystem: dieselFuel(2400, 1.25), exhaust: { ...nfzExhaust, egr: false },
+      cooling: { radiatorCapacityKw: 520, thermostatOpenC: 85, oilCooler: true }, revLimitRpm: 2100, idleRpm: 550,
+      ecuTorqueLimitNm: 3300, ecuPowerLimitKw: 479,
+      engineBrake: { kind: "exhaust-flap", maxKw: 320, ratedRpm: 2400 },
+    },
+    expected: { peakTorqueNm: 3300, peakTorqueRpm: 1150, peakPowerKw: 479, peakPowerRpm: 1900 },
+    source: "Scania Motorenübersicht Euro 6 (2017, cadenadesuministro.es): DC16 118 650 PS, 130 × 154 mm, 479 kW @ 1900, 3300 Nm @ 950–1350, Auspuffbremse 297/320 kW @ 2400; ε 17,4 (Tabellenwert, Zuordnung unklar [S]); XPI 2400 bar, SCR-only ohne AGR [S]",
+  },
+  {
+    maker: "Mercedes-Benz", cars: "Citaro, Atego, Econic", years: "seit 2013", category: "commercial",
+    config: {
+      id: "lib-mercedes-om936", name: "Mercedes-Benz OM 936 (7.7 R6, 220 kW)", fuel: "diesel",
+      block: nfzBlk("inline", 6, 110, 135, 220, 17.5, "cast-iron"),
+      head: nfzHead,
+      induction: { aspiration: "turbo", compressorInducerMm: 65, turbineAR: 0.7, variableGeometry: true, boostTargetBar: 2.0, intercooler: "air-to-air", intakeRunnerLengthMm: 400, individualThrottleBodies: false },
+      fuelSystem: dieselFuel(2400, 1.25), exhaust: nfzExhaust,
+      cooling: { radiatorCapacityKw: 250, thermostatOpenC: 85, oilCooler: true }, revLimitRpm: 2100, idleRpm: 600,
+      ecuTorqueLimitNm: 1200, ecuPowerLimitKw: 220,
+      engineBrake: { kind: "decompression", maxKw: 235, ratedRpm: 2100 },
+    },
+    expected: { peakTorqueNm: 1200, peakTorqueRpm: 1400, peakPowerKw: 220, peakPowerRpm: 1800 },
+    source: "Mercedes-Benz Powertrain Bus Euro VI 2021 (OM 936: 7,7 l R6, 220 kW @ 1800, 1200 Nm @ 1200–1600, 652 kg, Einspritzdruck der Baureihe bis 2400 bar, Motorbremse bis 300 kW → 235 kW [S]); 110 × 135 mm (übliche Angabe, passt zu 7,7 l) [B]; ε 17,5 [S]",
+  },
+];
+
 const META: Record<string, { maker: string; cars: string; years: string }> = {
   "ref-vw-19-tdi-pd-96kw": { maker: "VW", cars: "Golf 4 GTI TDI, Passat B5, Audi A4", years: "2000–2006" },
   "ref-bmw-n57d30o1": { maker: "BMW", cars: "530d F10, X5 xDrive30d", years: "2008–2015" },
@@ -269,6 +326,7 @@ const META: Record<string, { maker: string; cars: string; years: string }> = {
 export const ENGINE_LIBRARY: LibraryEngine[] = [
   ...REFERENCE_ENGINES.map((r) => ({ ...r, ...(META[r.config.id] ?? { maker: "", cars: "", years: "" }) })),
   ...EXTRA,
+  ...COMMERCIAL,
   ...MOTO,
 ].sort((a, b) => (a.config.fuel === b.config.fuel ? a.config.name.localeCompare(b.config.name, "de") : a.config.fuel === "diesel" ? -1 : 1));
 
