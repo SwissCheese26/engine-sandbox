@@ -1,0 +1,6 @@
+# Blank issues stay allowed for the team; players are pointed to the form or the in-app button.
+blank_issues_enabled: true
+contact_links:
+  - name: Spiel öffnen und „Fehler melden“ nutzen
+    url: https://swisscheese26.github.io/engine-sandbox/
+    about: Im Hauptmenü oder in der Kopfleiste der Sandbox – die Diagnose wird dann automatisch angehängt.
