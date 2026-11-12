@@ -57,6 +57,12 @@ export function applyTuningStage(base: EngineConfig, stage: TuningStage, opts: T
     changes.push(`Drehmomentbegrenzung ${Math.round(base.ecuTorqueLimitNm)} → ${lim} Nm`);
     c.ecuTorqueLimitNm = lim;
   }
+  if (base.ecuPowerLimitKw !== undefined) {
+    // issue #31: truck power ratings are pure software, raised by the same share as the torque limit
+    const lim = Math.round((base.ecuPowerLimitKw * TORQUE_LIMIT[s]) / 5) * 5;
+    changes.push(`Leistungsbegrenzung ${Math.round(base.ecuPowerLimitKw)} → ${lim} kW`);
+    c.ecuPowerLimitKw = lim;
+  }
   if (fs.kind === "diesel" && base.fuelSystem.kind === "diesel") {
     // more quantity: the smoke limit is set richer (diesel.md §3.2, the injection capacity follows it)
     const d = { 1: 0.1, 2: 0.15, 3: 0.2 }[s];

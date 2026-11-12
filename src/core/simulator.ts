@@ -7,6 +7,7 @@
  */
 import { R_AIR, steadyManifoldRatio, throttlePsi, volumetricEfficiency } from "./airpath.ts";
 import { dieselFires } from "./combustion-diesel.ts";
+import { engineBrakeTorqueNm } from "./engine-brake.ts";
 import { chokeLimitedUpKpa, evaluateCycle, fullLoadAt, getModel, knockBoostCutBar, manifoldTempK, newOpPoint, torqueLimitCaps } from "./cycle.ts";
 import type { CycleOut, Model, OpPoint } from "./cycle.ts";
 import { meanPistonSpeed } from "./geometry.ts";
@@ -245,6 +246,7 @@ export class EngineSimulator {
     let afterfireSum = 0;
     let afFuelSum = 0;
     let limitedAny = false;
+    let ebAny = false;
     const pops = m.p && cfg.exhaust.overrunPops && cfg.exhaust.overrunPops !== "off" ? POPS[cfg.exhaust.overrunPops] : null;
     for (let i = 0; i < nSub; i++) {
       const rpm = x.rpm;
@@ -331,6 +333,10 @@ export class EngineSimulator {
         const full = fullLoadAt(m, rpm).air;
         x.relLoad = clamp(out.mAirCyc / full, 0, 1.2);
       }
+      // --- engine brake (issue #31, commercial.md §3): extra overrun braking torque, needs the key on (pneumatic flap / valve actuator)
+      const tEb = ignition ? engineBrakeTorqueNm(cfg, rpm, pedal) : 0;
+      if (tEb > 0) ebAny = true;
+      const tEng = out.torqueNm - tEb;
       // --- torques on the crank (diesel.md §3.11: J·dω/dt = T − T_brake − T_starter,loss)
       const tStarter = starter ? T0 * Math.max(0, 1 - rpm / 400) : 0;
       if (input.dynoMode === "hold-rpm") {
@@ -351,16 +357,16 @@ export class EngineSimulator {
       if (veh) {
         // ASR ignition retard (issue #23): petrol engines lose torque within one firing when the spark is retarded
         // (≈ 3–4 %/°CA, up to ≈ 60 % with 15–20 °CA retard; Bosch, Gasoline Engine Management, "torque-based ECU") [S]
-        const cut = m.p && out.torqueNm > 0 ? clamp(fin(veh.torqueCut ?? 0, 0), 0, 0.7) : 0;
-        stepVehicle(x, veh, out.torqueNm * (1 - cut) + tStarter, m.J, h);
+        const cut = m.p && tEng > 0 ? clamp(fin(veh.torqueCut ?? 0, 0), 0, 0.7) : 0;
+        stepVehicle(x, veh, tEng * (1 - cut) + tStarter, m.J, h);
       } else {
-        const net = out.torqueNm + tStarter - brake;
+        const net = tEng + tStarter - brake;
         let omega = x.rpm / RPM_PER_RADS + (net / m.J) * h;
         if (omega < 0) omega = 0;
         x.rpm = omega * RPM_PER_RADS;
       }
       x.crank = (x.crank + x.rpm * 6 * h) % 720;
-      tOutSum += out.torqueNm;
+      tOutSum += tEng;
       fuelSum += out.fuelMassFlowGS;
       airSum += out.airMassFlowKgS;
       if (out.mFuelCyc > 0) anyFire = true;
@@ -460,6 +466,7 @@ export class EngineSimulator {
     s.smoke = m.fuel === "diesel" ? out.smoke : 0;
     s.afterfire = x.running ? clamp(afterfire, 0, 1) : 0;
     s.torqueLimited = limitedAny && pedal > 0.5;
+    s.engineBrakeActive = ebAny;
     // --- limits (PR #12 evaluateLimits): warnings, wear, fatal damage
     const lim = evaluateLimits(cfg, s, this.tracker);
     // overheated catalyst ages the exhaust aftertreatment (issue #16) [S]: counted into the wear figure

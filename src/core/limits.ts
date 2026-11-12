@@ -90,7 +90,10 @@ function peakPressureDesign(cfg: EngineConfig): number {
   if (cfg.fuel === "diesel") {
     // diesel.md §4.2: minimum of block, piston, rod; head/gasket bore correction above 82 mm.
     let p = Math.min(DIESEL_PEAK_BLOCK[blockMaterial], DIESEL_PEAK_PISTON[pistons], DIESEL_PEAK_ROD[conrods]);
-    if (boreMm > 82) p *= Math.sqrt(82 / boreMm);
+    // Issue #31 [S]: steel-piston heavy-duty engines (truck/bus, bore > 100 mm) use single-cylinder heads with 4–6
+    // head bolts per cylinder and multi-layer steel gaskets, so the bore correction stops at 100 mm
+    // (Euro-VI truck diesels run ≈ 200–250 bar peak pressure, docs/research/commercial.md §2).
+    if (boreMm > 82) p *= Math.sqrt(82 / (pistons === "steel" ? Math.min(boreMm, 100) : boreMm));
     return p;
   }
   // petrol.md §4: piston limit, cast-iron block +10 %; weak cast rods −10 % [S].

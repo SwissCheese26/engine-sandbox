@@ -208,13 +208,13 @@ export const FIELDS: Field[] = [
   {
     kind: "number", path: "block.boreMm", q: "length", group: "block", label: "Bohrung", unit: "mm", decimals: 1,
     effect: "+ Bohrung → mehr Hubraum, Platz für größere Ventile.",
-    range: () => ({ min: 40, max: 140, step: 0.5 }),
+    range: () => ({ min: 40, max: 170, step: 0.5 }),
   },
   {
     kind: "number", path: "block.strokeMm", q: "length", group: "block", label: "Hub", unit: "mm", decimals: 1,
     effect: "+ Hub → mehr Drehmoment, höhere Kolbengeschwindigkeit.",
     warns: ["piston-speed"],
-    range: () => ({ min: 40, max: 160, step: 0.5 }),
+    range: () => ({ min: 40, max: 170, step: 0.5 }),
   },
   {
     kind: "number", path: "block.conrodLengthMm", q: "length", group: "block", label: "Pleuellänge", unit: "mm", decimals: 0,
@@ -427,7 +427,7 @@ export const FIELDS: Field[] = [
     kind: "number", path: "induction.compressorInducerMm", q: "length", group: "induction", label: "Verdichterrad", unit: "mm", decimals: 0,
     effect: "+ Rad → mehr Luftdurchsatz oben, mehr Turboloch unten.",
     visible: hasCompressorWheel, warns: ["turbo-overspeed"],
-    range: () => ({ min: 25, max: 80, step: 1 }),
+    range: () => ({ min: 25, max: 110, step: 1 }),
   },
   {
     kind: "number", path: "induction.turbineAR", group: "induction", label: "Turbinengehäuse A/R", unit: "", decimals: 2,
@@ -511,7 +511,7 @@ export const FIELDS: Field[] = [
     kind: "number", path: "revLimitRpm", group: "limits", label: "Drehzahlbegrenzer", unit: "1/min", decimals: 0,
     effect: "+ Begrenzer → mehr Spitzenleistung, wenn die Mechanik mitmacht.",
     warns: ["over-rev", "valve-float", "piston-speed", "conrod-stress"],
-    range: (c) => (isDiesel(c) ? { min: 2500, max: 6000, step: 100 } : { min: 4000, max: 16000, step: 100 }),
+    range: (c) => (isDiesel(c) ? { min: 1800, max: 6000, step: 100 } : { min: 4000, max: 16000, step: 100 }),
   },
   {
     kind: "number", path: "idleRpm", group: "limits", label: "Leerlaufdrehzahl", unit: "1/min", decimals: 0,
@@ -523,9 +523,15 @@ export const FIELDS: Field[] = [
   {
     kind: "optional-number", path: "ecuTorqueLimitNm", q: "torque", group: "ecu", label: "Drehmomentbegrenzung Steuergerät", unit: "Nm", decimals: 0,
     effect: "Hält das Drehmoment am Limit (Getriebeschutz): weniger Ladedruck bzw. Einspritzmenge statt hartem Abschalten.",
-    range: () => ({ min: 50, max: 3000, step: 5 }),
+    range: () => ({ min: 50, max: 4000, step: 5 }),
     // switching on starts at 90 % of the current full-load peak, so the effect is visible right away
     defaultOn: (c) => Math.max(50, Math.round((0.9 * summarize({ ...c, ecuTorqueLimitNm: undefined }).peakTorqueNm) / 5) * 5),
+  },
+  {
+    kind: "optional-number", path: "ecuPowerLimitKw", q: "power", group: "ecu", label: "Leistungsbegrenzung Steuergerät", unit: "kW", decimals: 0,
+    effect: "Hält die Leistung oberhalb des Drehmomentplateaus konstant – so entstehen die Leistungsstufen eines Lkw-Motors.",
+    range: () => ({ min: 20, max: 800, step: 5 }),
+    defaultOn: (c) => Math.max(20, Math.round((0.9 * summarize({ ...c, ecuPowerLimitKw: undefined }).peakPowerKw) / 5) * 5),
   },
 ];
 

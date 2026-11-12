@@ -47,6 +47,8 @@ export interface Model {
   fullAir: Float64Array | null;
   /** ECU torque limit [Nm] (issue #18), +Infinity when the config has none. */
   torqueLimitNm: number;
+  /** ECU power limit [kW] (issue #31, rated-power calibration of truck engines), +Infinity when the config has none. */
+  powerLimitKw: number;
   /** Per table row: diesel fuel quantity cap [kg/cycle], petrol manifold pressure cap [kPa abs]; +Infinity = limit inactive. */
   capFuel: Float64Array | null;
   capPMan: Float64Array | null;
@@ -90,6 +92,9 @@ export function getModel(cfg: EngineConfig): Model {
     fullTorque: null, fullAir: null,
     torqueLimitNm: cfg.ecuTorqueLimitNm !== undefined && Number.isFinite(cfg.ecuTorqueLimitNm) && cfg.ecuTorqueLimitNm > 0
       ? cfg.ecuTorqueLimitNm
+      : Number.POSITIVE_INFINITY,
+    powerLimitKw: cfg.ecuPowerLimitKw !== undefined && Number.isFinite(cfg.ecuPowerLimitKw) && cfg.ecuPowerLimitKw > 0
+      ? cfg.ecuPowerLimitKw
       : Number.POSITIVE_INFINITY,
     capFuel: null, capPMan: null,
   };
@@ -401,7 +406,7 @@ export function steadyFullLoad(m: Model, rpm: number, ambientC = 20, ambientKpa 
     boost = 0.5 * (boost + nb);
   }
   const res: SteadyPoint = { out, boostBar: boost, pManKpa: pMan, knockRetardDeg: retard, limited: false, fuelCapKg: Infinity, pManCapKpa: Infinity };
-  if (out.torqueNm > m.torqueLimitNm) applyTorqueLimit(m, op, res, ambientC, ambientKpa);
+  if (out.torqueNm > torqueLimitAt(m, rpm)) applyTorqueLimit(m, op, res, ambientC, ambientKpa);
   return res;
 }
 
@@ -412,8 +417,18 @@ export function steadyFullLoad(m: Model, rpm: number, ambientC = 20, ambientKpa 
  * ambient pressure, closes the throttle (petrol.md §3.3). Solved by bisection on the quantity / manifold
  * pressure so that the steady brake torque equals the limit; knock control settles at each trial point.
  */
+/**
+ * Effective ECU torque limit at rpm [Nm]: min(torque limit, power limit / ω). Issue #31: truck engines are sold in
+ * several power ratings of the same hardware (e.g. OM471 310 … 390 kW); the ECU holds the rated power above the end
+ * of the torque plateau (constant-power governor curve, docs/research/commercial.md §2).
+ */
+export function torqueLimitAt(m: Model, rpm: number): number {
+  const p = Number.isFinite(m.powerLimitKw) ? (m.powerLimitKw * 60000) / (2 * Math.PI * Math.max(100, rpm)) : Infinity;
+  return Math.min(m.torqueLimitNm, p);
+}
+
 function applyTorqueLimit(m: Model, op: OpPoint, res: SteadyPoint, ambientC: number, ambientKpa: number) {
-  const lim = m.torqueLimitNm;
+  const lim = torqueLimitAt(m, op.rpm);
   let out = res.out;
   if (m.d) {
     let lo = 0;
@@ -510,7 +525,7 @@ export function fullLoadAt(m: Model, rpm: number): { torque: number; air: number
 // Caps come from the steady warm full-load point (90 °C, 20 °C ambient); in transients with less boost the
 // quantity cap stays above the smoke limit, so the limit only acts where the steady torque would exceed it.
 export function torqueLimitCaps(m: Model, rpm: number): { fuelKg: number; pManKpa: number } {
-  if (!Number.isFinite(m.torqueLimitNm)) return { fuelKg: Infinity, pManKpa: Infinity };
+  if (!Number.isFinite(m.torqueLimitNm) && !Number.isFinite(m.powerLimitKw)) return { fuelKg: Infinity, pManKpa: Infinity };
   fullLoadAt(m, rpm);
   const a = m.capFuel!;
   const b = m.capPMan!;
