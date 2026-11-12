@@ -20,6 +20,7 @@ import { CompactView } from "./layouts/compact.ts";
 import { RaceView } from "./layouts/race.ts";
 import { DriveInfo, type LayoutView } from "./layouts/view.ts";
 import { fmtQ } from "./units.ts";
+import { Haptics, ScreenWake, isTouch } from "./device.ts";
 
 /** Largest simulation step per frame; longer frames (tab in background) are clamped. */
 const MAX_DT = 1 / 30;
@@ -60,6 +61,10 @@ export class App {
   /** Menu or settings open (#42): loop stopped, keys ignored, sound silent. */
   private paused = false;
   private unsubscribeSettings: () => void;
+  /** Screen stays on while the engine runs (#44, setting "Bildschirm wach halten"). */
+  private wake = new ScreenWake();
+  /** Vibration on limiter, ABS and damage (#44). */
+  private haptics = new Haptics();
   /** Sandbox views (#26): the Prüfzelle itself or one of the views in src/ui/layouts/, created on first use. */
   private layoutId: LayoutId = "pruefzelle";
   private views = new Map<LayoutId, LayoutView>();
@@ -71,6 +76,7 @@ export class App {
   private sinceIgnition = 0;
 
   constructor(private root: HTMLElement) {
+    this.inputs.damage = getSettings().realism;
     this.cfg = defaultConfig("diesel");
     this.summary = safeSummary(this.cfg, null);
     this.sim = new EngineSimulator(this.cfg);
@@ -88,6 +94,9 @@ export class App {
     this.setLayout(getSettings().layout);
     this.unsubscribeSettings = onSettingsChange((st) => {
       if (st.layout !== this.layoutId) this.setLayout(st.layout);
+      this.inputs.damage = st.realism;
+      this.console.syncSettings(st);
+      this.recorder.syncSettings(st);
       this.syncUnits();
     });
   }
@@ -200,6 +209,7 @@ export class App {
     // ▲ gear ▼ next to brake and gas (setting "Schaltknöpfe in der Bedienleiste")
     this.shiftPad = new ShiftPad(() => this.gearbox.drivetrain);
     this.console.pedalsEl.prepend(this.shiftPad.el);
+    this.console.setPedalSide(getSettings().pedalSide);
 
     cell.append(top, this.bench.el, stage, deck, this.announcer);
     this.root.replaceChildren(cell);
@@ -277,6 +287,7 @@ export class App {
       "visibilitychange",
       () => {
         if (document.hidden) this.console.releaseAll();
+        else this.wake.onVisible();
       },
       { signal },
     );
@@ -336,6 +347,7 @@ export class App {
     for (const v of this.views.values()) v.configure(cfg, this.summary, this.info);
     if (this.soundStarted) this.sound.setConfig(cfg, this.summary);
     this.root.dataset.fuel = cfg.fuel;
+    this.gearbox.trip.setFuel(cfg.fuel);
   }
 
   private announce(text: string) {
@@ -396,6 +408,9 @@ export class App {
       // board computer counts only while the car drives on the chassis dyno (#40, #41)
       this.gearbox.trip.step(dt, s, this.inputs.dynoMode === "vehicle");
       if (this.soundStarted) this.sound.update(s, this.inputs.pedal);
+      const st = getSettings();
+      this.wake.update(st.wakeLock && s.running);
+      this.haptics.update(dt, s, this.cfg.revLimitRpm, this.inputs.pedal, st.vibration === "on" || (st.vibration === "auto" && isTouch()));
       this.rafId = requestAnimationFrame(frame);
     };
     this.rafId = requestAnimationFrame(frame);
@@ -412,6 +427,7 @@ export class App {
     this.console.releaseAll();
     this.gearbox.cruise.release();
     this.gearbox.trip.save();
+    this.wake.release();
     if (this.soundStarted) {
       // silence first (smoothed in the DSP), then stop the audio clock
       this.sound.setVolume(0);
@@ -476,6 +492,7 @@ export class App {
     if (this.disposed) return;
     this.disposed = true;
     this.unsubscribeSettings();
+    this.wake.release();
     cancelAnimationFrame(this.rafId);
     cancelAnimationFrame(this.resizeRaf);
     this.abort.abort();

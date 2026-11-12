@@ -83,7 +83,7 @@ export class Workbench {
         <select data-action="library"><option value="">Motor wählen …</option>${([["Diesel", (e: LibraryEngine) => e.category !== "motorcycle" && e.config.fuel === "diesel"], ["Benziner", (e: LibraryEngine) => e.category !== "motorcycle" && e.config.fuel === "petrol"], ["Motorrad", (e: LibraryEngine) => e.category === "motorcycle"]] as const).map(([label, pick]) => `<optgroup label="${label}">${ENGINE_LIBRARY.filter(pick).map((e) => `<option value="${e.config.id}">${e.config.name}${e.cars ? ` – ${e.cars}` : ""}</option>`).join("")}</optgroup>`).join("")}</select>
       </label>
       <p class="bench__libinfo" hidden></p>
-      <p class="bench__lock" role="status" aria-live="polite" hidden>Zum Umbauen Motor abstellen: Zündung aus mit <kbd>I</kbd>.</p>
+      <p class="bench__lock" role="status" aria-live="polite" hidden>Zum Umbauen Motor abstellen: Zündung aus<span class="kbd-only"> mit <kbd>I</kbd></span>.</p>
       <div class="bench__notes" role="status" aria-live="polite"></div>`;
     this.notes = head.querySelector(".bench__notes")!;
     this.lockNote = head.querySelector(".bench__lock")!;
