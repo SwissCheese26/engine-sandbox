@@ -50,6 +50,11 @@ export class ToastQueue {
   private lastShown = new Map<string, number>();
   private nextId = 1;
 
+  /** Number of remembered cooldowns (tests). */
+  get remembered(): number {
+    return this.lastShown.size;
+  }
+
   constructor(opts: Partial<ToastQueueOptions> = {}) {
     this.opts = { ...TOAST_DEFAULTS, ...opts };
   }
@@ -71,6 +76,9 @@ export class ToastQueue {
       removed.push(t);
       return false;
     });
+
+    // forget conditions whose cooldown has passed (keeps the map small over a long session)
+    for (const [k, t] of this.lastShown) if (now - t >= this.opts.cooldownMs) this.lastShown.delete(k);
 
     const nowActive = new Set<string>();
     for (const inp of inputs) {

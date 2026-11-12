@@ -76,6 +76,16 @@ describe("ToastQueue", () => {
     expect(q.sync([piston], 1, true).added).toHaveLength(1);
   });
 
+  test("cooldown entries older than the cooldown are pruned", () => {
+    const q = new ToastQueue({ cooldownMs: 1000, ttlMs: 100 });
+    q.sync([piston, egt], 0, true);
+    expect(q.remembered).toBe(2);
+    q.sync([], 500, true);
+    expect(q.remembered).toBe(2);
+    q.sync([], 1000, true);
+    expect(q.remembered).toBe(0);
+  });
+
   test("critical events live longer than limit hints", () => {
     const q = new ToastQueue({ ttlMs: 3000, alwaysTtlMs: 5000 });
     q.sync([dead, piston], 0, true);
@@ -86,6 +96,25 @@ describe("ToastQueue", () => {
 
 describe("toastInputs", () => {
   const state = (p: Partial<EngineState>) => ({ destroyed: false, warnings: [], damage: [], ...p }) as unknown as EngineState;
+  test("damage and critical warnings always, limit approach only with the setting", () => {
+    const inputs = toastInputs({
+      state: state({
+        warnings: [
+          { code: "piston-speed", severity: "warning", message: "Kolben" },
+          { code: "over-rev", severity: "critical", message: "Überdrehzahl" },
+        ],
+        damage: [{ code: "overheat-oil", t: 2, message: "Öl verkokt.", fatal: false }],
+      }),
+      outOfFuel: false,
+    });
+    expect(inputs.map((i) => [i.key, !!i.always])).toEqual([
+      ["d:overheat-oil:2.0", true],
+      ["w:piston-speed:warning", false],
+      ["w:over-rev:critical", true],
+    ]);
+    const q = new ToastQueue();
+    expect(q.sync(inputs, 0, false).added.map((t) => t.key)).toEqual(["d:overheat-oil:2.0", "w:over-rev:critical"]);
+  });
   test("warnings without info, fatal damage as an always event, empty tank", () => {
     const inputs = toastInputs({
       state: state({

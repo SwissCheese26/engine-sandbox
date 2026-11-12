@@ -177,7 +177,7 @@ export class SettingsScreen {
           <h2 class="plate__title" id="set-hints">Hinweise und Ton</h2>
           <fieldset class="office__choice">
             <legend>Hinweise zu Grenzwerten</legend>
-            <label><input type="radio" name="limithints" value="off" /> <span><b>Aus</b>: Die Bedienleiste bleibt ruhig. Ein zerstörter Motor oder ein leerer Tank wird trotzdem kurz gemeldet.</span></label>
+            <label><input type="radio" name="limithints" value="off" /> <span><b>Aus</b>: Die Bedienleiste bleibt ruhig. Schäden und kritische Warnungen erscheinen immer, ebenso ein leerer Tank.</span></label>
             <label><input type="radio" name="limithints" value="toast" /> <span><b>Kurz oben einblenden</b>: z. B. „Mittlere Kolbengeschwindigkeit nahe der Grenze“ erscheint für 3 s unter der Kopfleiste.</span></label>
           </fieldset>
           <fieldset class="office__choice">

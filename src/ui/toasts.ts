@@ -7,7 +7,7 @@ import { ToastQueue, type Toast, type ToastInput } from "./toast-queue.ts";
 /** What the sandbox reports for the toasts this frame. */
 export interface ToastSources {
   state: EngineState;
-  /** Chassis dyno with an empty tank and the engine stopped. */
+  /** The engine stalled because the tank ran dry (latched until it runs again). */
   outOfFuel: boolean;
 }
 
@@ -19,12 +19,13 @@ export function toastInputs({ state: s, outOfFuel }: ToastSources): ToastInput[]
     out.push({ key: "destroyed", severity: "critical", always: true, text: fatal ? `Motor zerstört. ${fatal.message}` : "Motor zerstört." });
   }
   if (outOfFuel) out.push({ key: "fuel-empty", severity: "critical", always: true, text: "Tank leer: Der Motor ist ausgegangen." });
+  // engine damage and critical warnings are shown in any case; only the limit approach waits for the setting
   for (const d of s.damage.slice(-3)) {
-    if (!d.fatal) out.push({ key: `d:${d.code}:${d.t.toFixed(1)}`, severity: "warning", text: `Schaden: ${d.message}` });
+    if (!d.fatal) out.push({ key: `d:${d.code}:${d.t.toFixed(1)}`, severity: "warning", always: true, text: `Schaden: ${d.message}` });
   }
   for (const w of s.warnings) {
     if (w.severity === "info") continue;
-    out.push({ key: `w:${w.code}:${w.severity}`, severity: w.severity, text: w.message });
+    out.push({ key: `w:${w.code}:${w.severity}`, severity: w.severity, always: w.severity === "critical", text: w.message });
   }
   return out;
 }
@@ -42,6 +43,20 @@ export class ToastStrip {
     this.el.setAttribute("aria-live", "polite");
     this.el.setAttribute("aria-relevant", "additions");
     this.el.setAttribute("aria-label", "Hinweise");
+  }
+
+  /**
+   * One live region per message: where the console shows its message list (wide screens) that list speaks and the
+   * toasts are only visual; on phones (list hidden) the toasts are the polite live region.
+   */
+  setLive(live: boolean) {
+    if (live) {
+      this.el.setAttribute("aria-live", "polite");
+      this.el.removeAttribute("aria-hidden");
+    } else {
+      this.el.removeAttribute("aria-live");
+      this.el.setAttribute("aria-hidden", "true");
+    }
   }
 
   /** Per frame. `enabled` = setting "Hinweise zu Grenzwerten" is "toast". */
