@@ -2,6 +2,7 @@
 // into an offscreen canvas per size/scale; each frame only blits the face and draws the needle, and only when the
 // needle moved by more than a tenth of a degree. DPR-aware via fitCanvas().
 import { fitCanvas, reducedMotion } from "../canvas.ts";
+import { DEFAULT_DIAL_THEME, type DialTheme } from "./designs.ts";
 import { START_DEG, SWEEP_DEG } from "./logic.ts";
 
 export interface DialScale {
@@ -34,6 +35,8 @@ interface Palette {
   red: string;
   hub: string;
   font: string;
+  /** Needle tip of the "tip" needle (#83); falls back to the needle colour. */
+  tip: string;
 }
 
 function palette(el: Element): Palette {
@@ -48,7 +51,8 @@ function palette(el: Element): Palette {
     zone: v("--signal", "#f6a800"),
     red: v("--ck-redline", "#d8321f"),
     hub: v("--ck-hub", "#0e1312"),
-    font: v("--font-num", "system-ui"),
+    font: v("--ck-font", "") || v("--font-num", "system-ui"),
+    tip: v("--ck-tip", "") || v("--ck-needle", "#ff5326"),
   };
 }
 
@@ -70,9 +74,12 @@ export class Dial {
   private marks: { cruise: number | null; limit: number | null } = { cruise: null, limit: null };
   private marksKey = "";
   dimmed = false;
+  /** Needle shape, bezel and numeral style of the cockpit design (#83); the default is the classic dial. */
+  private theme: DialTheme;
 
-  constructor(scale: DialScale, opts: { small?: boolean; label: string }) {
+  constructor(scale: DialScale, opts: { small?: boolean; label: string; theme?: DialTheme }) {
     this.scale = scale;
+    this.theme = opts.theme ?? DEFAULT_DIAL_THEME;
     this.small = !!opts.small;
     this.canvas = document.createElement("canvas");
     this.canvas.className = opts.small ? "dial dial--small" : "dial";
@@ -84,6 +91,13 @@ export class Dial {
     this.scale = s;
     this.face = null;
     this.drawnAngle = Number.NaN;
+  }
+
+  /** Switches the drawing style (cockpit design, #83); colours still come from CSS. */
+  setTheme(t: DialTheme) {
+    if (t === this.theme) return;
+    this.theme = t;
+    this.invalidate();
   }
 
   /** Colours come from CSS custom properties; call after the theme or the view changed. */
@@ -153,15 +167,31 @@ export class Dial {
     const cy = r;
     const s = this.scale;
     const small = this.small;
+    const t = this.theme;
     // bezel: a thin alu ring, then the face
     ctx.beginPath();
     ctx.arc(cx, cy, r - 1, 0, Math.PI * 2);
     ctx.fillStyle = p.face;
     ctx.fill();
-    ctx.lineWidth = small ? 1.5 : 2.5;
-    ctx.strokeStyle = p.ring;
-    ctx.stroke();
     const rr = r * (small ? 0.86 : 0.9);
+    if (t.ring === "alu") {
+      ctx.lineWidth = small ? 1.5 : 2.5;
+      ctx.strokeStyle = p.ring;
+      ctx.stroke();
+    } else if (t.ring === "tunnel") {
+      // looking down a tube: the face darkens towards the wall, a thin lit edge where the scale ends
+      const g = ctx.createRadialGradient(cx, cy, r * 0.5, cx, cy, r);
+      g.addColorStop(0, "rgba(0,0,0,0)");
+      g.addColorStop(0.82, "rgba(0,0,0,0.25)");
+      g.addColorStop(1, "rgba(0,0,0,0.9)");
+      ctx.fillStyle = g;
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(cx, cy, rr + (small ? 2 : 4), 0, Math.PI * 2);
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = p.ring;
+      ctx.stroke();
+    }
     // limit zone on the outer edge
     for (const [z, col] of [[s.zone, p.zone], [s.red, p.red]] as const) {
       if (!z || !(z.to > z.from)) continue;
@@ -180,6 +210,7 @@ export class Dial {
     for (let i = 0; i <= n; i++) {
       const v = s.min + i * s.minor;
       const major = i % majorEvery === 0;
+      if (!major && !t.minorTicks) continue;
       const a = this.angle(v);
       const len = major ? rr * (small ? 0.22 : 0.13) : rr * (small ? 0.12 : 0.065);
       ctx.beginPath();
@@ -195,8 +226,8 @@ export class Dial {
       ctx.fillStyle = p.light;
       // Nachtbeleuchtung: numerals glow faintly like backlit print
       ctx.shadowColor = p.light;
-      ctx.shadowBlur = 5;
-      ctx.font = `500 ${Math.round(small ? r * 0.26 : r * 0.13)}px ${p.font}`;
+      ctx.shadowBlur = t.glow;
+      ctx.font = `${t.numeralWeight} ${Math.round((small ? r * 0.26 : r * 0.13) * t.numeralScale)}px ${p.font}`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(label, cx + Math.cos(a) * lr, cy + Math.sin(a) * lr);
@@ -279,18 +310,33 @@ export class Dial {
     const sin = Math.sin(a);
     const nx = -sin;
     const ny = cos;
+    const shape = this.theme.needle;
+    // quad from distance d0 (half width w0) to d1 (half width w1) along the needle
+    const seg = (d0: number, w0: number, d1: number, w1: number, col: string) => {
+      ctx.beginPath();
+      ctx.moveTo(cx + cos * d0 + nx * w0, cy + sin * d0 + ny * w0);
+      ctx.lineTo(cx + cos * d1 + nx * w1, cy + sin * d1 + ny * w1);
+      ctx.lineTo(cx + cos * d1 - nx * w1, cy + sin * d1 - ny * w1);
+      ctx.lineTo(cx + cos * d0 - nx * w0, cy + sin * d0 - ny * w0);
+      ctx.closePath();
+      ctx.fillStyle = col;
+      ctx.fill();
+    };
     ctx.save();
     ctx.globalAlpha = this.dimmed ? 0.35 : 1;
     ctx.shadowColor = p.needle;
     ctx.shadowBlur = small ? 3 : 8;
-    ctx.beginPath();
-    ctx.moveTo(cx - cos * tail + nx * wBase * 0.6, cy - sin * tail + ny * wBase * 0.6);
-    ctx.lineTo(cx + cos * len + nx * 0.8, cy + sin * len + ny * 0.8);
-    ctx.lineTo(cx + cos * len - nx * 0.8, cy + sin * len - ny * 0.8);
-    ctx.lineTo(cx - cos * tail - nx * wBase * 0.6, cy - sin * tail - ny * wBase * 0.6);
-    ctx.closePath();
-    ctx.fillStyle = p.needle;
-    ctx.fill();
+    if (shape === "tip") {
+      // light shaft, the outer third in the tip colour (sport-saloon needles)
+      const k = small ? 0.5 : 0.62;
+      ctx.shadowColor = p.tip;
+      seg(-tail, wBase * 0.55, len * k, wBase * 0.4, p.light);
+      seg(len * k, wBase * 0.4, len, 0.7, p.tip);
+    } else if (shape === "bar") {
+      seg(-tail, wBase * 0.7, len, wBase * 0.5, p.needle);
+    } else {
+      seg(-tail, wBase * 0.6, len, 0.8, p.needle);
+    }
     ctx.restore();
     // hub cap
     ctx.beginPath();
