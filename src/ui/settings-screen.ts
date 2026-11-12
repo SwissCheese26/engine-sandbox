@@ -171,6 +171,20 @@ export class SettingsScreen {
           </fieldset>
           <p class="office__note" data-out="device-note"></p>
         </section>
+        <section class="plate office__plate" aria-labelledby="set-hints">
+          <span class="screw screw--tl" aria-hidden="true"></span><span class="screw screw--tr" aria-hidden="true"></span>
+          <span class="screw screw--bl" aria-hidden="true"></span><span class="screw screw--br" aria-hidden="true"></span>
+          <h2 class="plate__title" id="set-hints">Hinweise und Ton</h2>
+          <fieldset class="office__choice">
+            <legend>Hinweise zu Grenzwerten</legend>
+            <label><input type="radio" name="limithints" value="off" /> <span><b>Aus</b>: Die Bedienleiste bleibt ruhig. Ein zerstörter Motor oder ein leerer Tank wird trotzdem kurz gemeldet.</span></label>
+            <label><input type="radio" name="limithints" value="toast" /> <span><b>Kurz oben einblenden</b>: z. B. „Mittlere Kolbengeschwindigkeit nahe der Grenze“ erscheint für 3 s unter der Kopfleiste.</span></label>
+          </fieldset>
+          <fieldset class="office__choice">
+            <legend>Ton</legend>
+            <label><input type="checkbox" data-set="sound" /> <span><b>Motorklang an</b>: startet mit dem ersten Tippen oder Tastendruck in der Sandbox.</span></label>
+          </fieldset>
+        </section>
         <section class="plate office__plate" aria-labelledby="set-sim">
           <span class="screw screw--tl" aria-hidden="true"></span><span class="screw screw--tr" aria-hidden="true"></span>
           <span class="screw screw--bl" aria-hidden="true"></span><span class="screw screw--br" aria-hidden="true"></span>
@@ -296,8 +310,9 @@ export class SettingsScreen {
     radio("pedalside", "pedalSide", (v) => (v === "left" ? "left" : "right"));
     radio("vibration", "vibration", (v) => (v === "on" || v === "off" ? v : "auto"));
     radio("realism", "realism", (v) => (v === "lenient" || v === "off" ? v : "real"));
+    radio("limithints", "limitHints", (v) => (v === "toast" ? "toast" : "off"));
     el.querySelectorAll<HTMLInputElement>("input[data-set]").forEach((c) =>
-      c.addEventListener("change", () => setSettings({ [c.dataset.set as "startWarm" | "autoMeasure" | "wakeLock"]: c.checked })),
+      c.addEventListener("change", () => setSettings({ [c.dataset.set as "startWarm" | "autoMeasure" | "wakeLock" | "sound"]: c.checked })),
     );
     el.querySelectorAll<HTMLInputElement>("input[data-price]").forEach((inp) =>
       inp.addEventListener("change", () => {
@@ -386,7 +401,8 @@ export class SettingsScreen {
     check("pedalside", s.pedalSide);
     check("vibration", s.vibration);
     check("realism", s.realism);
-    this.el.querySelectorAll<HTMLInputElement>("input[data-set]").forEach((c) => (c.checked = s[c.dataset.set as "startWarm" | "autoMeasure" | "wakeLock"]));
+    check("limithints", s.limitHints);
+    this.el.querySelectorAll<HTMLInputElement>("input[data-set]").forEach((c) => (c.checked = s[c.dataset.set as "startWarm" | "autoMeasure" | "wakeLock" | "sound"]));
     this.el.querySelectorAll<HTMLInputElement>("input[data-price]").forEach((inp) => (inp.value = s.fuelPrice[inp.dataset.price as "diesel" | "petrol"].toFixed(2)));
     const nav = globalThis.navigator as { wakeLock?: unknown; vibrate?: unknown } | undefined;
     const missing = [!nav?.wakeLock && "Bildschirm wach halten", typeof nav?.vibrate !== "function" && "Vibration"].filter(Boolean);
