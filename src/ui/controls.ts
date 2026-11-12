@@ -3,7 +3,8 @@
 // arrow keys move the pedal lever in 5 % steps.
 import type { EngineState, SimInputs } from "../core/index.ts";
 import { clamp, fmt } from "./format.ts";
-import { getSettings } from "./settings.ts";
+import { isTouch } from "./device.ts";
+import { GAS_RAMPS, getSettings, setSettings, type GasRamp, type Settings } from "./settings.ts";
 
 const PEDAL_STEP = 0.05;
 
@@ -47,6 +48,8 @@ export class ControlPanel {
   /** Gas lever and brake pedal side by side, as placed in the deck. */
   readonly pedalsEl: HTMLElement;
   private starterPointer = false;
+  private warmBox!: HTMLInputElement;
+  private rampSel!: HTMLSelectElement;
   private lastMsgKey = "";
   private lastStatus = "";
 
@@ -99,11 +102,9 @@ export class ControlPanel {
           <input type="range" min="0" max="1" step="0.05" data-control="volume" />
         </label>
         <label class="console__field console__gasramp">
-          <span>Gas mit <kbd>W</kbd></span>
+          <span><span class="kbd-only">Gas mit <kbd>W</kbd></span><span class="touch-only">Gas-Rampe</span></span>
           <select data-control="gas-ramp">
-            <option value="0">Sofort Vollgas</option>
-            <option value="1">Zügig (1 s)</option>
-            <option value="3">Gefühlvoll (3 s)</option>
+            ${GAS_RAMPS.map((g) => `<option value="${g.s}">${g.label}</option>`).join("")}
           </select>
         </label>
         <label class="console__field console__warm"><input type="checkbox" data-control="warm" /> <span>Motor warm starten</span></label>
@@ -140,7 +141,7 @@ export class ControlPanel {
         <span class="pedal__fill"></span><span class="pedal__knob"></span>
       </div>
       <output class="num pedal__value">0 %</output>
-      <span class="pedal__hint">Leertaste oder <kbd>W</kbd> halten</span>`;
+      <span class="pedal__hint"><span class="kbd-only">Leertaste oder <kbd>W</kbd> halten</span><span class="touch-only">Hebel hochschieben</span></span>`;
     this.pedalFill = this.pedalEl.querySelector(".pedal__fill")!;
     // brake pedal: held while pressed (pointer or Enter/Space), like the starter button
     this.brakeEl = document.createElement("button");
@@ -242,38 +243,15 @@ export class ControlPanel {
       else this.inputs.dynoTargetRpm = v;
       this.syncTarget();
     });
+    // warm start and gas ramp: stored in the settings (#66, one source of truth), also on the settings screen
     const warm = this.el.querySelector<HTMLInputElement>('[data-control="warm"]')!;
-    try {
-      warm.checked = localStorage.getItem("pruefzelle.startWarm") === "1";
-    } catch {
-      /* default: cold start */
-    }
-    this.inputs.startWarm = warm.checked;
-    warm.addEventListener("change", () => {
-      this.inputs.startWarm = warm.checked;
-      try {
-        localStorage.setItem("pruefzelle.startWarm", warm.checked ? "1" : "0");
-      } catch {
-        /* per visit only */
-      }
-      this.onWarmChange(warm.checked);
-    });
     const ramp = this.el.querySelector<HTMLSelectElement>('[data-control="gas-ramp"]')!;
-    try {
-      const saved = localStorage.getItem("pruefzelle.gasRamp");
-      if (saved && [...ramp.options].some((o) => o.value === saved)) ramp.value = saved;
-    } catch {
-      /* default: instant */
-    }
-    this.gasRampS = Number(ramp.value);
-    ramp.addEventListener("change", () => {
-      this.gasRampS = Number(ramp.value);
-      try {
-        localStorage.setItem("pruefzelle.gasRamp", ramp.value);
-      } catch {
-        /* per visit only */
-      }
-    });
+    this.warmBox = warm;
+    this.rampSel = ramp;
+    this.inputs.startWarm = getSettings().startWarm;
+    this.syncSettings(getSettings());
+    warm.addEventListener("change", () => setSettings({ startWarm: warm.checked }));
+    ramp.addEventListener("change", () => setSettings({ gasRamp: Number(ramp.value) as GasRamp }));
     this.muteBtn.addEventListener("click", () => {
       this.muted = !this.muted;
       this.muteBtn.setAttribute("aria-pressed", String(!this.muted));
@@ -519,14 +497,44 @@ export class ControlPanel {
     }
   }
 
+  /** Settings changed (here or on the settings screen): controls, gas ramp, warm start and pedal side. */
+  syncSettings(st: Settings) {
+    this.warmBox.checked = st.startWarm;
+    this.rampSel.value = String(st.gasRamp);
+    this.gasRampS = st.gasRamp;
+    if (this.inputs.startWarm !== st.startWarm) {
+      this.inputs.startWarm = st.startWarm;
+      this.onWarmChange(st.startWarm);
+    }
+    this.setPedalSide(st.pedalSide);
+  }
+
+  /** Gas on the right (brake left of it) or mirrored for left hands (#66). DOM order, so Tab follows the eye. */
+  setPedalSide(side: Settings["pedalSide"]) {
+    // other parts (the shift buttons) sit on the outside, away from the gas lever
+    const others = [...this.pedalsEl.children].filter((c) => c !== this.brakeEl && c !== this.pedalEl);
+    const order = side === "left" ? [this.pedalEl, this.brakeEl, ...others] : [...others, this.brakeEl, this.pedalEl];
+    const kids = [...this.pedalsEl.children];
+    if (order.every((c, i) => kids[i] === c)) return;
+    // moving the focused element would drop the focus; restore it
+    const focused = document.activeElement as HTMLElement | null;
+    this.pedalsEl.append(...order);
+    if (focused && this.pedalsEl.contains(focused) && document.activeElement !== focused) focused.focus({ preventScroll: true });
+    this.pedalsEl.classList.toggle("pedals--left", side === "left");
+  }
+
   /** Per frame: status line and messages. DOM is touched only when something changes. */
   update(s: EngineState) {
     let status: string;
+    const touch = isTouch();
     if (s.destroyed) status = "Motor zerstört. Setze ihn zurück, um weiterzumachen.";
-    else if (!this.inputs.ignition) status = "Zündung aus. Schalte sie mit I ein.";
-    else if (s.running) status = this.inputs.dynoMode === "free" ? "Motor läuft. Gib Gas mit der Leertaste." : (this.inputs.dynoMode === "vehicle" ? "Motor läuft. W gibt Gas, S bremst, E und Q schalten." : "Motor läuft unter Last.");
-    else if (this.inputs.starter) status = "Starter dreht …";
-    else status = "Zündung ein. Halte A, um zu starten.";
+    else if (!this.inputs.ignition) status = touch ? "Zündung aus. Tippe auf Zündung, um sie einzuschalten." : "Zündung aus. Schalte sie mit I ein.";
+    else if (s.running) {
+      if (this.inputs.dynoMode === "free") status = touch ? "Motor läuft. Schiebe den Gashebel hoch." : "Motor läuft. Gib Gas mit der Leertaste.";
+      else if (this.inputs.dynoMode === "vehicle") status = touch ? "Motor läuft. Gashebel gibt Gas, Bremse bremst, ▲ und ▼ schalten." : "Motor läuft. W gibt Gas, S bremst, E und Q schalten.";
+      else status = "Motor läuft unter Last.";
+    } else if (this.inputs.starter) status = "Starter dreht …";
+    else status = touch ? "Zündung ein. Tippe auf Starter und halte ihn, bis der Motor läuft." : "Zündung ein. Halte A, um zu starten.";
     if (status !== this.lastStatus) {
       this.status.textContent = status;
       this.lastStatus = status;

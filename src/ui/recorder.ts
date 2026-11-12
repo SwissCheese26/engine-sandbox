@@ -5,7 +5,7 @@ import { dynoSweep } from "../core/index.ts";
 import type { DynoPoint, EngineConfig, EngineState, EngineSummary } from "../core/index.ts";
 import { fitCanvas, reducedMotion, tokens } from "./canvas.ts";
 import { fmt, niceCeil, tickStep } from "./format.ts";
-import { prefs } from "./settings.ts";
+import { getSettings, prefs, setSettings, type Settings } from "./settings.ts";
 import { fmtQ, toUnit } from "./units.ts";
 
 /** Paper feed in CSS px per second of simulation time. */
@@ -95,17 +95,10 @@ export class Recorder {
     this.clearBtn = this.el.querySelector('[data-action="clear"]')!;
     this.measureBtn.addEventListener("click", () => this.measure());
     this.autoBox = this.el.querySelector('[data-action="auto"]')!;
-    try {
-      if (localStorage.getItem("pruefzelle.autoMeasure") === "0") this.autoBox.checked = false;
-    } catch {
-      /* default on */
-    }
+    // stored in the settings (#66), also switchable on the settings screen; App calls syncSettings() on changes
+    this.autoBox.checked = getSettings().autoMeasure;
     this.autoBox.addEventListener("change", () => {
-      try {
-        localStorage.setItem("pruefzelle.autoMeasure", this.autoBox.checked ? "1" : "0");
-      } catch {
-        /* per visit only */
-      }
+      setSettings({ autoMeasure: this.autoBox.checked });
       if (this.autoBox.checked) this.scheduleAuto();
     });
     this.clearBtn.addEventListener("click", () => {
@@ -156,6 +149,13 @@ export class Recorder {
     this.tqMax = niceCeil(Math.max(50 * kT, tq * kT * 1.2)) / kT;
     this.pwMax = niceCeil(Math.max(20 * kP, pw * kP * 1.2)) / kP;
     this.drawSheet();
+  }
+
+  /** Settings changed: the "automatisch messen" box follows; switching it on schedules a run. */
+  syncSettings(st: Settings) {
+    if (this.autoBox.checked === st.autoMeasure) return;
+    this.autoBox.checked = st.autoMeasure;
+    if (st.autoMeasure) this.scheduleAuto();
   }
 
   /**
