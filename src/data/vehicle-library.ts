@@ -1,4 +1,4 @@
-import { GEARBOXES, VEHICLES, withTyre } from "../core/index.ts";
+import { BUS_AUTOMATIC, GEARBOXES, TRUCK_AMT, VEHICLES, withTyre } from "../core/index.ts";
 import type { CarSetup, GearboxSpec, TyreSetup, VehicleParams } from "../core/index.ts";
 
 /**
@@ -25,9 +25,12 @@ export interface LibraryCar {
     /** Kerb weight as published (kg) and its norm. */
     kerbKg: number;
     /** EU (incl. 75 kg driver), DIN (without driver), wet = motorcycle ready to ride, fuelled, without rider. */
-    kerbNorm: "EU" | "DIN" | "wet";
-    t0to100S: number;
+    kerbNorm: "EU" | "DIN" | "wet" | "empty";
+    /** Null for commercial vehicles (issue #31): limited below 100 km/h or no published value. */
+    t0to100S: number | null;
     vmaxKmh: number;
+    /** Commercial vehicles (issue #31): permissible gross mass, kg. */
+    grossKg?: number;
     /** True when the published Vmax is the governor. */
     vmaxGoverned: boolean;
     cw?: number;
@@ -315,7 +318,32 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
     factory: { kerbKg: 375, kerbNorm: "wet", t0to100S: 4.9, vmaxKmh: 180, vmaxGoverned: false },
     source: "Harley-Davidson Street Glide 2017: 375 kg fahrbereit, 64 kW / 150 Nm; Vmax/0–100 Testwerte [S]",
   },
-
+  // --- commercial vehicles (issue #31, docs/research/commercial.md): vehicle.massKg = empty mass incl. driver,
+  // fullMassKg = permissible gross mass; the load control moves between both (default fully loaded)
+  {
+    id: "truck-mercedes-actros-1845", name: "Mercedes-Benz Actros 1845 LS + Auflieger (40 t)", maker: "Mercedes-Benz", years: "seit 2011", engineId: "lib-mercedes-om471",
+    setup: {
+      kind: "truck", tankL: 590,
+      vehicle: VEHICLES.truck.params,
+      tyre: VEHICLES.truck.tyre,
+      gearbox: "dsg", gearboxSpec: { ...TRUCK_AMT },
+      speedLimitKmh: 85, fullMassKg: 40000, loadShare: 1,
+    },
+    factory: { kerbKg: 15000, kerbNorm: "empty", t0to100S: null, vmaxKmh: 85, vmaxGoverned: true, grossKg: 40000 },
+    source: "Mercedes-Benz Actros 1845 LS (OM 471 330 kW / 2200 Nm, PowerShift 3 G 281-12, Achse i = 2,533, Tank 590 l [S]): Leergewicht Zug ≈ 7,9 t + Kühlkoffer/Plane ≈ 7 t [S]; 40 t zGG (EU 96/53/EG); Begrenzer 85 km/h (EU-Pflicht ≤ 90 km/h, RL 92/6/EWG); cW·A ≈ 5,8 m² [S, commercial.md §1]",
+  },
+  {
+    id: "bus-mercedes-citaro-o530", name: "Mercedes-Benz Citaro (O 530, 12 m)", maker: "Mercedes-Benz", years: "seit 2011", engineId: "lib-mercedes-om936",
+    setup: {
+      kind: "bus", tankL: 260,
+      vehicle: VEHICLES.bus.params,
+      tyre: VEHICLES.bus.tyre,
+      gearbox: "dsg", gearboxSpec: { ...BUS_AUTOMATIC },
+      speedLimitKmh: 100, fullMassKg: 19000, loadShare: 0.5,
+    },
+    factory: { kerbKg: 11600, kerbNorm: "empty", t0to100S: null, vmaxKmh: 100, vmaxGoverned: true, grossKg: 19000 },
+    source: "Mercedes-Benz Citaro Solo (OM 936 220 kW / 1200 Nm, ZF EcoLife 6-Gang-Wandlerautomatik, 275/70 R22.5, Tank 260 l): Leergewicht ≈ 11,5 t + Fahrer, zGG 19 t (Herstellerprospekt) [S]; Begrenzer 100 km/h (EU, RL 92/6/EWG; im Linienverkehr oft 80 km/h)",
+  },
 ];
 
 export function libraryCar(id: string): LibraryCar {
