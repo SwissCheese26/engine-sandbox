@@ -740,8 +740,17 @@
   .cell__top {
     gap: var(--space-2);
   }
+  /* the view switch gives way first, so the header never widens the page (a wider page zooms out on phones
+     and pushes the control bar below the fold) */
+  .cell__layout {
+    flex: 0 1 132px;
+    min-width: 116px;
+  }
+  .cell__top .bench-toggle__verb {
+    display: none;
+  }
   .cell__layout select {
-    width: 128px;
+    width: 100%;
   }
   .cell__top .bench-toggle {
     min-height: 32px;

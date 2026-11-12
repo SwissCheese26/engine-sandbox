@@ -6,6 +6,7 @@ import { ShiftPad } from "./shift-pad.ts";
 import type { EngineConfig, EngineState, EngineSummary } from "../core/index.ts";
 import { defaultConfig } from "../data/presets.ts";
 import { ControlPanel } from "./controls.ts";
+import { ToastStrip } from "./toasts.ts";
 import { GearboxPanel } from "./gearbox-panel.ts";
 import { fmt } from "./format.ts";
 import { InstrumentPanel } from "./gauges.ts";
@@ -50,6 +51,10 @@ export class App {
   private recorder = new Recorder();
   private console: ControlPanel;
   private sound = createSound();
+  /** Limit hints and critical events as short toasts below the header (setting "Hinweise zu Grenzwerten"). */
+  private toasts = new ToastStrip();
+  private wasRunning = false;
+  private fuelStall = false;
   private soundStarted = false;
   private last = 0;
   private announcer: HTMLElement;
@@ -176,17 +181,20 @@ export class App {
       <label class="cell__layout"><span class="sr-only">Ansicht</span>
         <select data-control="layout" title="Ansicht wechseln">${LAYOUTS.map((l) => `<option value="${l.id}">${l.label}</option>`).join("")}</select>
       </label>
-      <button type="button" class="btn bench-toggle" aria-expanded="false" aria-controls="werkbank">Werkbank öffnen</button>`;
+      <button type="button" class="btn bench-toggle" aria-expanded="false" aria-controls="werkbank">Werkbank<span class="bench-toggle__verb"> öffnen</span></button>`;
     const toggle = top.querySelector<HTMLButtonElement>(".bench-toggle")!;
     // "Fehler melden" (#55): icon button, compact enough for 390 px phones
     toggle.before(bugButton(true, "cell__bug"));
+    // toasts hang below the header and float over the stage: they never move the control bar
+    top.append(this.toasts.el);
     this.cell = cell;
     this.layoutSel = top.querySelector<HTMLSelectElement>("[data-control=layout]")!;
     this.layoutSel.addEventListener("change", () => setSettings({ layout: this.layoutSel.value as LayoutId }));
     const setOpen = (open: boolean) => {
       cell.classList.toggle("bench-open", open);
       toggle.setAttribute("aria-expanded", String(open));
-      toggle.textContent = open ? "Werkbank schließen" : "Werkbank öffnen";
+      // phones show only "Werkbank" (state via aria-expanded), so the view switch keeps room for its label
+      toggle.querySelector(".bench-toggle__verb")!.textContent = open ? " schließen" : " öffnen";
     };
     toggle.addEventListener("click", () => setOpen(!cell.classList.contains("bench-open")));
     document.addEventListener(
@@ -254,6 +262,7 @@ export class App {
       this.sound.setVolume(muted ? 0 : vol);
     };
     this.console.onReset = () => {
+      this.toasts.clear();
       this.gearbox.reset();
       this.sim.reset();
       this.recorder.reset();
@@ -291,6 +300,29 @@ export class App {
       },
       { signal },
     );
+    // "Ton" is on by default, but browsers start audio only from a user gesture: the first tap or key in the
+    // sandbox starts it. Later gestures resume a context the browser kept suspended (iOS wants touchend/click).
+    // pointerdown is no activation gesture everywhere (iOS), so it is not used; once the context runs the
+    // listeners go away.
+    const unlockAbort = new AbortController();
+    signal.addEventListener("abort", () => unlockAbort.abort());
+    const unlock = () => {
+      if (this.sound.running) {
+        unlockAbort.abort();
+        return;
+      }
+      if (this.paused || this.console.muted) return;
+      if (!this.soundStarted) void this.ensureSound().then(() => this.sound.running && unlockAbort.abort());
+      else void this.sound.resume().then(() => this.sound.running && unlockAbort.abort());
+    };
+    for (const ev of ["pointerup", "touchend", "click", "keydown"] as const) {
+      this.root.addEventListener(ev, unlock, { signal: unlockAbort.signal, capture: true, passive: true });
+    }
+    // one live region per message (#85 review): the toasts speak only where the console list is hidden
+    const phone = window.matchMedia?.("(max-width: 700px)");
+    const syncLive = () => this.toasts.setLive(phone?.matches ?? false);
+    syncLive();
+    phone?.addEventListener("change", syncLive, { signal });
     window.addEventListener("blur", () => this.console.releaseAll(), { signal });
     document.addEventListener(
       "visibilitychange",
@@ -462,6 +494,12 @@ export class App {
       // the recorder is shown and drawn in every view
       this.recorder.update(s, dt);
       this.console.update(s);
+      // "Tank leer" only when the engine dies of it (running → stopped with an empty tank), latched until it runs
+      const tankEmpty = this.inputs.dynoMode === "vehicle" && this.gearbox.drivetrain.tank.empty;
+      if (this.wasRunning && !s.running && tankEmpty) this.fuelStall = true;
+      if (s.running || !tankEmpty) this.fuelStall = false;
+      this.wasRunning = s.running;
+      this.toasts.update({ state: s, outOfFuel: this.fuelStall }, now, getSettings().limitHints === "toast");
       if (this.inputs.dynoMode === "vehicle") this.gearbox.update(this.console.brakeHeld);
       this.shiftPad.update(this.inputs.dynoMode === "vehicle");
       // board computer counts only while the car drives on the chassis dyno (#40, #41)

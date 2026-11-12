@@ -203,7 +203,9 @@ await run("desktop-v8-petrol", { width: 1440, height: 900 }, async (page) => {
   await page.goto(base + "#sandbox");
   await page.waitForSelector(".cell");
   expect(!(await page.isVisible("text=Motorklang folgt")), "placeholder hint removed");
-  await page.click('[data-control="mute"]');
+  // sound is on by default (setting "Ton"): the first tap in the sandbox starts it (browser gesture rule)
+  await page.mouse.click(400, 300);
+  expect((await page.getAttribute('[data-control="mute"]', "aria-pressed")) === "true", "sound on by default");
   await page.waitForFunction(() => window.__soundProbe?.ctx.state === "running", null, { timeout: 5000 }).catch(() => {});
   const state = await page.evaluate(() => window.__soundProbe?.ctx.state ?? "none");
   expect(state === "running", `AudioContext state after click: ${state}`);

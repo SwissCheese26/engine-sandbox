@@ -82,6 +82,13 @@ export interface Settings {
   realism: "real" | "lenient" | "off";
   /** Fuel prices in €/l for the cost in the board computer (#66). */
   fuelPrice: { diesel: number; petrol: number };
+  /** Hinweise zu Grenzwerten: "off" = none (default, the control bar stays calm), "toast" = short toast at the top.
+   *  Critical events (engine destroyed, tank empty) are shown as a toast in any case. */
+  limitHints: "off" | "toast";
+  /** Engine sound on (default). Browsers need a user gesture: it starts on the first tap or key in the sandbox. */
+  sound: boolean;
+  /** Sound volume 0 … 1. */
+  volume: number;
 }
 
 export type GasRamp = 0 | 1 | 3;
@@ -102,8 +109,14 @@ export const FUEL_PRICE_MAX = 10;
 export const DEFAULT_SETTINGS: Settings = {
   preset: "metric-kw", custom: { ...METRIC }, layout: "pruefzelle", speedo: "standard", speedoCustomKmh: 240, cockpitDesign: "classic", ckFields: [...DEFAULT_FIELDS], throttle: "spring", shiftPad: "auto",
   gasRamp: 0, startWarm: false, autoMeasure: true, pedalSide: "right", wakeLock: true, vibration: "auto", realism: "real",
-  fuelPrice: { diesel: 1.65, petrol: 1.75 },
+  fuelPrice: { diesel: 1.65, petrol: 1.75 }, limitHints: "off", sound: true, volume: 0.6,
 };
+
+/** A stored volume, clamped to 0 … 1 in 5 % steps; anything else gives the default. */
+export function clampVolume(v: unknown): number {
+  if (typeof v !== "number" || !Number.isFinite(v)) return DEFAULT_SETTINGS.volume;
+  return Math.round(Math.min(1, Math.max(0, v)) * 20) / 20;
+}
 
 /** A stored price, rounded to cents and clamped; anything else gives the fallback. */
 export function clampFuelPrice(v: unknown, fallback: number): number {
@@ -146,6 +159,9 @@ export function validateSettings(raw: unknown): Settings {
     vibration: oneOf(r.vibration, ["auto", "on", "off"] as const, d.vibration),
     realism: oneOf(r.realism, ["real", "lenient", "off"] as const, d.realism),
     fuelPrice: { diesel: clampFuelPrice(fp.diesel, d.fuelPrice.diesel), petrol: clampFuelPrice(fp.petrol, d.fuelPrice.petrol) },
+    limitHints: oneOf(r.limitHints, ["off", "toast"] as const, d.limitHints),
+    sound: typeof r.sound === "boolean" ? r.sound : d.sound,
+    volume: clampVolume(r.volume),
   };
 }
 
