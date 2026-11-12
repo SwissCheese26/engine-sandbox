@@ -9,7 +9,7 @@ import { GAS_RAMPS, getSettings, prefs, setSettings } from "../settings.ts";
 import { toUnit } from "../units.ts";
 import { Dial, type DialScale } from "./dial.ts";
 import { AUTO_DESIGN, COCKPIT_DESIGNS, FIELD_PRESETS, dialTheme, isCockpitChoice, resolveDesign, type CockpitDesignId, type FieldId, type FieldSet } from "./designs.ts";
-import { driveModeWord, fieldAriaLabel, formatField, nextField, type FieldContext, type FieldInputs } from "./fields-logic.ts";
+import { driveModeWord, fieldAriaLabel, formatField, nextField, shownField, type FieldContext, type FieldInputs } from "./fields-logic.ts";
 import { BASE_ICON, ICON2 } from "./icons.ts";
 import { ledColors, shiftLights, avgL100, clusterLamps, fuelScale, SPEEDO_SCALES, clampSpeedoKmh, isSpeedoScale, speedoScaleMax, speedoTicks, tachoMax, tachoZones, type Lamp, type LampSet } from "./logic.ts";
 import type { DriveInfo, Frame, LayoutView } from "./view.ts";
@@ -79,7 +79,8 @@ export class CockpitView implements LayoutView {
   private design: CockpitDesignId | "" = "";
   private designSel: HTMLSelectElement;
   private fieldBtns: HTMLButtonElement[] = [];
-  private fieldCtx: FieldContext = { turbo: false, vehicle: false, intakeKnown: false };
+  private fieldCtx: FieldContext = { turbo: false, vehicle: false };
+  private revbar: HTMLElement;
   private arcFill: SVGPathElement;
   private shiftLeds: HTMLElement[];
   private flashing = false;
@@ -183,6 +184,7 @@ export class CockpitView implements LayoutView {
     this.designSel = el.querySelector<HTMLSelectElement>("[data-control=ck-design]")!;
     this.designSel.addEventListener("change", () => isCockpitChoice(this.designSel.value) && setSettings({ cockpitDesign: this.designSel.value }));
     this.arcFill = el.querySelector<SVGPathElement>(".ck__arc-fill")!;
+    this.revbar = el.querySelector<HTMLElement>(".ck__revbar")!;
     this.shiftLeds = [...el.querySelectorAll<HTMLElement>(".ck__shift i")];
     // drive mode of the sport-saloon display: a name for the gas response (#66), a tap steps through it
     this.out.mode!.addEventListener("click", () => {
@@ -194,7 +196,8 @@ export class CockpitView implements LayoutView {
     this.fieldBtns = [...el.querySelectorAll<HTMLButtonElement>(".ck-field")];
     const cycle = (slot: number, dir: 1 | -1) => {
       const f = [...getSettings().ckFields] as FieldSet;
-      f[slot] = nextField(f[slot]!, dir, this.fieldCtx);
+      // step from what the field shows (a stored value the engine cannot deliver is already replaced)
+      f[slot] = nextField(shownField(f[slot]!, this.fieldCtx), dir, this.fieldCtx);
       setSettings({ ckFields: f });
       this.last[`field${slot}`] = "";
     };
@@ -449,13 +452,23 @@ export class CockpitView implements LayoutView {
 
     this.updateLamps(f);
     this.updateRev(f);
-    this.updateFields(f, l100);
-    this.put("mode", driveModeWord(st.gasRamp));
-    const bikeCool = formatField("coolant", { coolantC: s.coolantC, airCooled: airCooled(this.cfg) } as FieldInputs, u);
-    this.put("bike-cool", `${bikeCool.value} ${bikeCool.unit}`);
-    const gal = u.fuel === "mpg";
-    this.put("bike-tank", vehicle ? `${fmt(gal ? d.tank.levelL / 3.785411784 : d.tank.levelL, gal ? 1 : 0)} ${gal ? "gal" : "l"}` : "–");
-    this.put("bike-trip", `${fmt(toUnit("distance", tripA.km, u.distance), 1)} ${u.distance}`);
+    // design-specific readouts are only fed while their design is shown
+    const design = this.design;
+    if (design === "digital") this.updateFields(f, l100, u, st.ckFields);
+    if (design === "italian") {
+      const mode = driveModeWord(st.gasRamp);
+      if (this.last.mode !== mode) {
+        this.put("mode", mode);
+        this.out.mode!.setAttribute("aria-label", `Fahrmodus: ${mode} – antippen zum Wechseln`);
+      }
+    }
+    if (design === "motorrad") {
+      const bikeCool = formatField("coolant", { coolantC: s.coolantC, airCooled: airCooled(this.cfg) } as FieldInputs, u);
+      this.put("bike-cool", `${bikeCool.value} ${bikeCool.unit}`);
+      const gal = u.fuel === "mpg";
+      this.put("bike-tank", vehicle ? `${fmt(gal ? d.tank.levelL / 3.785411784 : d.tank.levelL, gal ? 1 : 0)} ${gal ? "gal" : "l"}` : "–");
+      this.put("bike-trip", `${fmt(toUnit("distance", tripA.km, u.distance), 1)} ${u.distance}`);
+    }
   }
 
   /** Odometer as single digits: plain text in most designs, number drums in the oldschool one (CSS). */
@@ -469,6 +482,7 @@ export class CockpitView implements LayoutView {
 
   /** Rev arc, rev bar and shift lights (digital, head-up, motorcycle). Same shift point as the Renn-Dash. */
   private updateRev(f: Frame) {
+    if (this.design !== "digital" && this.design !== "hud" && this.design !== "motorrad") return;
     const { s } = f;
     const ds = f.drivetrain.state;
     const vehicle = f.mode === "vehicle";
@@ -484,23 +498,22 @@ export class CockpitView implements LayoutView {
     if (key === this.last.rev) return;
     this.last.rev = key;
     this.arcFill.style.setProperty("stroke-dasharray", `${pct.toFixed(2)} 100`);
-    this.el.style.setProperty("--ck-rpm", `${pct.toFixed(2)}%`);
+    this.revbar.style.setProperty("--ck-rpm", `${pct.toFixed(2)}%`);
     this.el.dataset.band = band;
     this.el.dataset.shift = this.flashing ? (on ? "on" : "blink") : "off";
     this.shiftLeds.forEach((l, i) => (l.dataset.on = String(this.flashing ? on : i < sl.lit)));
   }
 
   /** The three switchable fields of the digital design: value, unit, limit colour and accessible name. */
-  private updateFields(f: Frame, l100Now: number) {
+  private updateFields(f: Frame, l100Now: number, u: ReturnType<typeof prefs>, stored: FieldSet) {
     const { s } = f;
     const d = f.drivetrain;
     const ds = d.state;
     const vehicle = f.mode === "vehicle";
-    const u = prefs();
     this.fieldCtx = { ...this.fieldCtx, vehicle };
     const avg = avgL100(f.trip.tripA.km, f.trip.tripA.fuelL);
     const v: FieldInputs = {
-      coolantC: s.coolantC, oilC: s.oilC, oilPressureBar: s.oilPressureBar, boostBar: s.boostBar, egtC: s.egtC, intakeC: Number.NaN,
+      coolantC: s.coolantC, oilC: s.oilC, oilPressureBar: s.oilPressureBar, boostBar: s.boostBar, egtC: s.egtC,
       fuelFlowLh: s.fuelFlowLh, speedKmh: vehicle ? ds.speedKmh : 0, running: s.running, tankLevelL: vehicle ? d.tank.levelL : Number.NaN,
       // range from the trip average; on a fresh trip from the momentary consumption
       avgL100: Number.isFinite(avg) ? avg : l100Now, powerKw: s.powerKw, torqueNm: s.torqueNm, lambda: s.lambda,
@@ -508,8 +521,8 @@ export class CockpitView implements LayoutView {
       gradePct: ds.roadGradePct ?? d.environment.gradePct, t0to100S: ds.t0to100S, t0to100Running: ds.t0to100Running,
       ambientC: d.environment.ambientC, airCooled: airCooled(this.cfg),
     };
-    const ids = getSettings().ckFields;
-    ids.forEach((id: FieldId, i) => {
+    stored.forEach((storedId: FieldId, i) => {
+      const id = shownField(storedId, this.fieldCtx);
       const t = formatField(id, v, u, this.summary.limits);
       const key = `${t.label}|${t.value}|${t.unit}|${t.warn}`;
       if (this.last[`field${i}`] === key) return;
@@ -519,8 +532,12 @@ export class CockpitView implements LayoutView {
       b.querySelector(".ck-field__val")!.textContent = t.value;
       b.querySelector(".ck-field__unit")!.textContent = t.unit;
       b.classList.toggle("is-limit", t.warn);
-      b.dataset.id = id;
-      b.setAttribute("aria-label", fieldAriaLabel(i, t));
+      // the name changes with the field, not with every value (no chatter for screen readers)
+      if (b.dataset.id !== id || b.dataset.name !== t.label) {
+        b.dataset.id = id;
+        b.dataset.name = t.label;
+        b.setAttribute("aria-label", fieldAriaLabel(i, t.label));
+      }
     });
   }
 

@@ -65,7 +65,7 @@ export function dialTheme(id: CockpitDesignId): DialTheme {
 
 /** Values the three fields of the digital design can show, in cycling order. */
 export const FIELD_IDS = [
-  "coolant", "oilT", "oilP", "boost", "egt", "intake", "fuelNow", "range", "power", "torque", "lambda", "road", "sprint", "ambient",
+  "coolant", "oilT", "oilP", "boost", "egt", "fuelNow", "range", "power", "torque", "lambda", "road", "sprint", "ambient",
 ] as const;
 export type FieldId = (typeof FIELD_IDS)[number];
 export type FieldSet = [FieldId, FieldId, FieldId];

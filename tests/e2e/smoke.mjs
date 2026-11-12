@@ -315,7 +315,7 @@ async function cockpitDesigns(page, label) {
       await field.click();
       await page.waitForTimeout(120);
       const after = await field.getAttribute("aria-label");
-      if (!/^Feld 1: .+ – antippen zum Wechseln$/.test(after ?? "") || after === before) failures.push(`${label}: Feld 1 wechselt nicht (${before} → ${after})`);
+      if (!/^Feld 1: [^\d]+ – antippen zum Wechseln$/.test(after ?? "") || after === before) failures.push(`${label}: Feld 1 wechselt nicht (${before} → ${after})`);
       await field.focus();
       await page.keyboard.press("ArrowLeft");
       await page.waitForTimeout(120);

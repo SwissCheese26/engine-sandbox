@@ -13,8 +13,6 @@ export interface FieldInputs {
   oilPressureBar: number;
   boostBar: number;
   egtC: number;
-  /** Intake (charge) air temperature; NaN until the engine state provides it. */
-  intakeC: number;
   fuelFlowLh: number;
   speedKmh: number;
   running: boolean;
@@ -39,13 +37,11 @@ export interface FieldInputs {
 export interface FieldContext {
   turbo: boolean;
   vehicle: boolean;
-  intakeKnown: boolean;
 }
 
 export function fieldAvailable(id: FieldId, c: FieldContext): boolean {
   switch (id) {
     case "boost": return c.turbo;
-    case "intake": return c.intakeKnown;
     case "range":
     case "road":
     case "sprint": return c.vehicle;
@@ -64,6 +60,11 @@ export function nextField(cur: FieldId, dir: 1 | -1, c: FieldContext): FieldId {
   return cur;
 }
 
+/** The field actually shown for a stored assignment: the stored one, or the next available one after it. */
+export function shownField(stored: FieldId, c: FieldContext): FieldId {
+  return fieldAvailable(stored, c) ? stored : nextField(stored, 1, c);
+}
+
 /** Remaining range from the tank and the trip average (board-computer style), km; NaN without an average. */
 export function rangeKm(levelL: number, avgL100: number): number {
   return Number.isFinite(levelL) && Number.isFinite(avgL100) && avgL100 > 0 ? (Math.max(0, levelL) / avgL100) * 100 : Number.NaN;
@@ -78,7 +79,7 @@ export interface FieldText {
 }
 
 const NAMES: Record<FieldId, string> = {
-  coolant: "Kühlmittel", oilT: "Öltemperatur", oilP: "Öldruck", boost: "Ladedruck", egt: "Abgastemperatur", intake: "Ansaugluft",
+  coolant: "Kühlmittel", oilT: "Öltemperatur", oilP: "Öldruck", boost: "Ladedruck", egt: "Abgastemperatur",
   fuelNow: "Verbrauch", range: "Reichweite", power: "Leistung", torque: "Drehmoment", lambda: "Lambda", road: "Höhe/Steigung",
   sprint: "0–100 km/h", ambient: "Außentemperatur",
 };
@@ -106,7 +107,6 @@ export function formatField(id: FieldId, v: FieldInputs, u: UnitPrefs, lim?: Par
     case "oilP": return out(P(v.oilPressureBar), u.pressure, v.running && v.oilPressureBar < (lim?.oilPressureMinBar ?? -Infinity));
     case "boost": return out(P(Math.max(0, v.boostBar), u.pressure === "bar" ? 2 : 1), u.pressure, (lim?.boostMaxBar ?? 0) > 0 && v.boostBar > lim!.boostMaxBar!);
     case "egt": return out(T(v.egtC), u.temp, v.egtC > (lim?.egtMaxC ?? Infinity));
-    case "intake": return out(T(v.intakeC), u.temp);
     case "ambient": return out(T(v.ambientC), u.temp);
     case "fuelNow": {
       // per distance while driving, per hour at standstill (like a real board computer)
@@ -134,10 +134,9 @@ export function formatField(id: FieldId, v: FieldInputs, u: UnitPrefs, lim?: Par
   }
 }
 
-/** Accessible name of a field button: "Feld 1: Öltemperatur 92 °C – antippen zum Wechseln". */
-export function fieldAriaLabel(slot: number, t: FieldText): string {
-  const val = t.value === "–" ? "kein Wert" : `${t.value} ${t.unit}`;
-  return `Feld ${slot + 1}: ${t.label} ${val} – antippen zum Wechseln`;
+/** Accessible name of a field button: "Feld 1: Öltemperatur – antippen zum Wechseln" (the value is its visible text). */
+export function fieldAriaLabel(slot: number, label: string): string {
+  return `Feld ${slot + 1}: ${label} – antippen zum Wechseln`;
 }
 
 /** Drive-mode word of the sport-saloon display, from the gas response (#66): instant = Sport. */

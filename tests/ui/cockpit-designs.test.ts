@@ -4,17 +4,17 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import {
   COCKPIT_DESIGNS, DEFAULT_DIAL_THEME, DEFAULT_FIELDS, FIELD_IDS, FIELD_PRESETS, dialTheme, isCockpitChoice, resolveDesign, validateFields,
 } from "../../src/ui/layouts/designs.ts";
-import { driveModeWord, fieldAriaLabel, fieldAvailable, fieldLabel, formatField, nextField, rangeKm, type FieldInputs } from "../../src/ui/layouts/fields-logic.ts";
+import { driveModeWord, fieldAriaLabel, fieldAvailable, fieldLabel, formatField, nextField, rangeKm, shownField, type FieldInputs } from "../../src/ui/layouts/fields-logic.ts";
 import { DEFAULT_SETTINGS, PRESETS, resetSettingsCache, validateSettings } from "../../src/ui/settings.ts";
 
 beforeEach(() => resetSettingsCache());
 
 const METRIC = PRESETS["metric-kw"].units;
 const IMPERIAL = PRESETS.imperial.units;
-const ALL = { turbo: true, vehicle: true, intakeKnown: true };
+const ALL = { turbo: true, vehicle: true };
 
 const inputs = (o: Partial<FieldInputs> = {}): FieldInputs => ({
-  coolantC: 92, oilC: 104, oilPressureBar: 3.4, boostBar: 1.25, egtC: 720, intakeC: Number.NaN, fuelFlowLh: 6, speedKmh: 100, running: true,
+  coolantC: 92, oilC: 104, oilPressureBar: 3.4, boostBar: 1.25, egtC: 720, fuelFlowLh: 6, speedKmh: 100, running: true,
   tankLevelL: 40, avgL100: 6.5, powerKw: 110, torqueNm: 340, lambda: 1.02, altitudeM: Number.NaN, gradePct: 0, t0to100S: null,
   t0to100Running: null, ambientC: 20, airCooled: false, ...o,
 });
@@ -73,13 +73,22 @@ describe("field cycling", () => {
     expect(seen.size).toBe(FIELD_IDS.length);
   });
   test("unavailable values are skipped: no boost without turbo, no range/road/0–100 on the engine dyno", () => {
-    const na = { turbo: false, vehicle: false, intakeKnown: false };
+    const na = { turbo: false, vehicle: false };
     expect(nextField("oilP", 1, na)).toBe("egt");
     expect(nextField("egt", 1, na)).toBe("fuelNow");
+    expect(nextField("fuelNow", -1, na)).toBe("egt");
     expect(nextField("fuelNow", 1, na)).toBe("power");
     expect(nextField("lambda", 1, na)).toBe("ambient");
     expect(fieldAvailable("range", na)).toBe(false);
     expect(fieldAvailable("coolant", na)).toBe(true);
+  });
+  test("a stored field the engine cannot deliver shows the next available one; intake air is not offered", () => {
+    const na = { turbo: false, vehicle: true };
+    expect(shownField("boost", na)).toBe("egt");
+    expect(shownField("boost", ALL)).toBe("boost");
+    expect(shownField("range", { turbo: true, vehicle: false })).toBe("power");
+    expect((FIELD_IDS as readonly string[]).includes("intake")).toBe(false);
+    expect(validateFields(["intake", "oilT", "egt"])[0]).toBe(DEFAULT_FIELDS[0]);
   });
 });
 
@@ -94,7 +103,6 @@ describe("field values in the chosen units", () => {
     expect(formatField("boost", inputs(), METRIC)).toMatchObject({ label: "Ladedruck", value: "1,25", unit: "bar" });
     expect(formatField("boost", inputs(), IMPERIAL)).toMatchObject({ value: "18,1", unit: "psi" });
     expect(formatField("egt", inputs({ egtC: 900 }), METRIC, { egtMaxC: 850 })).toMatchObject({ value: "900", warn: true });
-    expect(formatField("intake", inputs(), METRIC).value).toBe("–");
   });
   test("consumption: per distance while driving, per hour at standstill", () => {
     expect(formatField("fuelNow", inputs(), METRIC)).toMatchObject({ value: "6,0", unit: "l/100 km" });
@@ -120,8 +128,8 @@ describe("field values in the chosen units", () => {
     expect(formatField("ambient", inputs(), METRIC)).toMatchObject({ label: "Außentemperatur", value: "20", unit: "°C" });
   });
   test("accessible name and labels", () => {
-    expect(fieldAriaLabel(0, formatField("oilT", inputs({ oilC: 92 }), METRIC))).toBe("Feld 1: Öltemperatur 92 °C – antippen zum Wechseln");
-    expect(fieldAriaLabel(2, formatField("intake", inputs(), METRIC))).toBe("Feld 3: Ansaugluft kein Wert – antippen zum Wechseln");
+    expect(fieldAriaLabel(0, formatField("oilT", inputs(), METRIC).label)).toBe("Feld 1: Öltemperatur – antippen zum Wechseln");
+    expect(fieldAriaLabel(2, fieldLabel("sprint", IMPERIAL))).toBe("Feld 3: 0–62 mph – antippen zum Wechseln");
     for (const id of FIELD_IDS) expect(fieldLabel(id).length).toBeGreaterThan(2);
   });
   test("drive mode word follows the gas response", () => {
