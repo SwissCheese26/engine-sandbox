@@ -71,6 +71,8 @@ test("trip costs from consumption and price", () => {
   const short = tripCosts({ km: 0.01, fuelL: 0.01, timeS: 1 }, 1.8);
   expect(Number.isNaN(short.per100)).toBe(true); // no average below the minimum distance
   expect(short.trip).toBeCloseTo(0.018, 9);
+  // per 100 mi: 100 mi = 160,9 km → 1,609344 × the cost per 100 km
+  expect(tripCosts({ km: 200, fuelL: 12, timeS: 7200 }, 1.8, 1 / 1.609344).per100).toBeCloseTo(10.8 * 1.609344, 9);
 });
 
 describe("input mode", () => {

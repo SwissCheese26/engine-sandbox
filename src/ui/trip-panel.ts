@@ -20,9 +20,10 @@ function fmtKm(km: number): string {
 
 const eur = new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" });
 
-/** Fuel cost (#66): € per 100 km (NaN below the minimum distance, like the average) and € for the counter. */
-export function tripCosts(c: TripCounter, priceEurL: number): { per100: number; trip: number } {
-  return { per100: averageL100(c) * priceEurL, trip: c.fuelL * priceEurL };
+/** Fuel cost (#66): € per 100 distance units (NaN below the minimum distance, like the average) and € for the
+ *  counter. unitsPerKm: display distance units per km (1 for km, 0,621… for mi), so the label "je 100 mi" is true. */
+export function tripCosts(c: TripCounter, priceEurL: number, unitsPerKm = 1): { per100: number; trip: number } {
+  return { per100: (averageL100(c) * priceEurL) / unitsPerKm, trip: c.fuelL * priceEurL };
 }
 
 function fmtTime(s: number): string {
@@ -58,7 +59,7 @@ export class TripPanel {
           <dt>Trip A</dt>
           <dd class="num"><span data-trip="a-km">0</span> <span data-u="distance">km</span></dd>
           <dd class="num trip__sub"><abbr title="Durchschnitt">Ø</abbr> <span data-trip="a-avg">–</span> <span data-u="fuel">l/100 km</span> · <abbr title="Durchschnitt">Ø</abbr> <span data-trip="a-speed">–</span> <span data-u="speed">km/h</span> · <span data-trip="a-time">0 min</span></dd>
-          <dd class="num trip__sub trip__cost">Kosten <span data-trip="a-cost100">–</span> je 100 km · <span data-trip="a-cost">0,00 €</span> <span class="trip__price" data-trip="price"></span></dd>
+          <dd class="num trip__sub trip__cost">Kosten <span data-trip="a-cost100">–</span> <span data-trip="cost-unit">je 100 km</span> · <span data-trip="a-cost">0,00 €</span> <span class="trip__price" data-trip="price"></span></dd>
         </div>
       </dl>
       <button type="button" class="btn btn--small trip__reset" data-control="trip-reset">Trip A zurücksetzen</button>`;
@@ -128,10 +129,11 @@ export class TripPanel {
 
   private costs(): Record<string, string> {
     const price = getSettings().fuelPrice[this.fuel];
-    const c = tripCosts(this.computer.data.tripA, price);
+    const c = tripCosts(this.computer.data.tripA, price, toUnit("distance", 1));
     return {
       "a-cost100": Number.isFinite(c.per100) ? eur.format(c.per100) : "–",
       "a-cost": eur.format(c.trip),
+      "cost-unit": `je 100 ${prefs().distance}`,
       price: `(${this.fuel === "diesel" ? "Diesel" : "Benzin"} ${eur.format(price)}/l)`,
     };
   }
