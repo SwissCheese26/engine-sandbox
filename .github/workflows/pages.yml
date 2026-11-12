@@ -19,7 +19,7 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       # setup-bun downloads Bun from GitHub releases; when that fails (504 during GitHub outages) Bun comes from
       # the npm registry instead (same release, platform binary package)
       - uses: oven-sh/setup-bun@v2
