@@ -751,4 +751,112 @@
   border-color: #b3261e;
   color: #8c1d18;
   font-weight: 700;
+
+/* "Fehler melden" (#55): button in the hall footer and the sandbox header, dialog based on .routepick */
+.bug-btn {
+  gap: var(--space-2);
+}
+.bug-btn svg {
+  flex: none;
+}
+.bug-btn--icon {
+  min-width: 40px;
+  justify-content: center;
+  padding: 0 var(--space-2);
+}
+.hall__floor .hall__bug {
+  margin-top: var(--space-3);
+}
+.bugreport {
+  width: min(640px, calc(100vw - 32px));
+}
+.bugreport__field {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--fs-14);
+  font-weight: 600;
+}
+.bugreport__field em {
+  font-style: normal;
+  font-weight: 400;
+  color: var(--alu-shade);
+}
+.bugreport input[type="text"],
+.bugreport textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--space-2);
+  border: 1px solid #56655e;
+  border-radius: 6px;
+  background: var(--hammer);
+  color: var(--alu);
+  font: 400 var(--fs-14) var(--font);
+  resize: vertical;
+}
+.bugreport input[type="text"]:focus-visible,
+.bugreport textarea:focus-visible {
+  outline: none;
+  border-color: var(--signal);
+  box-shadow: 0 0 0 2px var(--signal);
+}
+.bugreport__diag {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid #56655e;
+  border-radius: 6px;
+  min-width: 0;
+}
+.bugreport__diag legend {
+  padding: 0 var(--space-1);
+  font-weight: 600;
+}
+.bugreport__checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  font-size: var(--fs-14);
+}
+.bugreport__checks label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 32px;
+  cursor: pointer;
+}
+.bugreport__checks input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--signal);
+}
+textarea.bugreport__text {
+  font: 400 var(--fs-12) ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre;
+  overflow-x: auto;
+}
+.bugreport__hint,
+.bugreport__note,
+.bugreport__privacy {
+  margin: 0;
+  font-size: var(--fs-12);
+  color: var(--alu-shade);
+}
+.bugreport__send {
+  border-color: var(--signal);
+  text-decoration: none;
+}
+/* 390 px phones: Menü, Ansicht, the bug icon and "Werkbank öffnen" must fit in one row */
+@media (max-width: 420px) {
+  .cell .cell__top {
+    gap: var(--space-1);
+  }
+  .cell__top .cell__layout select {
+    width: 100px;
+  }
+  .cell__top .cell__bug {
+    min-height: 32px;
+    min-width: 32px;
+    padding: 0 var(--space-1);
+  }
 }

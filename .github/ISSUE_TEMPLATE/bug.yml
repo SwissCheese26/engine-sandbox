@@ -1,0 +1,38 @@
+# Issue form for bug reports from the app ("Fehler melden", #55). The app prefills the fields by id via the
+# "New issue" link (src/ui/bug-report.ts, FIELD_IDS) – keep the ids in step with that file.
+name: Fehlermeldung
+description: Einen Fehler im Spiel melden (am einfachsten über „Fehler melden“ in der App).
+title: "[Bug] "
+labels: ["bug-meldung"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Danke für die Meldung! Ein Support-Assistent prüft sie zuerst (Dublette? nachstellbar? Fehler oder gewolltes Verhalten?) und antwortet hier als Kommentar. Das letzte Wort hat ein Mensch.
+
+        **Datenschutz:** Das Issue ist öffentlich. Bitte keine persönlichen Daten eintragen. Screenshots kannst du unten per Drag-and-drop anhängen.
+  - type: textarea
+    id: beschreibung
+    attributes:
+      label: Beschreibung
+      description: Was ist passiert?
+    validations:
+      required: true
+  - type: textarea
+    id: schritte
+    attributes:
+      label: Was hast du gemacht?
+      description: Schritte, um den Fehler nachzustellen.
+      placeholder: |
+        1. Sandbox geöffnet
+        2. …
+  - type: textarea
+    id: erwartet
+    attributes:
+      label: Erwartet
+      description: Was hättest du stattdessen erwartet?
+  - type: textarea
+    id: diagnose
+    attributes:
+      label: Diagnose
+      description: Wird von der App ausgefüllt (Version, Gerät, Ansicht, Motor, Fahrzeug, Umwelt, letzte Werte, Konsolenfehler).

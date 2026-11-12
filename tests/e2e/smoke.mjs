@@ -112,6 +112,10 @@ async function run(label, viewport) {
   // main menu (#42) and settings (#24), then into the sandbox through Tor 1
   if (!(await page.$(".hall"))) failures.push(`${label}: Hauptmenü fehlt`);
   await page.screenshot({ path: join(outDir, `smoke-${label}-menu.png`) });
+  // "Fehler melden" (#55) in the hall: opens the dialog, Abbrechen closes it
+  await page.click('.hall [data-action="bug-report"]');
+  if (!(await page.isVisible("dialog.bugreport[open]"))) failures.push(`${label}: Fehler-melden-Dialog öffnet im Menü nicht`);
+  await page.click('dialog.bugreport [data-action="cancel"]');
   await page.click('a[href="#settings"]:visible');
   await page.waitForSelector('[data-screen="settings"]:not([hidden]) input[name="preset"]');
   await page.screenshot({ path: join(outDir, `smoke-${label}-settings.png`), fullPage: true });
@@ -155,6 +159,8 @@ async function run(label, viewport) {
   if (!Number.isFinite(rpmGas) || !Number.isFinite(rpmIdle)) failures.push(`${label}: Drehzahlanzeige nicht lesbar`);
   else if (!(rpmGas > Math.max(rpmIdle, rpm0 || 0) + 300)) failures.push(`${label}: Drehzahl steigt nicht (Leerlauf ${fmt(rpmIdle)}, Gas ${fmt(rpmGas)})`);
   if (Number.isFinite(rpmIdle) && !(rpmIdle > 200)) failures.push(`${label}: Motor springt nicht an (rpm ${fmt(rpmIdle)})`);
+
+  await bugReport(page, label);
 
   // Esc leads back to the menu, the sandbox pauses; reload keeps the mode in the URL
   await page.mouse.click(2, 2);
@@ -284,6 +290,34 @@ async function layouts(page, label) {
   await page.selectOption('select[data-control="layout"]', "pruefzelle");
   await page.waitForTimeout(200);
   if (!(await page.isVisible(RPM_READOUT))) failures.push(`${label}: zurück zur Prüfzelle fehlen die Instrumente`);
+}
+
+// "Fehler melden" in the sandbox header (#55): dialog opens, the link targets the issue form with the diagnosis,
+// typing in it does not drive the engine, Esc closes only the dialog. GitHub itself is never opened.
+async function bugReport(page, label) {
+  await page.click('.cell__top [data-action="bug-report"]');
+  await page.waitForSelector("dialog.bugreport[open]");
+  await page.fill('dialog.bugreport [name="description"]', "Testmeldung aus dem E2E-Smoke");
+  await page.screenshot({ path: join(outDir, `smoke-${label}-bug-report.png`) });
+  const r = await page.evaluate(() => {
+    const u = new URL(document.querySelector('dialog.bugreport [data-action="send"]').href);
+    return { template: u.searchParams.get("template"), label: u.searchParams.get("labels"), desc: u.searchParams.get("beschreibung"), diag: u.searchParams.get("diagnose") ?? "", len: u.href.length };
+  });
+  if (r.template !== "bug.yml" || r.label !== "bug-meldung") failures.push(`${label}: Melde-Link ohne Vorlage bug.yml (${JSON.stringify(r)})`);
+  if (r.desc !== "Testmeldung aus dem E2E-Smoke") failures.push(`${label}: Beschreibung fehlt im Melde-Link`);
+  for (const part of ["App-Version", "Motor", "Werte der letzten 5 s", "rpm"]) if (!r.diag.includes(part)) failures.push(`${label}: Diagnose ohne „${part}“`);
+  if (r.len > 7000) failures.push(`${label}: Melde-Link zu lang (${r.len})`);
+  // unticking a section removes it from the text and the link
+  await page.uncheck('dialog.bugreport [data-section="values"]');
+  const after = await page.inputValue('dialog.bugreport [name="diagnosis"]');
+  if (after.includes("Werte der letzten 5 s")) failures.push(`${label}: abgewählte Werte stehen noch in der Diagnose`);
+  const sw = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  if (sw > 0) failures.push(`${label}: Sandbox scrollt mit Fehler-melden-Knopf horizontal (${sw} px)`);
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(150);
+  const st = await page.evaluate(() => ({ open: !!document.querySelector("dialog.bugreport[open]"), hash: location.hash }));
+  if (st.open || st.hash !== "#sandbox") failures.push(`${label}: Esc im Fehler-melden-Dialog (${JSON.stringify(st)})`);
+  console.log(`${label}: Melde-Link ${r.len} Zeichen`);
 }
 
 const fmt = (n) => (Number.isFinite(n) ? Math.round(n).toString() : String(n));

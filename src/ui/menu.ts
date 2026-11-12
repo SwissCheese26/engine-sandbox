@@ -2,6 +2,7 @@
 // narrow side door to the settings. Only the sandbox door opens for now; Car Builder and Karriere are shown
 // closed with "kommt bald". No engine sound here (planned later).
 import { RoutePicker } from "./route-picker.ts";
+import { bugButton } from "./bug-dialog.ts";
 
 interface Door {
   no: string;
@@ -50,6 +51,8 @@ export class MainMenu {
       </footer>`;
     this.el = el;
     this.heading = el.querySelector(".hall__name")!;
+    // "Fehler melden" (#55) next to the credit line
+    el.querySelector(".hall__credit")!.after(bugButton(false, "hall__bug"));
     // the Sandbox door asks for the route first (Wähle eine Strecke)
     const picker = new RoutePicker();
     el.append(picker.el);
