@@ -463,12 +463,16 @@ export class EngineSimulator {
     // --- limits (PR #12 evaluateLimits): warnings, wear, fatal damage
     const lim = evaluateLimits(cfg, s, this.tracker);
     // overheated catalyst ages the exhaust aftertreatment (issue #16) [S]: counted into the wear figure
-    x.wear = clamp(x.wear + (lim.wearRatePerS + (catOver ? 2e-4 : 0)) * dt, 0, 1);
+    // realism level (issue #66): "off" counts no wear, "lenient" keeps wear just below the wear-out limit
+    const dmg = input.damage ?? "real";
+    if (dmg !== "off") x.wear = clamp(x.wear + (lim.wearRatePerS + (catOver ? 2e-4 : 0)) * dt, 0, dmg === "lenient" ? LENIENT_WEAR_MAX : 1);
     s.wear = x.wear;
     let warns = x.stalled && rpm < 0.5 * idle ? [...lim.warnings, this.stallWarn] : lim.warnings;
     if (catOver) warns = [...warns, { code: "catalyst-overheat", severity: "warning", message: `Kat überhitzt (${Math.round(x.catC)} °C): Nachbrennen im Katalysator` }];
+    // lenient: the fatal event becomes a critical warning, the engine keeps running
+    if (lim.fatal && dmg === "lenient") warns = [...warns, { code: lim.fatal.code, severity: "critical", message: `Im Modus „Realistisch“ wäre der Motor jetzt kaputt: ${lim.fatal.message}` }];
     s.warnings = warns;
-    if (lim.fatal && !x.destroyed) {
+    if (lim.fatal && dmg === "real" && !x.destroyed) {
       x.destroyed = true;
       x.running = false;
       x.armed = false;
@@ -480,6 +484,9 @@ export class EngineSimulator {
     return s;
   }
 }
+
+/** Wear cap of the realism level "lenient" (issue #66): below 1, so limits.ts never reports wear-out. */
+const LENIENT_WEAR_MAX = 0.99;
 
 const G = 9.81;
 const RHO_AIR = 1.2;
