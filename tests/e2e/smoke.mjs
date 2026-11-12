@@ -134,6 +134,7 @@ async function run(label, viewport) {
     if (!(await page.$(sel))) failures.push(`${label}: Element ${sel} fehlt`);
   }
   const rpm0 = await readRpm(page);
+  const deckH0 = await deckHeight(page);
 
   // focus the document (not a button) so the global key handler receives the keys
   await page.mouse.click(2, 2);
@@ -149,10 +150,14 @@ async function run(label, viewport) {
   const rpmGas = await readRpm(page);
   await page.screenshot({ path: join(outDir, `smoke-${label}-full-throttle.png`) });
   await page.keyboard.up(" ");
+  await deckStaysStill(page, label, deckH0);
 
   // a key press on a touch device (tablet with keyboard) switches the hints back live (#44)
   if (touch && (await page.evaluate(() => document.documentElement.classList.contains("is-touch")))) failures.push(`${label}: Tastendruck schaltet nicht auf Tastatur-Hinweise um`);
-  const ignitionOn = await page.evaluate(() => document.querySelector('[data-control="ignition"]')?.checked ?? null);
+  const ignitionOn = await page.evaluate(() => {
+    const v = document.querySelector('[data-control="ignition"]')?.getAttribute("aria-checked");
+    return v == null ? null : v === "true";
+  });
 
   console.log(`${label}: rpm vor Start ${fmt(rpm0)}, nach Start ${fmt(rpmIdle)}, mit Gas ${fmt(rpmGas)}, Zündung ${ignitionOn}`);
   if (ignitionOn === false) failures.push(`${label}: Zündung (I) wurde nicht eingeschaltet`);
@@ -176,6 +181,75 @@ async function run(label, viewport) {
   await layouts(page, label);
 
   await page.close();
+}
+
+/** Height of the bottom control bar in px. */
+async function deckHeight(page) {
+  return page.evaluate(() => Math.round(document.querySelector(".deck")?.getBoundingClientRect().height ?? -1));
+}
+
+/**
+ * Arthur's phone feedback: warnings must not move gas, brake and shift buttons. Forces a stack of long warnings into
+ * the state the console renders (as at the limiter), checks the deck height, then the toasts: off by default,
+ * shown below the header with "Kurz oben einblenden", at most two, a destroyed engine always.
+ */
+async function deckStaysStill(page, label, h0) {
+  const warn = (on, extra = {}) => page.evaluate(([on, extra]) => {
+    const app = window.__pruefzelle;
+    const st = app.sim.state;
+    st.warnings = on ? [
+      { code: "piston-speed", severity: "warning", message: "Mittlere Kolbengeschwindigkeit 14,4 m/s (Grenze 14,7 m/s)" },
+      { code: "over-rev", severity: "critical", message: "Drehzahl 5.200 1/min über dem Begrenzer, bitte sofort Gas wegnehmen" },
+      { code: "egt-high", severity: "warning", message: "Abgastemperatur 780 °C (Grenze 800 °C)" },
+    ] : [];
+    Object.assign(st, extra);
+    app.console.update(st);
+    app.toasts.update({ state: st, outOfFuel: false }, performance.now(), JSON.parse(localStorage.getItem("pruefzelle.settings") ?? "{}").limitHints === "toast");
+    return Math.round(document.querySelector(".deck").getBoundingClientRect().height);
+  }, [on, extra]);
+  // the loop would overwrite the state at once: pause it for the check
+  await page.evaluate(() => window.__pruefzelle.pause());
+  const hWarn = await warn(true);
+  const toastsOff = await page.locator(".toast").count();
+  await page.screenshot({ path: join(outDir, `smoke-${label}-deck-warnings.png`) });
+  if (hWarn !== h0) failures.push(`${label}: Bedienleiste ändert die Höhe bei Warnungen (${h0} → ${hWarn} px)`);
+  if (toastsOff !== 0) failures.push(`${label}: Hinweise erscheinen, obwohl die Einstellung aus ist (${toastsOff})`);
+  await warn(false);
+  // setting on: toasts below the header, at most two
+  await page.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem("pruefzelle.settings") ?? "{}");
+    localStorage.setItem("pruefzelle.settings", JSON.stringify({ ...s, limitHints: "toast" }));
+  });
+  await page.evaluate(() => window.__pruefzelle.toasts.clear());
+  const hOn = await warn(true);
+  await page.waitForTimeout(300);
+  const t = await page.evaluate(() => {
+    const top = document.querySelector(".cell__top").getBoundingClientRect().bottom;
+    const els = [...document.querySelectorAll(".toast:not(.is-leaving)")];
+    return { n: els.length, top: Math.min(...els.map((e) => e.getBoundingClientRect().top)), header: top, h: Math.max(...els.map((e) => e.getBoundingClientRect().height)) };
+  });
+  await page.screenshot({ path: join(outDir, `smoke-${label}-toasts.png`) });
+  if (hOn !== h0) failures.push(`${label}: Bedienleiste ändert die Höhe mit Hinweisen (${h0} → ${hOn} px)`);
+  if (t.n < 1 || t.n > 2) failures.push(`${label}: ${t.n} Hinweise sichtbar (erwartet 1–2)`);
+  if (!(t.top >= t.header)) failures.push(`${label}: Hinweis liegt nicht unter der Kopfleiste (${t.top} < ${t.header})`);
+  if (t.h > 40) failures.push(`${label}: Hinweis zu hoch (${t.h} px)`);
+  await warn(false);
+  await page.evaluate(() => {
+    const s = JSON.parse(localStorage.getItem("pruefzelle.settings") ?? "{}");
+    localStorage.setItem("pruefzelle.settings", JSON.stringify({ ...s, limitHints: "off" }));
+    window.__pruefzelle.toasts.clear();
+  });
+  // critical event: shown even with the setting off
+  await warn(false, { destroyed: true });
+  const crit = await page.locator(".toast--critical:not(.is-leaving)", { hasText: "Motor zerstört" }).count();
+  if (crit !== 1) failures.push(`${label}: Motorschaden erscheint nicht als Hinweis (${crit})`);
+  await page.evaluate(() => {
+    const app = window.__pruefzelle;
+    app.sim.state.destroyed = false;
+    app.toasts.clear();
+    app.resume();
+  });
+  console.log(`${label}: Bedienleiste ${h0} px, mit Warnungen ${hWarn} px, Hinweise ${t.n}`);
 }
 
 /** #44 on the phone: touch mode, no keyboard hints visible, touch wording in the status line. */
