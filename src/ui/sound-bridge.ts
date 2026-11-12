@@ -14,6 +14,8 @@ export interface SoundOutput {
   suspend(): Promise<void>;
   resume(): Promise<void>;
   stop(): void;
+  /** AudioContext is running (a user gesture unlocked it). */
+  readonly running: boolean;
 }
 
 /** True when the browser can play the engine sound (Web Audio present). */

@@ -210,7 +210,8 @@ async function deckStaysStill(page, label, h0) {
   // the loop would overwrite the state at once: pause it for the check
   await page.evaluate(() => window.__pruefzelle.pause());
   const hWarn = await warn(true);
-  const toastsOff = await page.locator(".toast").count();
+  // with the setting off only the critical warning (over-rev) may appear, never the limit approach
+  const toastsOff = await page.locator(".toast--warning").count();
   await page.screenshot({ path: join(outDir, `smoke-${label}-deck-warnings.png`) });
   if (hWarn !== h0) failures.push(`${label}: Bedienleiste ändert die Höhe bei Warnungen (${h0} → ${hWarn} px)`);
   if (toastsOff !== 0) failures.push(`${label}: Hinweise erscheinen, obwohl die Einstellung aus ist (${toastsOff})`);
@@ -242,6 +243,14 @@ async function deckStaysStill(page, label, h0) {
   // critical event: shown even with the setting off
   await warn(false, { destroyed: true });
   const crit = await page.locator(".toast--critical:not(.is-leaving)", { hasText: "Motor zerstört" }).count();
+  // one live region per message: on phones the toasts speak, on wide screens the console list does
+  const live = await page.evaluate(() => ({ toasts: document.querySelector(".toasts").getAttribute("aria-live"), phone: matchMedia("(max-width: 700px)").matches }));
+  if ((live.toasts === "polite") !== live.phone) failures.push(`${label}: Live-Region doppelt oder fehlt (${JSON.stringify(live)})`);
+  const sel = await page.evaluate(() => { const s = document.querySelector('select[data-control="layout"]'); return { w: s.clientWidth, need: s.scrollWidth }; });
+  if (label === "mobile" && sel.w < 110) failures.push(`${label}: Ansichtsauswahl zu schmal (${sel.w} px)`);
+  // a wider page makes phones zoom out (innerWidth grows with it), so compare with the device width
+  const pageW = await page.evaluate(() => document.documentElement.scrollWidth);
+  if (label === "mobile" && pageW > 390) failures.push(`${label}: Seite breiter als das Handy (${pageW} px)`);
   if (crit !== 1) failures.push(`${label}: Motorschaden erscheint nicht als Hinweis (${crit})`);
   await page.evaluate(() => {
     const app = window.__pruefzelle;

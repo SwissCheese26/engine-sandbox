@@ -28,6 +28,11 @@ export class EngineSound {
     this.ownsCtx = !ctx;
   }
 
+  /** True once the AudioContext runs (the UI drops its gesture listeners then). Read only. */
+  get running(): boolean {
+    return this.ctx?.state === "running";
+  }
+
   /** Call from a user gesture. Creates/resumes the AudioContext and loads the worklet. */
   start(): Promise<void> {
     if (!this.starting) this.starting = this.doStart().catch((e) => {
