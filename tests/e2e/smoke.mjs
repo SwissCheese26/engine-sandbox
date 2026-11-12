@@ -115,6 +115,7 @@ async function run(label, viewport) {
   await page.click('a[href="#settings"]:visible');
   await page.waitForSelector('[data-screen="settings"]:not([hidden]) input[name="preset"]');
   await page.screenshot({ path: join(outDir, `smoke-${label}-settings.png`), fullPage: true });
+  await settingsChecks(page, label);
   await page.click('.office__top a[href="#menu"]');
   await page.waitForSelector('[data-screen="menu"]:not([hidden])');
   await page.click('a.door[href="#sandbox"]');
@@ -124,6 +125,7 @@ async function run(label, viewport) {
   await page.waitForTimeout(300);
 
   await page.screenshot({ path: join(outDir, `smoke-${label}-idle.png`) });
+  if (touch) await touchChecks(page, label);
   for (const sel of [RPM_READOUT, '[data-control="ignition"]', '[data-control="starter"]']) {
     if (!(await page.$(sel))) failures.push(`${label}: Element ${sel} fehlt`);
   }
@@ -144,6 +146,8 @@ async function run(label, viewport) {
   await page.screenshot({ path: join(outDir, `smoke-${label}-full-throttle.png`) });
   await page.keyboard.up(" ");
 
+  // a key press on a touch device (tablet with keyboard) switches the hints back live (#44)
+  if (touch && (await page.evaluate(() => document.documentElement.classList.contains("is-touch")))) failures.push(`${label}: Tastendruck schaltet nicht auf Tastatur-Hinweise um`);
   const ignitionOn = await page.evaluate(() => document.querySelector('[data-control="ignition"]')?.checked ?? null);
 
   console.log(`${label}: rpm vor Start ${fmt(rpm0)}, nach Start ${fmt(rpmIdle)}, mit Gas ${fmt(rpmGas)}, Zündung ${ignitionOn}`);
@@ -166,6 +170,34 @@ async function run(label, viewport) {
   await layouts(page, label);
 
   await page.close();
+}
+
+/** #44 on the phone: touch mode, no keyboard hints visible, touch wording in the status line. */
+async function touchChecks(page, label) {
+  const r = await page.evaluate(() => {
+    const visible = (e) => !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length);
+    return {
+      touch: document.documentElement.classList.contains("is-touch"),
+      kbd: [...document.querySelectorAll("kbd, .kbd-only")].filter(visible).map((e) => e.textContent?.trim()),
+      status: document.querySelector(".console__status")?.textContent ?? "",
+    };
+  });
+  if (!r.touch) failures.push(`${label}: Touch-Gerät nicht erkannt (html.is-touch fehlt)`);
+  if (r.kbd.length) failures.push(`${label}: Tastatur-Hinweise auf Touch sichtbar: ${r.kbd.join(", ")}`);
+  if (/\b[WSAIEQ]\b|Leertaste/.test(r.status)) failures.push(`${label}: Statuszeile nennt Tasten: ${r.status}`);
+}
+
+/** #66: the new settings exist, a change reaches the Bedienpult storage, no horizontal scroll, in-page confirm. */
+async function settingsChecks(page, label) {
+  for (const sel of ['input[name="gasramp"]', 'input[name="realism"]', 'input[name="pedalside"]', 'input[data-set="wakeLock"]', 'input[data-price="diesel"]', '[data-control="reset-all"]']) {
+    if (!(await page.$(sel))) failures.push(`${label}: Einstellung ${sel} fehlt`);
+  }
+  const sw = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  if (sw > 0) failures.push(`${label}: Einstellungen scrollen horizontal (${sw} px)`);
+  await page.click('[data-control="reset-all"]');
+  if (!(await page.isVisible('[data-control="reset-all-yes"]'))) failures.push(`${label}: „Alles zurücksetzen“ fragt nicht nach`);
+  await page.click('[data-control="reset-all-no"]');
+  if (await page.isVisible('[data-control="reset-all-yes"]')) failures.push(`${label}: Abbrechen schließt die Rückfrage nicht`);
 }
 
 /** Reads a German formatted number from a readout ("1.234" → 1234, "–" → NaN). */
