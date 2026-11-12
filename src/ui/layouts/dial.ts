@@ -37,6 +37,8 @@ interface Palette {
   font: string;
   /** Needle tip of the "tip" needle (#83); falls back to the needle colour. */
   tip: string;
+  /** Shaft of the "tip" needle; falls back to the numeral colour. */
+  shaft: string;
 }
 
 function palette(el: Element): Palette {
@@ -53,6 +55,7 @@ function palette(el: Element): Palette {
     hub: v("--ck-hub", "#0e1312"),
     font: v("--ck-font", "") || v("--font-num", "system-ui"),
     tip: v("--ck-tip", "") || v("--ck-needle", "#ff5326"),
+    shaft: v("--ck-shaft", "") || v("--ck-light", "#f1e9d2"),
   };
 }
 
@@ -178,6 +181,28 @@ export class Dial {
       ctx.lineWidth = small ? 1.5 : 2.5;
       ctx.strokeStyle = p.ring;
       ctx.stroke();
+    } else if (t.ring === "chrome") {
+      // polished ring: light from the upper left, a dark band at the lower right
+      const w = small ? r * 0.12 : r * 0.07;
+      const g = ctx.createLinearGradient(cx - r, cy - r, cx + r, cy + r);
+      g.addColorStop(0, "#f7f7f2");
+      g.addColorStop(0.35, "#8d918f");
+      g.addColorStop(0.5, "#e9ebe6");
+      g.addColorStop(0.75, "#5b5f5e");
+      g.addColorStop(1, "#c9ccc7");
+      ctx.beginPath();
+      ctx.arc(cx, cy, r - w / 2 - 0.5, 0, Math.PI * 2);
+      ctx.lineWidth = w;
+      ctx.strokeStyle = g;
+      ctx.stroke();
+      // the face sits a little lower than the ring: a soft shadow on its edge
+      const sh = ctx.createRadialGradient(cx, cy, r * 0.7, cx, cy, r - w);
+      sh.addColorStop(0, "rgba(60,40,10,0)");
+      sh.addColorStop(1, "rgba(60,40,10,0.28)");
+      ctx.beginPath();
+      ctx.arc(cx, cy, r - w, 0, Math.PI * 2);
+      ctx.fillStyle = sh;
+      ctx.fill();
     } else if (t.ring === "tunnel") {
       // looking down a tube: the face darkens towards the wall, a thin lit edge where the scale ends
       const g = ctx.createRadialGradient(cx, cy, r * 0.5, cx, cy, r);
@@ -232,6 +257,22 @@ export class Dial {
       ctx.textBaseline = "middle";
       ctx.fillText(label, cx + Math.cos(a) * lr, cy + Math.sin(a) * lr);
       ctx.shadowBlur = 0;
+    }
+    if (t.glass) {
+      // reflection on the cover glass: a soft crescent from the upper left
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(cx, cy, r * 0.9, 0, Math.PI * 2);
+      ctx.clip();
+      const g = ctx.createLinearGradient(cx - r, cy - r, cx + r * 0.2, cy + r * 0.2);
+      g.addColorStop(0, "rgba(255,255,255,0.22)");
+      g.addColorStop(0.45, "rgba(255,255,255,0.04)");
+      g.addColorStop(0.5, "rgba(255,255,255,0)");
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.ellipse(cx - r * 0.25, cy - r * 0.35, r * 0.95, r * 0.6, -Math.PI / 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     }
     if (small) {
       if (s.ends) {
@@ -330,7 +371,7 @@ export class Dial {
       // light shaft, the outer third in the tip colour (sport-saloon needles)
       const k = small ? 0.5 : 0.62;
       ctx.shadowColor = p.tip;
-      seg(-tail, wBase * 0.55, len * k, wBase * 0.4, p.light);
+      seg(-tail, wBase * 0.55, len * k, wBase * 0.4, p.shaft);
       seg(len * k, wBase * 0.4, len, 0.7, p.tip);
     } else if (shape === "bar") {
       seg(-tail, wBase * 0.7, len, wBase * 0.5, p.needle);

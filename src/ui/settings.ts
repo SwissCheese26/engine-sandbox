@@ -1,6 +1,6 @@
 // Global settings (issue #24): unit preset for the whole game. Stored per browser in localStorage
 // (`pruefzelle.settings`), validated on load. No DOM here, so the module runs in unit tests.
-import { DEFAULT_FIELDS, isCockpitDesign, validateFields, type CockpitDesignId, type FieldSet } from "./layouts/designs.ts";
+import { DEFAULT_FIELDS, isCockpitChoice, validateFields, type CockpitChoice, type FieldSet } from "./layouts/designs.ts";
 import { clampSpeedoKmh, isSpeedoScale, type SpeedoScale } from "./layouts/logic.ts";
 
 /** Quantities the player can choose a unit for. The physics stays SI; this is display only. */
@@ -59,7 +59,7 @@ export interface Settings {
   speedo: SpeedoScale;
   speedoCustomKmh: number;
   /** Look of the cockpit (#83): colours, dials and arrangement; the values stay the same. */
-  cockpitDesign: CockpitDesignId;
+  cockpitDesign: CockpitChoice;
   /** What the three switchable fields of the digital cockpit show (#83). */
   ckFields: FieldSet;
   /** Gas lever on the chassis dyno: "spring" = back to 0 when let go (pedal), "hold" = stays (hand throttle). */
@@ -136,7 +136,7 @@ export function validateSettings(raw: unknown): Settings {
   const fp = (r.fuelPrice && typeof r.fuelPrice === "object" ? r.fuelPrice : {}) as Record<string, unknown>;
   return {
     preset, custom, layout, speedo, speedoCustomKmh: clampSpeedoKmh(r.speedoCustomKmh), throttle, shiftPad,
-    cockpitDesign: isCockpitDesign(r.cockpitDesign) ? r.cockpitDesign : d.cockpitDesign,
+    cockpitDesign: isCockpitChoice(r.cockpitDesign) ? r.cockpitDesign : d.cockpitDesign,
     ckFields: validateFields(r.ckFields),
     gasRamp: oneOf(r.gasRamp, GAS_RAMPS.map((g) => g.s), d.gasRamp),
     startWarm: typeof r.startWarm === "boolean" ? r.startWarm : d.startWarm,

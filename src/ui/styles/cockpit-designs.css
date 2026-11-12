@@ -1,0 +1,750 @@
+/* Cockpit designs (#83). Every design is data: tokens on .ck[data-design=…] plus a DialTheme (designs.ts).
+   Elements a design does not use stay in the DOM and are hidden here. "classic" is the look of layouts.css. */
+
+/* ── parts only some designs show ─────────────────────────────────────── */
+.ck__tube {
+  position: relative;
+}
+.ck__shift,
+.ck__arc,
+.ck__revbar,
+.ck__mode,
+.ck__bike,
+.ck__fields {
+  display: none;
+}
+.ck__drum {
+  display: inline;
+}
+/* leading zero drums: only the mechanical odometer shows them */
+.ck__drum--pad {
+  display: none;
+}
+
+/* ── Nachtfahrt: orange illumination, red needles, everything a step darker ── */
+.ck[data-design="night-orange"] {
+  --ck-housing: #0f0d0b;
+  --ck-face: #070605;
+  --ck-ring: #4d3a27;
+  --ck-light: #ff9b3d;
+  --ck-dim: #c27a36;
+  --ck-needle: #ff3a20;
+  --ck-hub: #040302;
+  --ck-lcd: #0a0705;
+  --ck-off: #231a12;
+  --ck-redline: #e0321e;
+  box-shadow: inset 0 2px 0 rgba(255, 155, 61, 0.05), 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+.ck[data-design="night-orange"] .ck__mfd {
+  box-shadow: inset 0 0 0 1px #2c1e11, inset 0 6px 14px rgba(0, 0, 0, 0.6);
+}
+.ck[data-design="night-orange"] .ck__trip {
+  border-top-color: #2c1e11;
+}
+.ck[data-design="night-orange"] .ck__dial .dial {
+  filter: brightness(0.92);
+}
+
+/* ── Sportlimousine: two deep tubes, white on black, red needle tips, narrow TFT ── */
+.ck[data-design="italian"] {
+  --ck-housing: #0b0b0c;
+  --ck-face: #030303;
+  --ck-ring: #3e3e42;
+  --ck-light: #f4f4f1;
+  --ck-dim: #a3a3a0;
+  --ck-needle: #e2231a;
+  --ck-tip: #ff2e1f;
+  --ck-shaft: #e9e8e3;
+  --ck-hub: #0d0d0e;
+  --ck-lcd: #000;
+  --ck-off: #202023;
+  --ck-redline: #e2231a;
+  --ck-font: "Barlow Semi Condensed", "Barlow", system-ui, sans-serif;
+  --ck-accent: #d81f17;
+  background: linear-gradient(180deg, #17171a 0%, #0a0a0b 45%, #060606 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 12px 32px rgba(0, 0, 0, 0.55);
+}
+.ck[data-design="italian"] .ck__main {
+  grid-template-columns: minmax(0, 1fr) minmax(140px, 176px) minmax(0, 1fr);
+  gap: var(--space-3);
+}
+/* the cannocchiale: a tube wall around the dial, the hood's shadow falls deep into it */
+.ck[data-design="italian"] .ck__tube {
+  border-radius: 50%;
+  padding: 6.5%;
+  background: radial-gradient(closest-side, #000 84%, #18181b 90%, #3b3b40 98.5%, #0a0a0b 100%);
+  box-shadow: 0 0 0 2px #000, 0 8px 22px rgba(0, 0, 0, 0.75);
+}
+.ck[data-design="italian"] .ck__tube::after {
+  content: "";
+  position: absolute;
+  inset: 6.5%;
+  border-radius: 50%;
+  pointer-events: none;
+  box-shadow: inset 0 30px 38px rgba(0, 0, 0, 0.95), inset 0 -3px 8px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+.ck[data-design="italian"] .ck__read {
+  bottom: 17%;
+}
+.ck[data-design="italian"] .ck__mfd {
+  min-height: 0;
+  align-self: stretch;
+  margin: 8% 0;
+  border-radius: 4px;
+  border-top: 2px solid var(--ck-accent);
+  box-shadow: inset 0 0 0 1px #1d1d20;
+  padding: var(--space-3) var(--space-3) var(--space-2);
+}
+.ck[data-design="italian"] .ck__gear {
+  font-size: 72px;
+  font-weight: 500;
+}
+.ck[data-design="italian"] .ck__mode {
+  display: block;
+  justify-self: center;
+  min-height: 32px;
+  padding: 0 var(--space-2);
+  border: 0;
+  border-bottom: 2px solid var(--ck-accent);
+  background: none;
+  color: var(--ck-light);
+  font: 500 var(--fs-20) var(--ck-font);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+.ck[data-design="italian"] .ck__mode:focus-visible {
+  outline: 2px solid var(--ck-light);
+  outline-offset: 2px;
+}
+.ck[data-design="italian"] .ck__trip {
+  border-top-color: #1d1d20;
+  font-size: var(--fs-12);
+}
+
+/* ── Oldschool: chrome rings, ivory faces, black serif numerals, rolling odometer ── */
+.ck[data-design="oldschool"] {
+  --ck-face: #f1e8cf;
+  --ck-ring: #6d5c44;
+  --ck-light: #1a1611;
+  --ck-dim: #6e604b;
+  --ck-needle: #1a1611;
+  --ck-tip: #c1281b;
+  --ck-shaft: #16130f;
+  --ck-hub: #b9bcb7;
+  --ck-lcd: #efe5ca;
+  --ck-off: #3c2d20;
+  --ck-redline: #b8261a;
+  --ck-amber: #ffb43a;
+  --ck-font: "Bodoni 72", "Didot", "Libre Bodoni", "Times New Roman", "Liberation Serif", serif;
+  --ck-paper-text: #ecdfc4;
+  background: linear-gradient(180deg, #3d2a1a 0%, #2a1b10 55%, #1f140b 100%);
+  box-shadow: inset 0 2px 0 rgba(255, 220, 170, 0.12), inset 0 -1px 0 rgba(0, 0, 0, 0.5), 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+/* warm bulbs behind the ivory faces */
+.ck[data-design="oldschool"] .ck__tube::after,
+.ck[data-design="oldschool"] .ck-mini::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 42%, rgba(255, 190, 110, 0.16), rgba(255, 190, 110, 0) 62%);
+}
+.ck[data-design="oldschool"] .ck-mini {
+  position: relative;
+}
+.ck[data-design="oldschool"] .ck-mini::after {
+  inset: 0 auto auto 50%;
+  width: 76px;
+  height: 76px;
+  translate: -50% 0;
+}
+.ck[data-design="oldschool"] .ck__scale,
+.ck[data-design="oldschool"] .ck-mini figcaption,
+.ck[data-design="oldschool"] .ck-mini__val {
+  color: var(--ck-paper-text);
+}
+.ck[data-design="oldschool"] .ck__scale select,
+.ck[data-design="oldschool"] .ck__scale input {
+  color: var(--ck-paper-text);
+  border-color: #8a7558;
+}
+.ck[data-design="oldschool"] .ck__mfd {
+  font-family: var(--ck-font);
+  border-radius: 10px;
+  box-shadow: 0 0 0 3px #c9ccc7, 0 0 0 4px #5f6361, 0 3px 10px rgba(0, 0, 0, 0.5), inset 0 3px 10px rgba(90, 55, 10, 0.25);
+}
+.ck[data-design="oldschool"] .ck__gear {
+  font-family: var(--ck-font);
+  font-weight: 600;
+}
+.ck[data-design="oldschool"] .ck__speed small,
+.ck[data-design="oldschool"] .ck__trip dt,
+.ck[data-design="oldschool"] .ck__grade,
+.ck[data-design="oldschool"] .ck__dyno {
+  color: #5d503d;
+}
+.ck[data-design="oldschool"] .ck__grade.is-hill {
+  color: #8f4f00;
+}
+.ck[data-design="oldschool"] .ck__trip {
+  border-top-color: #cbbd9c;
+}
+.ck[data-design="oldschool"] .ck__btn {
+  color: var(--ck-light);
+  border-color: #8a7558;
+}
+.ck[data-design="oldschool"] .ck__cruise[data-state="active"] svg {
+  color: #2f7d3a;
+}
+/* mechanical odometer: white digits on black drums, no thousands separator */
+.ck[data-design="oldschool"] .ck__odo {
+  white-space: nowrap;
+}
+.ck[data-design="oldschool"] .ck__drums {
+  display: inline-flex;
+  gap: 1px;
+  padding: 1px;
+  border-radius: 2px;
+  background: #5f6361;
+  vertical-align: -2px;
+}
+.ck[data-design="oldschool"] .ck__drum {
+  display: inline-block;
+  min-width: 0.78em;
+  text-align: center;
+  font: 600 var(--fs-14) / 1.25 var(--font-num);
+  color: #f4efe2;
+  background: linear-gradient(180deg, #050505 0%, #2b2b2b 45%, #2b2b2b 55%, #050505 100%);
+}
+.ck[data-design="oldschool"] .ck__drum--pad {
+  display: inline-block;
+}
+.ck[data-design="oldschool"] .ck__drum--sep {
+  display: none;
+}
+
+/* ── shared by the screen designs (digital, head-up, motorcycle): one column, the dials give way ── */
+.ck:is([data-design="digital"], [data-design="hud"], [data-design="motorrad"]) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "lamps" "mfd" "fields" "cruise" "speed";
+  gap: var(--space-2);
+}
+.ck:is([data-design="digital"], [data-design="hud"], [data-design="motorrad"]) > * {
+  min-width: 0;
+}
+.ck:is([data-design="digital"], [data-design="hud"], [data-design="motorrad"]) .ck__main {
+  display: contents;
+}
+.ck:is([data-design="digital"], [data-design="hud"], [data-design="motorrad"]) :is(.ck__tube, .ck__dial--rpm, .ck__minis, .ck__read, [data-ck-skala], [data-ck-custom]) {
+  display: none;
+}
+.ck:is([data-design="digital"], [data-design="hud"], [data-design="motorrad"]) .ck__lamps {
+  grid-area: lamps;
+}
+.ck:is([data-design="digital"], [data-design="hud"], [data-design="motorrad"]) .ck__mfd {
+  grid-area: mfd;
+  width: 100%;
+  min-height: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+}
+.ck:is([data-design="digital"], [data-design="hud"], [data-design="motorrad"]) .ck__dial--speed {
+  grid-area: speed;
+  max-width: none;
+}
+.ck:is([data-design="digital"], [data-design="hud"], [data-design="motorrad"]) .ck__cruisectl {
+  grid-area: cruise;
+}
+
+/* ── Digital: big speed inside a rev arc, three switchable fields ── */
+.ck[data-design="digital"] {
+  --ck-light: #eef5fb;
+  --ck-dim: #8ea3b6;
+  --ck-off: #17222d;
+  --ck-fill: #62c6ff;
+  --ck-panel: #0b141d;
+  --ck-edge: #1d2d3d;
+  max-width: 880px;
+  border-radius: 28px 28px 12px 12px;
+  background: radial-gradient(120% 90% at 50% 0%, #11202e 0%, #070b10 62%);
+  box-shadow: inset 0 1px 0 rgba(140, 200, 255, 0.08), 0 12px 32px rgba(0, 0, 0, 0.5);
+}
+.ck[data-design="digital"] .ck__mfd {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  max-width: 720px;
+  margin: 0 auto;
+}
+.ck[data-design="digital"] .ck__arc {
+  display: block;
+  grid-area: 1 / 1;
+  width: min(100%, 560px);
+  height: auto;
+  overflow: visible;
+}
+.ck[data-design="digital"] .ck__speed {
+  grid-area: 1 / 1;
+  align-self: center;
+  display: grid;
+  justify-items: center;
+  margin-top: -2%;
+  font-size: clamp(64px, 13vw, 132px);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.ck[data-design="digital"] .ck__speed small {
+  margin: 4px 0 0;
+  letter-spacing: 0.04em;
+}
+.ck[data-design="digital"] .ck__gear {
+  grid-area: 1 / 1;
+  align-self: end;
+  min-width: 1.4em;
+  padding: 2px 8px 0;
+  margin-bottom: 1%;
+  border: 1px solid var(--ck-edge);
+  border-radius: 6px;
+  background: var(--ck-panel);
+  font-size: clamp(32px, 6vw, 46px);
+}
+.ck-arc-base,
+.ck__arc path {
+  fill: none;
+  stroke-width: 9;
+}
+.ck__arc-track {
+  stroke: #14212d;
+}
+.ck__arc-warn {
+  stroke: var(--signal);
+  opacity: 0.45;
+}
+.ck__arc-red {
+  stroke: #ff4b33;
+  opacity: 0.7;
+}
+.ck__arc-fill {
+  stroke: var(--ck-fill);
+  stroke-dasharray: 0 100;
+  filter: drop-shadow(0 0 3px rgba(98, 198, 255, 0.55));
+}
+.ck[data-band="warn"] .ck__arc-fill {
+  stroke: var(--signal);
+  filter: drop-shadow(0 0 4px rgba(246, 168, 0, 0.6));
+}
+.ck:is([data-band="red"], [data-band="shift"]) .ck__arc-fill {
+  stroke: #ff4b33;
+  filter: drop-shadow(0 0 5px rgba(255, 75, 51, 0.7));
+}
+.ck[data-shift="blink"] .ck__arc-fill {
+  opacity: 0.25;
+}
+.ck__arc-nums text {
+  fill: var(--ck-dim);
+  font: 600 9px var(--font-num);
+  text-anchor: middle;
+  dominant-baseline: middle;
+}
+.ck__arc-nums text.is-red {
+  fill: #ff6a55;
+}
+.ck[data-design="digital"] .ck__cruise,
+.ck[data-design="digital"] .ck__grade,
+.ck[data-design="digital"] .ck__dyno {
+  justify-self: center;
+}
+.ck[data-design="digital"] .ck__trip {
+  width: 100%;
+  grid-template-columns: repeat(4, auto);
+  justify-content: space-between;
+  column-gap: var(--space-5);
+  border-top-color: var(--ck-edge);
+}
+.ck[data-design="digital"] .ck__fields {
+  grid-area: fields;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-2);
+  width: 100%;
+  max-width: 720px;
+  margin: var(--space-2) auto 0;
+}
+.ck-field {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  min-width: 0;
+  min-height: 88px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--ck-edge);
+  border-radius: 8px;
+  background: linear-gradient(180deg, #0e1924, var(--ck-panel));
+  color: var(--ck-light);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.ck-field:hover {
+  border-color: #33506b;
+}
+.ck-field:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+.ck-field__lab {
+  font-size: var(--fs-12);
+  color: var(--ck-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* a small cue that the field steps on */
+.ck-field__lab::after {
+  content: " ›";
+  color: var(--ck-fill);
+}
+.ck-field__val {
+  font-size: var(--fs-31);
+  line-height: 1.05;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.ck-field__unit {
+  font-size: var(--fs-12);
+  color: var(--ck-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ck-field.is-limit {
+  border-color: var(--signal);
+}
+.ck-field.is-limit .ck-field__val {
+  color: var(--signal);
+}
+.ck__presets {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--fs-12);
+  color: var(--ck-dim);
+}
+.ck__presets .ck__btn {
+  margin: 0;
+}
+
+/* ── Head-up: speed, gear, shift light and cruise only, on a dark glass panel ── */
+.ck[data-design="hud"] {
+  --ck-light: #fbfff8;
+  --ck-dim: #a8bab4;
+  max-width: 760px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(5, 9, 9, 0.62);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 20px 44px rgba(0, 0, 0, 0.45);
+}
+.ck[data-design="hud"] :is(.ck-lamp[data-state="off"], .ck__grade, .ck__trip, .ck__fields) {
+  display: none;
+}
+.ck[data-design="hud"] .ck__mfd {
+  grid-template-columns: auto auto;
+  justify-content: center;
+  grid-template-areas: "shift shift" "speed gear" "dyno dyno" "cruise cruise";
+  align-items: center;
+  column-gap: var(--space-5);
+  max-width: 560px;
+  margin: 0 auto;
+  padding: var(--space-3) 0;
+}
+.ck[data-design="hud"] .ck__shift {
+  grid-area: shift;
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+}
+.ck__shift i {
+  width: 30px;
+  height: 10px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.08);
+}
+.ck__shift i[data-on="true"][data-color="green"] {
+  background: #46d36a;
+  box-shadow: 0 0 8px rgba(70, 211, 106, 0.7);
+}
+.ck__shift i[data-on="true"][data-color="yellow"] {
+  background: #ffc21a;
+  box-shadow: 0 0 8px rgba(255, 194, 26, 0.7);
+}
+.ck__shift i[data-on="true"][data-color="red"],
+.ck[data-shift="on"] .ck__shift i[data-on="true"] {
+  background: #ff3b2b;
+  box-shadow: 0 0 10px rgba(255, 59, 43, 0.8);
+}
+.ck[data-design="hud"] .ck__speed {
+  grid-area: speed;
+  display: grid;
+  justify-items: end;
+  font-size: clamp(88px, 18vw, 156px);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 18px rgba(255, 255, 255, 0.18);
+}
+.ck[data-design="hud"] .ck__speed small {
+  margin: 0;
+  letter-spacing: 0.04em;
+  font-size: var(--fs-16);
+  letter-spacing: 0.04em;
+}
+.ck[data-design="hud"] .ck__gear {
+  grid-area: gear;
+  min-width: 1.3em;
+  padding: 0 10px;
+  border: 3px solid currentColor;
+  border-radius: 10px;
+  font-size: clamp(56px, 11vw, 92px);
+}
+.ck[data-design="hud"][data-shift="on"] .ck__gear {
+  color: #ff3b2b;
+}
+.ck[data-design="hud"] .ck__dyno {
+  grid-area: dyno;
+}
+.ck[data-design="hud"] .ck__cruise {
+  grid-area: cruise;
+  font-size: var(--fs-20);
+}
+
+/* ── Motorrad: compact TFT, rev bar across the top with the shift lamp at its end ── */
+.ck[data-design="motorrad"] {
+  --ck-light: #f3f7f8;
+  --ck-dim: #93a3ab;
+  --ck-off: #1b2427;
+  --ck-edge: #26343a;
+  max-width: 680px;
+  padding-top: var(--space-4);
+  border-radius: 26px 26px 16px 16px;
+  border: 2px solid #20292d;
+  background: linear-gradient(180deg, #0d1316 0%, #050708 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 12px 30px rgba(0, 0, 0, 0.5);
+}
+.ck[data-design="motorrad"] .ck__mfd {
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "rev rev" "speed gear" "bike bike" "dyno dyno" "cruise cruise";
+  align-items: center;
+  gap: var(--space-2) var(--space-4);
+}
+.ck[data-design="motorrad"] :is(.ck__grade, .ck__trip, .ck__fields) {
+  display: none;
+}
+.ck[data-design="motorrad"] .ck__revbar {
+  grid-area: rev;
+  position: relative;
+  display: block;
+  height: 28px;
+  margin-right: 40px;
+  border-radius: 3px 14px 14px 3px;
+  background: #121b1f;
+  overflow: visible;
+}
+/* segments: dark gaps every 5 % of the bar */
+.ck[data-design="motorrad"] .ck__revbar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: repeating-linear-gradient(90deg, transparent 0 calc(5% - 2px), #050708 calc(5% - 2px) 5%);
+  pointer-events: none;
+}
+.ck__revbar-warn {
+  position: absolute;
+  inset: auto 0 0 var(--ck-warn-at, 90%);
+  height: 4px;
+  background: #ff4b33;
+}
+.ck__revbar-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: var(--ck-rpm, 0%);
+  border-radius: 3px 0 0 3px;
+  background: linear-gradient(90deg, #cfe3ea, #ffffff);
+}
+.ck[data-band="warn"] .ck__revbar-fill {
+  background: var(--signal);
+}
+.ck:is([data-band="red"], [data-band="shift"]) .ck__revbar-fill {
+  background: #ff4b33;
+}
+.ck__revbar-lamp {
+  position: absolute;
+  right: -38px;
+  top: 50%;
+  width: 26px;
+  height: 26px;
+  translate: 0 -50%;
+  border-radius: 50%;
+  background: #2a1512;
+  box-shadow: inset 0 0 0 2px #3a2420;
+}
+.ck[data-shift="on"] .ck__revbar-lamp {
+  background: #ff3b2b;
+  box-shadow: 0 0 14px rgba(255, 59, 43, 0.85);
+}
+.ck[data-design="motorrad"] .ck__speed {
+  grid-area: speed;
+  display: grid;
+  justify-items: center;
+  font-size: clamp(76px, 16vw, 124px);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+.ck[data-design="motorrad"] .ck__speed small {
+  margin: 0;
+  letter-spacing: 0.04em;
+}
+.ck[data-design="motorrad"] .ck__gear {
+  grid-area: gear;
+  display: grid;
+  place-items: center;
+  width: 1.5em;
+  aspect-ratio: 0.85;
+  border-radius: 10px;
+  background: var(--ck-light);
+  color: #050708;
+  font-size: clamp(54px, 11vw, 86px);
+  font-weight: 700;
+}
+.ck[data-design="motorrad"] .ck__bike {
+  grid-area: bike;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 0;
+  border-top: 1px solid var(--ck-edge);
+}
+.ck__bike div {
+  padding: var(--space-2) var(--space-2) 0;
+}
+.ck__bike div + div {
+  border-left: 1px solid var(--ck-edge);
+}
+.ck__bike dt {
+  font-size: var(--fs-12);
+  color: var(--ck-dim);
+}
+.ck__bike dd {
+  margin: 0;
+  font-size: var(--fs-20);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ck[data-design="motorrad"] .ck__dyno {
+  grid-area: dyno;
+}
+.ck[data-design="motorrad"] .ck__cruise {
+  grid-area: cruise;
+}
+
+/* ── phone ── */
+@media (max-width: 899px) {
+  .ck[data-design="italian"] .ck__tube {
+    padding: 5%;
+  }
+  .ck[data-design="italian"] .ck__tube::after {
+    inset: 5%;
+    box-shadow: inset 0 12px 18px rgba(0, 0, 0, 0.92), inset 0 -2px 6px rgba(0, 0, 0, 0.6);
+  }
+  .ck[data-design="italian"] .ck__mfd {
+    margin: 0;
+  }
+  .ck[data-design="italian"] .ck__read {
+    bottom: 19%;
+    font-size: var(--fs-12);
+  }
+  .ck[data-design="italian"] .ck__gear {
+    font-size: 48px;
+  }
+  /* gear on the left over two rows, drive mode and speed beside it */
+  .ck[data-design="italian"] .ck__gear {
+    grid-row: span 2;
+  }
+  .ck[data-design="italian"] .ck__mode {
+    justify-self: start;
+  }
+  /* the rev counter keeps its readout on the dial, even when the speedometer column is taller (selects) */
+  .ck__dial--rpm {
+    align-self: start;
+  }
+  .ck[data-design="oldschool"] .ck-mini::after {
+    width: 64px;
+    height: 64px;
+  }
+  .ck:is([data-design="digital"], [data-design="hud"], [data-design="motorrad"]) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "lamps" "mfd" "fields" "cruise" "speed";
+    border-radius: 18px 18px 8px 8px;
+  }
+  .ck[data-design="digital"] .ck__mfd,
+  .ck[data-design="hud"] .ck__mfd {
+    column-gap: var(--space-3);
+  }
+  .ck[data-design="digital"] .ck__mfd {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .ck[data-design="digital"] .ck__trip {
+    grid-template-columns: 1fr 1fr;
+    column-gap: var(--space-4);
+  }
+  .ck-field {
+    min-height: 76px;
+    padding: var(--space-2);
+  }
+  .ck-field__val {
+    font-size: var(--fs-25);
+  }
+  .ck__shift i {
+    width: 22px;
+  }
+  .ck[data-design="motorrad"] .ck__mfd {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+  .ck__bike dd {
+    font-size: var(--fs-16);
+  }
+}
+
+/* ── design picker in the settings ── */
+.designs {
+  border: 0;
+  margin: var(--space-4) 0 0;
+  padding: 0;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: var(--space-2);
+}
+.designs legend {
+  margin-bottom: var(--space-2);
+  font-weight: 600;
+}
+.designs .layout-tile__thumb {
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ck[data-shift="blink"] .ck__arc-fill {
+    opacity: 1;
+  }
+}

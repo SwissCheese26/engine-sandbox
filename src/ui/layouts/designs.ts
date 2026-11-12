@@ -2,14 +2,17 @@
 // `.ck[data-design=…]` root (layouts.css) plus a DialTheme for the canvas dials. No design has logic of its own.
 // Also the ids of the switchable fields of the digital design. DOM-free (imported by settings.ts and tests).
 
-export type CockpitDesignId = "classic" | "night-orange" | "italian" | "digital" | "hud";
+export type CockpitDesignId = "classic" | "night-orange" | "italian" | "oldschool" | "digital" | "hud" | "motorrad";
+/** Stored choice: a design, or "auto" = by vehicle (motorcycle → "motorrad", everything else → "classic"). */
+export type CockpitChoice = CockpitDesignId | "auto";
 
 /** How a round dial is drawn. Colours come from the CSS tokens (--ck-face, --ck-needle, …) of the design. */
 export interface DialTheme {
-  /** "taper": one-colour tapered needle (classic); "tip": light needle with a coloured tip (--ck-tip); "bar": thick straight bar. */
+  /** "taper": one-colour tapered needle (classic); "tip": shaft (--ck-shaft) with a coloured tip (--ck-tip); "bar": thick straight bar. */
   needle: "taper" | "tip" | "bar";
-  /** "alu": thin alu bezel; "tunnel": dark deep bevel, no metal (a tube looking into the dial); "none": no bezel. */
-  ring: "alu" | "tunnel" | "none";
+  /** "alu": thin alu bezel; "tunnel": dark deep bevel, no metal (a tube looking into the dial); "chrome": wide polished
+   *  ring; "none": no bezel. */
+  ring: "alu" | "tunnel" | "chrome" | "none";
   /** Numeral weight and size factor (1 = classic size). */
   numeralWeight: number;
   numeralScale: number;
@@ -17,6 +20,8 @@ export interface DialTheme {
   glow: number;
   /** Minor ticks drawn (false: only the labelled ones). */
   minorTicks: boolean;
+  /** A faint reflection on the glass (upper left), drawn into the face. */
+  glass?: boolean;
 }
 
 export const DEFAULT_DIAL_THEME: DialTheme = { needle: "taper", ring: "alu", numeralWeight: 500, numeralScale: 1, glow: 5, minorTicks: true };
@@ -32,9 +37,23 @@ export const COCKPIT_DESIGNS: readonly CockpitDesign[] = [
   { id: "classic", label: "Klassisch", hint: "Schwarze Blätter, warmweiße Ziffern, rote Zeiger", dial: DEFAULT_DIAL_THEME },
   { id: "night-orange", label: "Nachtfahrt", hint: "Orange Beleuchtung, rote Zeiger, gedimmt", dial: { ...DEFAULT_DIAL_THEME, glow: 7, numeralWeight: 600 } },
   { id: "italian", label: "Sportlimousine", hint: "Zwei tiefe Röhren, schmales Display mit Fahrmodus", dial: { needle: "tip", ring: "tunnel", numeralWeight: 400, numeralScale: 1.12, glow: 2, minorTicks: true } },
+  { id: "oldschool", label: "Oldschool", hint: "Chromringe, elfenbeinfarbene Blätter, Serifenziffern, Zählwerk", dial: { needle: "tip", ring: "chrome", numeralWeight: 600, numeralScale: 1.08, glow: 0, minorTicks: true, glass: true } },
   { id: "digital", label: "Digital", hint: "Große Ziffern, Drehzahlbogen und drei Felder zum Durchschalten", dial: DEFAULT_DIAL_THEME },
   { id: "hud", label: "Head-up", hint: "Nur Tempo, Gang, Schaltblitz und Tempomat", dial: DEFAULT_DIAL_THEME },
+  { id: "motorrad", label: "Motorrad", hint: "Kompaktes TFT: Drehzahlbalken mit Schaltblitz, Tempo und Gang groß", dial: DEFAULT_DIAL_THEME },
 ];
+
+export const AUTO_DESIGN = { id: "auto", label: "Automatisch nach Fahrzeug", hint: "Motorrad-Display auf dem Motorrad, sonst Klassisch" } as const;
+
+export function isCockpitChoice(v: unknown): v is CockpitChoice {
+  return v === "auto" || isCockpitDesign(v);
+}
+
+/** The design in effect for a stored choice and the vehicle kind on the dyno. */
+export function resolveDesign(choice: CockpitChoice, vehicleKind: string): CockpitDesignId {
+  if (choice !== "auto") return choice;
+  return vehicleKind === "superbike" || vehicleKind === "tourer" ? "motorrad" : "classic";
+}
 
 export function isCockpitDesign(v: unknown): v is CockpitDesignId {
   return typeof v === "string" && COCKPIT_DESIGNS.some((d) => d.id === v);

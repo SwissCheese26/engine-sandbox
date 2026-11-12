@@ -1,6 +1,7 @@
 // Einstellungen (#24): global unit preset, custom units per quantity and the reset of the per-instrument
 // choices (#21). Changes apply at once (no save button) and reach the running sandbox through
 // onSettingsChange().
+import { AUTO_DESIGN, COCKPIT_DESIGNS, isCockpitChoice, type CockpitChoice } from "./layouts/designs.ts";
 import { SPEEDO_SCALES, clampSpeedoKmh, isSpeedoScale } from "./layouts/logic.ts";
 import {
   DEFAULT_SETTINGS, FUEL_PRICE_MAX, FUEL_PRICE_MIN, GAS_RAMPS, LAYOUTS, PRESETS, QUANTITIES, REALISM, WIPE_FLAG, clampFuelPrice, clearAllStorage, getSettings,
@@ -37,6 +38,32 @@ const THUMB: Record<LayoutId, string> = {
     <rect x="35" y="32" width="13" height="8" class="t-light"/><rect x="52" y="32" width="13" height="8" class="t-light"/><rect x="58" y="44" width="7" height="11" rx="1" class="t-alu"/>`,
 };
 
+/** Two round dials (or a screen) in each design's colours: preview swatches of the cockpit designs (#83). */
+const dials = (housing: string, face: string, ring: string, needle: string, centre: string) =>
+  `<rect x="1" y="1" width="98" height="58" rx="10" fill="${housing}"/>
+   <circle cx="26" cy="32" r="19" fill="${face}" stroke="${ring}" stroke-width="2.4"/><circle cx="74" cy="32" r="19" fill="${face}" stroke="${ring}" stroke-width="2.4"/>
+   <path d="M26 32l-11 7M74 32l8-13" stroke="${needle}" stroke-width="2.2" stroke-linecap="round"/>${centre}`;
+const DESIGN_THUMB: Record<CockpitChoice, string> = {
+  classic: dials("#1a221f", "#121816", "#a9aea4", "#ff5a2e", `<rect x="45" y="20" width="10" height="24" rx="1" fill="#2a3431"/>`),
+  "night-orange": dials("#0f0d0b", "#070605", "#4d3a27", "#ff3a20", `<rect x="45" y="20" width="10" height="24" rx="1" fill="#2b1c0f"/><path d="M12 40a19 19 0 0 1 6-19" stroke="#ff9b3d" stroke-width="1.5" fill="none" stroke-dasharray="2 2"/>`),
+  italian: `<rect x="1" y="1" width="98" height="58" rx="10" fill="#0b0b0c"/>
+   <circle cx="25" cy="31" r="21" fill="#2a2a2e"/><circle cx="25" cy="31" r="17" fill="#000"/><circle cx="75" cy="31" r="21" fill="#2a2a2e"/><circle cx="75" cy="31" r="17" fill="#000"/>
+   <path d="M25 31l-7 5M75 31l5-10" stroke="#eee" stroke-width="2" stroke-linecap="round"/><path d="M18 36l-3 2M80 21l2-3" stroke="#ff2e1f" stroke-width="2.2" stroke-linecap="round"/>
+   <rect x="46" y="15" width="8" height="30" fill="#000"/><rect x="46" y="15" width="8" height="1.6" fill="#d81f17"/>`,
+  oldschool: dials("#3a2819", "#f1e8cf", "#d6d8d3", "#1a1611", `<rect x="44" y="40" width="12" height="5" fill="#111"/><path d="M15 39l-3 2" stroke="#c1281b" stroke-width="2.2"/>`),
+  digital: `<rect x="1" y="1" width="98" height="58" rx="10" fill="#08101a"/><path d="M28 42a24 24 0 1 1 44 0" fill="none" stroke="#14212d" stroke-width="5"/>
+   <path d="M28 42a24 24 0 0 1 30-26" fill="none" stroke="#62c6ff" stroke-width="5"/><rect x="40" y="24" width="20" height="9" rx="1" fill="#eef5fb"/>
+   <rect x="8" y="48" width="26" height="8" rx="2" fill="#13212e"/><rect x="37" y="48" width="26" height="8" rx="2" fill="#13212e"/><rect x="66" y="48" width="26" height="8" rx="2" fill="#13212e"/>`,
+  hud: `<rect x="1" y="1" width="98" height="58" rx="10" fill="#38443f"/><rect x="12" y="8" width="76" height="44" rx="8" fill="#050909" fill-opacity="0.7"/>
+   ${[0, 1, 2, 3, 4, 5].map((i) => `<rect x="${27 + i * 8}" y="13" width="6" height="3" rx="1.5" fill="${i < 3 ? "#46d36a" : i < 5 ? "#ffc21a" : "#ff3b2b"}"/>`).join("")}
+   <rect x="22" y="22" width="34" height="20" rx="2" fill="#fbfff8"/><rect x="62" y="22" width="16" height="20" rx="3" fill="none" stroke="#fbfff8" stroke-width="2"/>`,
+  motorrad: `<rect x="1" y="1" width="98" height="58" rx="12" fill="#0a0f11"/><rect x="8" y="8" width="72" height="7" rx="2" fill="#121b1f"/><rect x="8" y="8" width="48" height="7" rx="2" fill="#f3f7f8"/>
+   <circle cx="88" cy="11.5" r="4" fill="#ff3b2b"/><rect x="14" y="22" width="40" height="20" rx="2" fill="#f3f7f8"/><rect x="66" y="21" width="20" height="22" rx="4" fill="#f3f7f8"/>
+   <path d="M8 48h84" stroke="#26343a"/><rect x="10" y="51" width="18" height="4" fill="#93a3ab"/><rect x="41" y="51" width="18" height="4" fill="#93a3ab"/><rect x="72" y="51" width="18" height="4" fill="#93a3ab"/>`,
+  auto: `<rect x="1" y="1" width="98" height="58" rx="10" fill="#2e3a35"/><circle cx="28" cy="30" r="15" fill="#121816" stroke="#a9aea4" stroke-width="2"/>
+   <path d="M47 30h8m-3-3l3 3-3 3" stroke="#d3d6cf" stroke-width="1.6" fill="none"/><rect x="62" y="17" width="28" height="26" rx="5" fill="#0a0f11"/><rect x="66" y="21" width="20" height="4" fill="#f3f7f8"/><rect x="69" y="29" width="14" height="10" fill="#f3f7f8"/>`,
+};
+
 export class SettingsScreen {
   readonly el: HTMLElement;
   readonly heading: HTMLElement;
@@ -69,6 +96,16 @@ export class SettingsScreen {
               <svg class="layout-tile__thumb" viewBox="0 0 100 60" aria-hidden="true">${THUMB[l.id]}</svg>
               <span class="layout-tile__name">${l.label}</span>
               <span class="layout-tile__hint">${l.hint}</span>
+            </label>`).join("")}
+          </fieldset>
+          <fieldset class="layouts designs">
+            <legend>Cockpit-Design</legend>
+            ${[...COCKPIT_DESIGNS, AUTO_DESIGN].map((d) => `
+            <label class="layout-tile">
+              <input type="radio" name="ckdesign" value="${d.id}" />
+              <svg class="layout-tile__thumb" viewBox="0 0 100 60" aria-hidden="true">${DESIGN_THUMB[d.id]}</svg>
+              <span class="layout-tile__name">${d.label}</span>
+              <span class="layout-tile__hint">${d.hint}</span>
             </label>`).join("")}
           </fieldset>
           <div class="office__speedo">
@@ -255,6 +292,7 @@ export class SettingsScreen {
         }),
       );
     radio("gasramp", "gasRamp", (v) => Number(v) as GasRamp);
+    radio("ckdesign", "cockpitDesign", (v) => (isCockpitChoice(v) ? v : "classic"));
     radio("pedalside", "pedalSide", (v) => (v === "left" ? "left" : "right"));
     radio("vibration", "vibration", (v) => (v === "on" || v === "off" ? v : "auto"));
     radio("realism", "realism", (v) => (v === "lenient" || v === "off" ? v : "real"));
@@ -344,6 +382,7 @@ export class SettingsScreen {
     this.el.querySelector<HTMLInputElement>("[data-control=speedo-custom]")!.value = String(s.speedoCustomKmh);
     const check = (name: string, v: string) => this.el.querySelectorAll<HTMLInputElement>(`input[name=${name}]`).forEach((r) => (r.checked = r.value === v));
     check("gasramp", String(s.gasRamp));
+    check("ckdesign", s.cockpitDesign);
     check("pedalside", s.pedalSide);
     check("vibration", s.vibration);
     check("realism", s.realism);

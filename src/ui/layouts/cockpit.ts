@@ -4,11 +4,14 @@
 import type { EngineConfig, EngineSummary } from "../../core/index.ts";
 import { fmt } from "../format.ts";
 import { RESERVE_SHARE, TERRAIN_LABELS } from "../../core/index.ts";
-import { getSettings, prefs, setSettings } from "../settings.ts";
+import { reducedMotion } from "../canvas.ts";
+import { GAS_RAMPS, getSettings, prefs, setSettings } from "../settings.ts";
 import { toUnit } from "../units.ts";
 import { Dial, type DialScale } from "./dial.ts";
+import { AUTO_DESIGN, COCKPIT_DESIGNS, FIELD_PRESETS, dialTheme, isCockpitChoice, resolveDesign, type CockpitDesignId, type FieldId, type FieldSet } from "./designs.ts";
+import { driveModeWord, fieldAriaLabel, formatField, nextField, type FieldContext, type FieldInputs } from "./fields-logic.ts";
 import { BASE_ICON, ICON2 } from "./icons.ts";
-import { avgL100, clusterLamps, fuelScale, SPEEDO_SCALES, clampSpeedoKmh, isSpeedoScale, speedoScaleMax, speedoTicks, tachoMax, tachoZones, type Lamp, type LampSet } from "./logic.ts";
+import { ledColors, shiftLights, avgL100, clusterLamps, fuelScale, SPEEDO_SCALES, clampSpeedoKmh, isSpeedoScale, speedoScaleMax, speedoTicks, tachoMax, tachoZones, type Lamp, type LampSet } from "./logic.ts";
 import type { DriveInfo, Frame, LayoutView } from "./view.ts";
 
 type LampKey = keyof LampSet;
@@ -24,6 +27,23 @@ const LAMPS: { k: LampKey; color: "red" | "amber" | "ice"; icon: string; on: str
   { k: "ice", color: "ice", icon: BASE_ICON.ice, on: "Glättegefahr" },
   { k: "fuel", color: "amber", icon: ICON2.fuel, on: "Tankreserve" },
 ];
+
+/** Shift-light LEDs of the head-up and motorcycle displays (#83). */
+const SHIFT_LEDS = 10;
+const SHIFT_HYST_RPM = 150;
+const FLASH_HZ = 8;
+/** Geometry of the rev arc of the digital design: centre (100|96), radius 84, 240° from lower left over the top. */
+const ARC = { cx: 100, cy: 96, r: 84, start: 150, sweep: 240 };
+const arcPt = (f: number, r = ARC.r) => {
+  const a = ((ARC.start + f * ARC.sweep) * Math.PI) / 180;
+  return [ARC.cx + Math.cos(a) * r, ARC.cy + Math.sin(a) * r] as const;
+};
+const ARC_D = (() => {
+  const [x0, y0] = arcPt(0);
+  const [x1, y1] = arcPt(1);
+  return `M${x0.toFixed(2)} ${y0.toFixed(2)}A${ARC.r} ${ARC.r} 0 1 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
+})();
+const arcPath = (cls: string) => `<path class="${cls}" d="${ARC_D}" pathLength="100"/>`;
 
 const airCooled = (c: EngineConfig) => c.cooling.type === "air" || c.cooling.type === "oil-air";
 
@@ -56,6 +76,15 @@ export class CockpitView implements LayoutView {
   /** Unit and range the consumption dial is drawn with (changes when the car starts or stops moving). */
   private fuelKey = "";
   private tankKey = "";
+  private design: CockpitDesignId | "" = "";
+  private designSel: HTMLSelectElement;
+  private fieldBtns: HTMLButtonElement[] = [];
+  private fieldCtx: FieldContext = { turbo: false, vehicle: false, intakeKnown: false };
+  private arcFill: SVGPathElement;
+  private shiftLeds: HTMLElement[];
+  private flashing = false;
+  private rpmMax = 8000;
+  private zones = { warnFrom: 0, redFrom: 0 };
   /** Set by the app: switches the console to the chassis dyno. */
   onWantVehicle: () => void = () => {};
   /** Set by the app: jump to the Umwelt panel (route, weather, gradient). */
@@ -77,7 +106,10 @@ export class CockpitView implements LayoutView {
         <div class="ck__dial ck__dial--speed" data-slot="speed">
           <p class="ck__read num" aria-live="off"><span data-ck="speed">–</span> <small data-ck="speed-unit">km/h</small></p>
           <div class="ck__scale">
-            <label><span>Skala<span class="sr-only"> des Tachos</span></span>
+            <label><span>Design<span class="sr-only"> des Cockpits</span></span>
+              <select data-control="ck-design">${COCKPIT_DESIGNS.map((d) => `<option value="${d.id}">${d.label}</option>`).join("")}<option value="auto">${AUTO_DESIGN.label}</option></select>
+            </label>
+            <label data-ck-skala><span>Skala<span class="sr-only"> des Tachos</span></span>
               <select data-control="speedo-scale">${SPEEDO_SCALES.map((o) => `<option value="${o.id}">${o.label}${o.kmh ? ` · ${o.kmh} km/h` : ""}</option>`).join("")}</select>
             </label>
             <label data-ck-custom hidden><span class="sr-only">Eigene Skala</span>
@@ -86,7 +118,11 @@ export class CockpitView implements LayoutView {
           </div>
         </div>
         <div class="ck__mfd" role="group" aria-label="Mitteldisplay">
+          <div class="ck__shift" aria-hidden="true">${ledColors(SHIFT_LEDS).map((c) => `<i data-color="${c}"></i>`).join("")}</div>
+          <svg class="ck__arc" viewBox="0 0 200 150" aria-hidden="true">${arcPath("ck__arc-track")}${arcPath("ck__arc-warn")}${arcPath("ck__arc-red")}${arcPath("ck__arc-fill")}<g class="ck__arc-nums"></g></svg>
+          <div class="ck__revbar" aria-hidden="true"><i class="ck__revbar-fill"></i><i class="ck__revbar-warn"></i><b class="ck__revbar-lamp"></b></div>
           <p class="ck__gear num"><span class="sr-only">Gang </span><span data-ck="gear">N</span></p>
+          <button type="button" class="ck__mode" data-ck="mode"></button>
           <p class="ck__speed num"><span data-ck="speed-big">–</span><small data-ck="speed-unit2">km/h</small></p>
           <p class="ck__dyno" data-ck="dyno" hidden>Motorprüfstand: kein Tempo.
             <button type="button" class="ck__btn" data-ck="to-vehicle">Auf die Rolle</button></p>
@@ -94,9 +130,14 @@ export class CockpitView implements LayoutView {
           <p class="ck__grade num" data-ck="grade-row">
             <button type="button" class="ck__road" data-ck="road" title="Strecke und Umwelt einstellen"><span data-ck="grade">Strecke: eben</span> <span aria-hidden="true">›</span><span class="sr-only"> – Umwelt einstellen</span></button>
           </p>
+          <dl class="ck__bike num" aria-label="Motorrad-Anzeigen">
+            <div><dt data-ck="bike-cool-label">Kühlmittel</dt><dd data-ck="bike-cool">–</dd></div>
+            <div><dt>Tank</dt><dd data-ck="bike-tank">–</dd></div>
+            <div><dt>Trip</dt><dd data-ck="bike-trip">–</dd></div>
+          </dl>
           <dl class="ck__trip num">
             <div><dt>Außen</dt><dd><span data-ck="ambient">–</span></dd></div>
-            <div><dt>Gesamt</dt><dd><span data-ck="total">0</span></dd></div>
+            <div><dt>Gesamt</dt><dd><span class="ck__odo" data-ck="total">0</span></dd></div>
             <div><dt>Trip A</dt><dd><span data-ck="trip">0</span></dd></div>
             <div><dt><abbr title="Durchschnittsverbrauch Trip A">Ø</abbr></dt><dd><span data-ck="avg">–</span></dd></div>
           </dl>
@@ -104,6 +145,10 @@ export class CockpitView implements LayoutView {
         <div class="ck__dial ck__dial--rpm" data-slot="rpm">
           <p class="ck__read num" aria-live="off"><span data-ck="rpm">0</span> <small>1/min</small></p>
         </div>
+      </div>
+      <div class="ck__fields" role="group" aria-label="Wählbare Anzeigen">
+        ${[0, 1, 2].map((i) => `<button type="button" class="ck-field" data-field="${i}" aria-keyshortcuts="ArrowLeft ArrowRight"><span class="ck-field__lab"></span><b class="ck-field__val num"></b><small class="ck-field__unit"></small></button>`).join("")}
+        <p class="ck__presets"><span>Belegung</span>${Object.entries(FIELD_PRESETS).map(([k, p]) => `<button type="button" class="ck__btn" data-preset="${k}">${p.label}</button>`).join("")}</p>
       </div>
       <div class="ck__minis"></div>
       <div class="ck__cruisectl" data-slot="cruise"></div>`;
@@ -116,7 +161,14 @@ export class CockpitView implements LayoutView {
     const blank: DialScale = { min: 0, max: 100, major: 20, minor: 10, caption: "" };
     this.speedo = new Dial(blank, { label: "Tacho" });
     this.tacho = new Dial(blank, { label: "Drehzahlmesser" });
-    el.querySelector("[data-slot=speed]")!.prepend(this.speedo.canvas);
+    const tube = (c: HTMLCanvasElement) => {
+      // the "tube" is plain in most designs; the sport saloon turns it into a deep cannocchiale (CSS only)
+      const t = document.createElement("div");
+      t.className = "ck__tube";
+      t.append(c);
+      return t;
+    };
+    el.querySelector("[data-slot=speed]")!.prepend(tube(this.speedo.canvas));
     // speedometer scale (stored in the settings, also choosable on the settings screen)
     this.scaleSel = el.querySelector<HTMLSelectElement>("[data-control=speedo-scale]")!;
     this.customIn = el.querySelector<HTMLInputElement>("[data-control=speedo-custom]")!;
@@ -127,7 +179,40 @@ export class CockpitView implements LayoutView {
       this.customIn.value = String(v);
       setSettings({ speedoCustomKmh: v });
     });
-    el.querySelector("[data-slot=rpm]")!.prepend(this.tacho.canvas);
+    el.querySelector("[data-slot=rpm]")!.prepend(tube(this.tacho.canvas));
+    this.designSel = el.querySelector<HTMLSelectElement>("[data-control=ck-design]")!;
+    this.designSel.addEventListener("change", () => isCockpitChoice(this.designSel.value) && setSettings({ cockpitDesign: this.designSel.value }));
+    this.arcFill = el.querySelector<SVGPathElement>(".ck__arc-fill")!;
+    this.shiftLeds = [...el.querySelectorAll<HTMLElement>(".ck__shift i")];
+    // drive mode of the sport-saloon display: a name for the gas response (#66), a tap steps through it
+    this.out.mode!.addEventListener("click", () => {
+      const ramps = GAS_RAMPS.map((g) => g.s);
+      const i = ramps.indexOf(getSettings().gasRamp);
+      setSettings({ gasRamp: ramps[(i + 1) % ramps.length]! });
+    });
+    // switchable fields (digital): tap or Enter = next value, arrow keys = next/previous
+    this.fieldBtns = [...el.querySelectorAll<HTMLButtonElement>(".ck-field")];
+    const cycle = (slot: number, dir: 1 | -1) => {
+      const f = [...getSettings().ckFields] as FieldSet;
+      f[slot] = nextField(f[slot]!, dir, this.fieldCtx);
+      setSettings({ ckFields: f });
+      this.last[`field${slot}`] = "";
+    };
+    this.fieldBtns.forEach((b, i) => {
+      b.addEventListener("click", () => cycle(i, 1));
+      b.addEventListener("keydown", (e) => {
+        if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+        e.preventDefault();
+        e.stopPropagation(); // not the gas lever
+        cycle(i, e.key === "ArrowRight" ? 1 : -1);
+      });
+    });
+    el.querySelectorAll<HTMLButtonElement>("[data-preset]").forEach((b) =>
+      b.addEventListener("click", () => {
+        setSettings({ ckFields: [...FIELD_PRESETS[b.dataset.preset as keyof typeof FIELD_PRESETS].fields] });
+        for (let i = 0; i < 3; i++) this.last[`field${i}`] = "";
+      }),
+    );
 
     const host = el.querySelector(".ck__minis")!;
     const mk = (id: string): Mini => {
@@ -158,7 +243,37 @@ export class CockpitView implements LayoutView {
       caption: "1/min × 1000",
     });
     this.speedKey = "";
+    // rev arc (digital) and rev bar (motorcycle): same zones as the rev counter
+    this.rpmMax = rmax;
+    this.zones = tachoZones(cfg.revLimitRpm, summary.safeMaxRpm);
+    const f = (rpm: number) => Math.min(100, Math.max(0, (rpm / rmax) * 100));
+    const band = (sel: string, from: number, to: number) =>
+      this.el.querySelector<SVGPathElement>(sel)!.style.setProperty("stroke-dasharray", `0 ${f(from).toFixed(2)} ${(f(to) - f(from)).toFixed(2)} 100`);
+    band(".ck__arc-warn", this.zones.warnFrom, this.zones.redFrom);
+    band(".ck__arc-red", this.zones.redFrom, rmax);
+    const nums = this.el.querySelector(".ck__arc-nums")!;
+    const step = rmax > 12000 ? 2000 : 1000;
+    let svg = "";
+    for (let r = 0; r <= rmax; r += step) {
+      const [x, y] = arcPt(r / rmax, ARC.r - 15);
+      svg += `<text x="${x.toFixed(1)}" y="${y.toFixed(1)}" class="${r >= this.zones.redFrom ? "is-red" : ""}">${r / 1000}</text>`;
+    }
+    nums.innerHTML = svg;
+    this.el.style.setProperty("--ck-warn-at", `${f(this.zones.warnFrom).toFixed(2)}%`);
+    this.fieldCtx = { ...this.fieldCtx, turbo: summary.limits.boostMaxBar > 0 };
+    this.out["bike-cool-label"]!.textContent = airCooled(cfg) ? "Zyl.-Kopf" : "Kühlmittel";
     this.syncUnits();
+  }
+
+  /** Puts the design on the root (CSS tokens and arrangement) and its drawing style on every dial (#83). */
+  private applyDesign(id: CockpitDesignId) {
+    if (id === this.design) return;
+    this.design = id;
+    this.el.dataset.design = id;
+    const t = dialTheme(id);
+    for (const d of [this.speedo, this.tacho, ...Object.values(this.minis).map((m) => m.dial)]) d.setTheme(t);
+    for (const k of Object.keys(this.last)) this.last[k] = "";
+    this.redraw();
   }
 
   syncUnits() {
@@ -237,6 +352,8 @@ export class CockpitView implements LayoutView {
       if (document.activeElement !== this.customIn) this.customIn.value = String(st.speedoCustomKmh);
       (this.customIn.closest("[data-ck-custom]") as HTMLElement).hidden = st.speedo !== "custom";
     }
+    if (this.designSel.value !== st.cockpitDesign) this.designSel.value = st.cockpitDesign;
+    this.applyDesign(resolveDesign(st.cockpitDesign, d.kind));
     const vmaxShown = toUnit("speed", this.info.vmaxKmh, u.speed);
     const smax = speedoScaleMax(st.speedo, st.speedoCustomKmh, vmaxShown, u.speed);
     const spKey = `${smax}|${u.speed}`;
@@ -283,7 +400,7 @@ export class CockpitView implements LayoutView {
     }
     this.put("grade", road);
     this.out["grade-row"]!.classList.toggle("is-hill", Math.abs(g) >= 0.05);
-    this.put("total", `${fmt(Math.floor(toUnit("distance", total.km, u.distance)))} ${u.distance}`);
+    this.putOdo(fmt(Math.floor(toUnit("distance", total.km, u.distance))), u.distance);
     this.put("trip", `${fmt(toUnit("distance", tripA.km, u.distance), 1)} ${u.distance}`);
     const avg = toUnit("fuel", avgL100(tripA.km, tripA.fuelL), u.fuel);
     this.put("avg", `${Number.isFinite(avg) ? fmt(avg, 1) : "–"} ${u.fuel}`);
@@ -331,6 +448,80 @@ export class CockpitView implements LayoutView {
     this.mini("fuel", Number.isFinite(fuelVal) ? fuelVal : moving && u.fuel !== "l/100 km" && s.running ? fs.max : 0, fuelText, dt);
 
     this.updateLamps(f);
+    this.updateRev(f);
+    this.updateFields(f, l100);
+    this.put("mode", driveModeWord(st.gasRamp));
+    const bikeCool = formatField("coolant", { coolantC: s.coolantC, airCooled: airCooled(this.cfg) } as FieldInputs, u);
+    this.put("bike-cool", `${bikeCool.value} ${bikeCool.unit}`);
+    const gal = u.fuel === "mpg";
+    this.put("bike-tank", vehicle ? `${fmt(gal ? d.tank.levelL / 3.785411784 : d.tank.levelL, gal ? 1 : 0)} ${gal ? "gal" : "l"}` : "–");
+    this.put("bike-trip", `${fmt(toUnit("distance", tripA.km, u.distance), 1)} ${u.distance}`);
+  }
+
+  /** Odometer as single digits: plain text in most designs, number drums in the oldschool one (CSS). */
+  private putOdo(digits: string, unit: string) {
+    const k = `${digits}|${unit}`;
+    if (this.last.total === k) return;
+    this.last.total = k;
+    const n = this.out.total!;
+    n.innerHTML = `<span class="sr-only">${digits} ${unit}</span><span class="ck__drums" aria-hidden="true">${"0".repeat(Math.max(0, 6 - digits.replace(/\D/g, "").length)).replace(/0/g, '<span class="ck__drum ck__drum--pad">0</span>')}${[...digits].map((c) => `<span class="ck__drum${/\d/.test(c) ? "" : " ck__drum--sep"}">${c}</span>`).join("")}</span><span aria-hidden="true"> ${unit}</span>`;
+  }
+
+  /** Rev arc, rev bar and shift lights (digital, head-up, motorcycle). Same shift point as the Renn-Dash. */
+  private updateRev(f: Frame) {
+    const { s } = f;
+    const ds = f.drivetrain.state;
+    const vehicle = f.mode === "vehicle";
+    const rpm = s.running ? s.rpm : 0;
+    const pct = Math.min(100, (rpm / this.rpmMax) * 100);
+    const shiftRpm = vehicle && ds.gear > 0 && ds.type !== "cvt" && ds.gear < ds.gearCount ? this.info.shiftRpm(ds.gear) : vehicle ? this.cfg.revLimitRpm : this.summary.peakPowerRpm;
+    const sl = shiftLights(rpm, shiftRpm, SHIFT_LEDS);
+    this.flashing = sl.flash || (this.flashing && s.running && s.rpm > shiftRpm - SHIFT_HYST_RPM);
+    const on = this.flashing ? reducedMotion() || Math.floor(s.t * FLASH_HZ * 2) % 2 === 0 : true;
+    // colour of the arc/bar: normal, signal yellow in the pre-warning zone, red from the limiter, blinking at the shift point
+    const band = rpm >= this.zones.redFrom ? "red" : rpm >= this.zones.warnFrom ? "warn" : this.flashing ? "shift" : "normal";
+    const key = `${pct.toFixed(1)}|${sl.lit}|${this.flashing}|${on}|${band}`;
+    if (key === this.last.rev) return;
+    this.last.rev = key;
+    this.arcFill.style.setProperty("stroke-dasharray", `${pct.toFixed(2)} 100`);
+    this.el.style.setProperty("--ck-rpm", `${pct.toFixed(2)}%`);
+    this.el.dataset.band = band;
+    this.el.dataset.shift = this.flashing ? (on ? "on" : "blink") : "off";
+    this.shiftLeds.forEach((l, i) => (l.dataset.on = String(this.flashing ? on : i < sl.lit)));
+  }
+
+  /** The three switchable fields of the digital design: value, unit, limit colour and accessible name. */
+  private updateFields(f: Frame, l100Now: number) {
+    const { s } = f;
+    const d = f.drivetrain;
+    const ds = d.state;
+    const vehicle = f.mode === "vehicle";
+    const u = prefs();
+    this.fieldCtx = { ...this.fieldCtx, vehicle };
+    const avg = avgL100(f.trip.tripA.km, f.trip.tripA.fuelL);
+    const v: FieldInputs = {
+      coolantC: s.coolantC, oilC: s.oilC, oilPressureBar: s.oilPressureBar, boostBar: s.boostBar, egtC: s.egtC, intakeC: Number.NaN,
+      fuelFlowLh: s.fuelFlowLh, speedKmh: vehicle ? ds.speedKmh : 0, running: s.running, tankLevelL: vehicle ? d.tank.levelL : Number.NaN,
+      // range from the trip average; on a fresh trip from the momentary consumption
+      avgL100: Number.isFinite(avg) ? avg : l100Now, powerKw: s.powerKw, torqueNm: s.torqueNm, lambda: s.lambda,
+      altitudeM: (d.environment.terrain ?? "static") === "static" ? Number.NaN : ds.roadAltitudeM ?? Number.NaN,
+      gradePct: ds.roadGradePct ?? d.environment.gradePct, t0to100S: ds.t0to100S, t0to100Running: ds.t0to100Running,
+      ambientC: d.environment.ambientC, airCooled: airCooled(this.cfg),
+    };
+    const ids = getSettings().ckFields;
+    ids.forEach((id: FieldId, i) => {
+      const t = formatField(id, v, u, this.summary.limits);
+      const key = `${t.label}|${t.value}|${t.unit}|${t.warn}`;
+      if (this.last[`field${i}`] === key) return;
+      this.last[`field${i}`] = key;
+      const b = this.fieldBtns[i]!;
+      b.querySelector(".ck-field__lab")!.textContent = t.label;
+      b.querySelector(".ck-field__val")!.textContent = t.value;
+      b.querySelector(".ck-field__unit")!.textContent = t.unit;
+      b.classList.toggle("is-limit", t.warn);
+      b.dataset.id = id;
+      b.setAttribute("aria-label", fieldAriaLabel(i, t));
+    });
   }
 
   /** Tempomat and limiter (#30): set speed and state in the centre display, like the cruise line of a real MFD. */
