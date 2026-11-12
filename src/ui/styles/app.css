@@ -847,17 +847,25 @@ kbd {
 .console__group--main { grid-area: main; }
 .console__group--dyno { grid-area: dyno; }
 .console__group--aux { grid-area: aux; justify-content: flex-end; flex-wrap: wrap; row-gap: var(--space-2); }
+/* status and messages: exactly one row of fixed height, whatever the text (the deck must never grow or jump) */
 .console__status {
+  flex: 0 1 auto;
+  min-width: 0;
   font-size: var(--fs-14);
   color: var(--alu-shade);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .console__foot {
   grid-area: msg;
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: var(--space-2) var(--space-4);
-  min-height: 26px;
+  gap: var(--space-4);
+  height: 28px;
+  min-width: 0;
+  overflow: hidden;
 }
 .console__field {
   display: grid;
@@ -895,8 +903,18 @@ kbd {
 }
 .console__messages {
   display: flex;
-  flex-wrap: wrap;
+  flex: 1 1 0;
+  min-width: 0;
+  flex-wrap: nowrap;
   gap: var(--space-2);
+  overflow: hidden;
+}
+.console__messages .note {
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .note {
   font-size: var(--fs-14);
@@ -916,89 +934,215 @@ kbd {
   color: var(--alu);
 }
 
-/* ignition toggle switch (Kippschalter) */
-.toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-3);
-  cursor: pointer;
-  position: relative;
-}
-.toggle__input {
-  position: absolute;
-  opacity: 0;
-  width: 1px;
-  height: 1px;
-}
-.toggle__lever {
-  position: relative;
-  width: 34px;
-  height: 52px;
-  border-radius: 6px;
-  background: #1f2925;
-  box-shadow: inset 0 0 0 2px #56655e;
-}
-.toggle__lever::after {
-  content: "";
-  position: absolute;
-  left: 9px;
-  width: 16px;
-  height: 26px;
-  bottom: 6px;
-  border-radius: 8px 8px 4px 4px;
-  background: linear-gradient(90deg, #9da299, #eef0eb 45%, #9da299);
-  box-shadow: 0 2px 0 #111a17;
-}
-.toggle__input:checked + .toggle__lever::after {
-  bottom: auto;
-  top: 6px;
-  border-radius: 4px 4px 8px 8px;
-  box-shadow: 0 -2px 0 #111a17;
-}
-.toggle__input:checked + .toggle__lever {
-  box-shadow: inset 0 0 0 2px var(--alu);
-}
-.toggle__input:focus-visible + .toggle__lever {
-  box-shadow: var(--focus);
-}
-.toggle__text {
-  font-weight: 600;
-}
-
-/* starter push button */
+/* ignition: key in a lock cylinder, turns 0 → I (Zündschloss) */
+.ignkey,
 .starter {
   display: inline-flex;
+  flex-direction: column;
   align-items: center;
-  gap: var(--space-3);
-  background: none;
-  border: 0;
+  gap: var(--space-1);
+  min-width: 56px;
   padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: var(--fs-12);
+  font-weight: 600;
+  line-height: 1.2;
   cursor: pointer;
-  touch-action: none;
   user-select: none;
   -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
-.starter__cap {
+.ignkey__lock {
+  width: 52px;
+  height: 52px;
+  overflow: visible;
+}
+.ignkey__bezel {
+  fill: #2a3330;
+  stroke: var(--alu-shade);
+  stroke-width: 2.5;
+}
+.ignkey__core {
+  fill: #151b19;
+  stroke: #0d1110;
+  stroke-width: 2;
+}
+.ignkey__mark {
+  font-family: var(--font-num);
+  font-size: 10px;
+  font-weight: 700;
+  fill: var(--alu-shade);
+}
+.ignkey__key {
+  transform-box: view-box;
+  transform-origin: 32px 32px;
+  transition: transform 220ms cubic-bezier(0.3, 1.4, 0.5, 1);
+}
+.ignkey__bow {
+  fill: var(--alu);
+  stroke: #7d827a;
+  stroke-width: 1;
+}
+.ignkey__grip {
+  fill: #b6bab1;
+}
+.ignkey__hole {
+  fill: #151b19;
+}
+.ignkey[aria-checked="true"] .ignkey__key {
+  transform: rotate(35deg);
+}
+.ignkey[aria-checked="true"] .ignkey__mark--on {
+  fill: var(--ok);
+}
+.ignkey[aria-checked="true"] .ignkey__bezel {
+  stroke: var(--alu);
+}
+.ignkey:focus-visible,
+.starter:focus-visible {
+  outline: none;
+}
+.ignkey:focus-visible .ignkey__lock {
+  border-radius: 50%;
+  box-shadow: var(--focus);
+}
+
+/* starter: round start/stop push button with a light ring (green = ready/running, never yellow: yellow means limit) */
+.starter {
+  touch-action: none;
+}
+.starter__ring {
+  display: grid;
+  place-items: center;
   width: 52px;
   height: 52px;
   border-radius: 50%;
-  background: radial-gradient(circle at 40% 35%, #f4f5f2, #b6bab1 70%);
-  box-shadow: 0 0 0 4px #1f2925, 0 0 0 6px #56655e, 0 4px 0 4px #1f2925;
-  transform: translateY(0);
+  background: #1a211f;
+  box-shadow: inset 0 0 0 3px #3b4843, 0 2px 0 #111a17;
+  transition: box-shadow 200ms ease;
+}
+.starter__cap {
+  display: grid;
+  place-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 30%, #3d4744, #1d2422 70%);
+  box-shadow: 0 2px 0 #0b0f0e, inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  color: #8d948c;
+  font-family: var(--font-num);
+  line-height: 1;
+  text-align: center;
+  transition: transform 60ms linear, color 200ms ease;
+}
+.starter__cap b {
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+.starter__cap small {
+  font-size: 7px;
+  letter-spacing: 0.04em;
+}
+/* ignition on, engine off: ready, the ring breathes */
+.console.is-ign .starter__ring {
+  animation: starter-ready 1.6s ease-in-out infinite;
+}
+.console.is-ign .starter__cap {
+  color: var(--alu);
+}
+/* engine running: ring lit steadily */
+.console.is-running .starter__ring {
+  animation: none;
+  box-shadow: inset 0 0 0 3px var(--ok), 0 0 12px 1px rgba(111, 154, 98, 0.75), 0 2px 0 #111a17;
+}
+.console.is-running .starter__cap {
+  color: #e9f4e4;
+}
+@keyframes starter-ready {
+  0%, 100% { box-shadow: inset 0 0 0 3px #4f6a49, 0 0 0 0 rgba(111, 154, 98, 0), 0 2px 0 #111a17; }
+  50% { box-shadow: inset 0 0 0 3px var(--ok), 0 0 10px 1px rgba(111, 154, 98, 0.6), 0 2px 0 #111a17; }
 }
 .starter.is-pressed .starter__cap {
-  transform: translateY(3px);
-  box-shadow: 0 0 0 4px #1f2925, 0 0 0 6px var(--alu), 0 1px 0 4px #1f2925;
+  transform: translateY(2px) scale(0.97);
+  box-shadow: 0 0 0 #0b0f0e, inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 .starter__text {
+  text-align: center;
+  white-space: nowrap;
+}
+.ignkey__text {
+  white-space: nowrap;
+}
+.starter:focus-visible .starter__ring {
+  box-shadow: var(--focus);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ignkey__key,
+  .starter__ring,
+  .starter__cap {
+    transition: none;
+  }
+  .console.is-ign .starter__ring {
+    animation: none;
+    box-shadow: inset 0 0 0 3px var(--ok), 0 2px 0 #111a17;
+  }
+}
+
+/* toasts: thin translucent strip below the header, floating over the stage (never part of the deck) */
+.cell__top {
+  position: relative;
+}
+.toasts {
+  position: absolute;
+  z-index: 6;
+  top: calc(100% + var(--space-2));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, calc(100% - 2 * var(--space-4)));
+  display: grid;
+  gap: var(--space-1);
+  pointer-events: none;
+}
+.toast {
+  margin: 0;
+  padding: 5px var(--space-3) 5px 10px;
+  border-left: 3px solid var(--signal);
+  border-radius: 2px;
+  background: rgba(35, 41, 42, 0.78);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  color: var(--alu);
+  font-size: var(--fs-12);
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  animation: toast-in 200ms ease-out;
+  transition: opacity 200ms ease, transform 200ms ease;
+}
+.toast--critical {
+  border-left-color: var(--ink-torque);
+  background: rgba(60, 20, 18, 0.86);
+  color: #fff;
   font-weight: 600;
-  text-align: left;
 }
-.starter:focus-visible {
-  box-shadow: none;
+.toast.is-leaving {
+  opacity: 0;
+  transform: translateY(-6px);
 }
-.starter:focus-visible .starter__cap {
-  box-shadow: 0 0 0 4px var(--engrave), 0 0 0 7px var(--alu), 0 4px 0 4px #1f2925;
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+    transition: none;
+  }
 }
 
 /* pedal lever (vertical, large) */
@@ -1265,14 +1409,16 @@ kbd {
   .starter__text .kbd-hint {
     display: none;
   }
-  .toggle { gap: var(--space-2); }
-  .starter { gap: var(--space-2); }
+  /* phones: only the status line; the warning list would push the controls (limit hints come as toasts) */
+  .console__messages {
+    display: none;
+  }
   .pedal__label {
     display: none;
   }
-  .toggle__lever { width: 30px; height: 46px; }
-  .toggle__lever::after { left: 7px; height: 22px; }
-  .starter__cap { width: 46px; height: 46px; }
+  .ignkey__lock,
+  .starter__ring { width: 48px; height: 48px; }
+  .starter__cap { width: 37px; height: 37px; }
   .pedal {
     grid-template-columns: auto auto;
   }
@@ -1351,7 +1497,10 @@ kbd {
     display: grid;
     grid-template-columns: auto auto;
     justify-content: start;
-    gap: var(--space-2) var(--space-4);
+    gap: var(--space-2) var(--space-3);
+  }
+  .console__foot {
+    height: 18px;
   }
   .console__more {
     grid-column: 1 / -1;
@@ -2052,12 +2201,8 @@ kbd {
   color: var(--alu-shade);
 }
 
-/* phones with shift buttons: ignition and starter stack, pedals a little narrower, so all fits in 390 px */
+/* phones with shift buttons: pedals a little narrower, so key, starter, shift pad, brake and gas fit in 390 px */
 @media (max-width: 700px) {
-  .deck:has(.shiftpad:not([hidden]):not(.is-auto)) .console__group--main {
-    grid-template-columns: auto;
-    gap: var(--space-2);
-  }
   .shiftpad__btn {
     width: 48px;
   }
@@ -2067,10 +2212,6 @@ kbd {
 }
 /* "automatisch" shows the buttons only on touch screens, so it compacts the bar only there */
 @media (max-width: 700px) and (pointer: coarse), (max-width: 700px) and (hover: none) {
-  .deck:has(.shiftpad.is-auto:not([hidden])) .console__group--main {
-    grid-template-columns: auto;
-    gap: var(--space-2);
-  }
   .deck:has(.shiftpad.is-auto:not([hidden])) .brakepedal__plate {
     width: 56px;
   }

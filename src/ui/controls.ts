@@ -1,10 +1,11 @@
-// Bedienpult: ignition toggle, starter push button, dyno mode, pedal lever, sound, reset and the
-// message strip for warnings and damage. Keyboard: I ignition, S starter (hold), Space/W gas (hold),
+// Bedienpult: ignition key, start/stop push button, dyno mode, pedal lever, sound, reset and (wide screens only)
+// the message strip for warnings and damage. The deck keeps a fixed height: status and messages are one clamped
+// line each, limit warnings on phones come as toasts (toasts.ts) when the setting asks for them. Keyboard: I ignition, S starter (hold), Space/W gas (hold),
 // arrow keys move the pedal lever in 5 % steps.
 import type { EngineState, SimInputs } from "../core/index.ts";
 import { clamp, fmt } from "./format.ts";
 import { isTouch } from "./device.ts";
-import { GAS_RAMPS, getSettings, setSettings, type GasRamp, type Settings } from "./settings.ts";
+import { GAS_RAMPS, clampVolume, getSettings, setSettings, type GasRamp, type Settings } from "./settings.ts";
 
 const PEDAL_STEP = 0.05;
 
@@ -14,7 +15,7 @@ const LEVER_KEYS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "
 export class ControlPanel {
   readonly el: HTMLElement;
   readonly pedalEl: HTMLElement;
-  private ignition: HTMLInputElement;
+  private ignition: HTMLButtonElement;
   private starter: HTMLButtonElement;
   private mode: HTMLSelectElement;
   private target: HTMLInputElement;
@@ -24,6 +25,7 @@ export class ControlPanel {
   private volume: HTMLInputElement;
   private messages: HTMLElement;
   private status: HTMLElement;
+  private starterState!: HTMLElement;
   private pedalFill: HTMLElement;
   private pedalOut: HTMLElement;
 
@@ -68,14 +70,24 @@ export class ControlPanel {
     this.el.setAttribute("aria-label", "Bedienpult");
     this.el.innerHTML = `
       <div class="console__group console__group--main">
-        <label class="toggle">
-          <input type="checkbox" role="switch" class="toggle__input" data-control="ignition" aria-keyshortcuts="I" />
-          <span class="toggle__lever" aria-hidden="true"></span>
-          <span class="toggle__text">Zündung <kbd>I</kbd></span>
-        </label>
-        <button type="button" class="starter" data-control="starter" aria-keyshortcuts="A">
-          <span class="starter__cap" aria-hidden="true"></span>
+        <button type="button" class="ignkey" role="switch" aria-checked="false" data-control="ignition" aria-keyshortcuts="I" aria-label="Zündung">
+          <svg class="ignkey__lock" viewBox="0 0 64 64" aria-hidden="true">
+            <circle class="ignkey__bezel" cx="32" cy="32" r="30"/>
+            <circle class="ignkey__core" cx="32" cy="32" r="19"/>
+            <text class="ignkey__mark ignkey__mark--off" x="32" y="11.5" text-anchor="middle">0</text>
+            <text class="ignkey__mark ignkey__mark--on" x="46" y="13.5" text-anchor="middle">I</text>
+            <g class="ignkey__key">
+              <rect class="ignkey__bow" x="25" y="13" width="14" height="38" rx="6"/>
+              <rect class="ignkey__grip" x="28.5" y="18" width="7" height="28" rx="3.5"/>
+              <circle class="ignkey__hole" cx="32" cy="45" r="2"/>
+            </g>
+          </svg>
+          <span class="ignkey__text">Zündung <kbd>I</kbd></span>
+        </button>
+        <button type="button" class="starter" data-control="starter" aria-keyshortcuts="A" aria-describedby="starter-state">
+          <span class="starter__ring" aria-hidden="true"><span class="starter__cap"><b>START</b><small>STOP</small></span></span>
           <span class="starter__text">Starter <kbd>A</kbd><span class="kbd-hint"> halten</span></span>
+          <span class="sr-only" id="starter-state"></span>
         </button>
         <button type="button" class="btn btn--small console__more" aria-expanded="false">Prüfstand und Ton</button>
       </div>
@@ -124,12 +136,17 @@ export class ControlPanel {
     this.volume = this.q("volume");
     this.messages = this.el.querySelector(".console__messages")!;
     this.status = this.el.querySelector(".console__status")!;
+    this.starterState = this.el.querySelector("#starter-state")!;
     // Without Web Audio there is nothing to switch on: hide the sound controls instead of offering a dead button.
     if (!soundAvailable) {
       this.muteBtn.hidden = true;
       this.volume.closest<HTMLElement>(".console__vol")!.hidden = true;
     }
+    const st0 = getSettings();
+    this.muted = !st0.sound;
+    this.volumeLevel = st0.volume;
     this.volume.value = String(this.volumeLevel);
+    this.renderMute();
 
     // pedal lever lives outside the console grid so it can sit in the thumb zone on phones
     this.pedalEl = document.createElement("div");
@@ -197,7 +214,11 @@ export class ControlPanel {
   }
 
   private wire() {
-    this.ignition.addEventListener("change", () => this.setIgnition(this.ignition.checked));
+    this.ignition.addEventListener("click", () => this.setIgnition(!this.inputs.ignition));
+    // Space/Enter on the key turn it (a click); they must not reach the global gas key
+    this.ignition.addEventListener("keydown", (e) => {
+      if (e.key === " " || e.key === "Enter") e.stopPropagation();
+    });
     const press = (e: Event) => {
       e.preventDefault();
       this.starterPointer = true;
@@ -252,16 +273,13 @@ export class ControlPanel {
     this.syncSettings(getSettings());
     warm.addEventListener("change", () => setSettings({ startWarm: warm.checked }));
     ramp.addEventListener("change", () => setSettings({ gasRamp: Number(ramp.value) as GasRamp }));
-    this.muteBtn.addEventListener("click", () => {
-      this.muted = !this.muted;
-      this.muteBtn.setAttribute("aria-pressed", String(!this.muted));
-      this.muteBtn.textContent = this.muted ? "Ton einschalten" : "Ton ausschalten";
-      this.onSound(this.muted, this.volumeLevel);
-    });
+    // sound on/off and volume are settings ("Ton", default on): the state survives a reload
+    this.muteBtn.addEventListener("click", () => setSettings({ sound: this.muted }));
     this.volume.addEventListener("input", () => {
-      this.volumeLevel = Number(this.volume.value);
+      this.volumeLevel = clampVolume(Number(this.volume.value));
       this.onSound(this.muted, this.volumeLevel);
     });
+    this.volume.addEventListener("change", () => setSettings({ volume: clampVolume(Number(this.volume.value)) }));
     const more = this.el.querySelector<HTMLButtonElement>(".console__more")!;
     more.addEventListener("click", () => {
       const deck = this.el.closest(".deck");
@@ -319,7 +337,7 @@ export class ControlPanel {
     const activatable = tag === "BUTTON" || t?.getAttribute("role") === "button" || (tag === "INPUT" && ["checkbox", "radio"].includes((t as HTMLInputElement).type));
     if (key === "i") {
       if (down && !e.repeat) {
-        this.setIgnition(!this.ignition.checked);
+        this.setIgnition(!this.inputs.ignition);
       }
       return true;
     }
@@ -391,8 +409,14 @@ export class ControlPanel {
     this.renderPedal();
   }
 
+  /** Ignition on? (the key's switch state) */
+  get ignitionOn(): boolean {
+    return this.inputs.ignition;
+  }
+
   private setIgnition(on: boolean) {
-    this.ignition.checked = on;
+    this.ignition.setAttribute("aria-checked", String(on));
+    this.el.classList.toggle("is-ign", on);
     this.inputs.ignition = on;
     if (!on) {
       this.starterKey = false;
@@ -499,6 +523,13 @@ export class ControlPanel {
 
   /** Settings changed (here or on the settings screen): controls, gas ramp, warm start and pedal side. */
   syncSettings(st: Settings) {
+    if (this.muted !== !st.sound || this.volumeLevel !== st.volume) {
+      this.muted = !st.sound;
+      this.volumeLevel = st.volume;
+      this.volume.value = String(st.volume);
+      this.renderMute();
+      this.onSound(this.muted, this.volumeLevel);
+    }
     this.warmBox.checked = st.startWarm;
     this.rampSel.value = String(st.gasRamp);
     this.gasRampS = st.gasRamp;
@@ -507,6 +538,11 @@ export class ControlPanel {
       this.onWarmChange(st.startWarm);
     }
     this.setPedalSide(st.pedalSide);
+  }
+
+  private renderMute() {
+    this.muteBtn.setAttribute("aria-pressed", String(!this.muted));
+    this.muteBtn.textContent = this.muted ? "Ton einschalten" : "Ton ausschalten";
   }
 
   /** Gas on the right (brake left of it) or mirrored for left hands (#66). DOM order, so Tab follows the eye. */
@@ -527,17 +563,21 @@ export class ControlPanel {
   update(s: EngineState) {
     let status: string;
     const touch = isTouch();
-    if (s.destroyed) status = "Motor zerstört. Setze ihn zurück, um weiterzumachen.";
-    else if (!this.inputs.ignition) status = touch ? "Zündung aus. Tippe auf Zündung, um sie einzuschalten." : "Zündung aus. Schalte sie mit I ein.";
+    // touch texts are short: on a phone the status line is one clamped row next to the pedals
+    if (s.destroyed) status = touch ? "Motor zerstört: zurücksetzen" : "Motor zerstört. Setze ihn zurück, um weiterzumachen.";
+    else if (!this.inputs.ignition) status = touch ? "Zündung: Schlüssel antippen" : "Zündung aus. Schalte sie mit I ein.";
     else if (s.running) {
-      if (this.inputs.dynoMode === "free") status = touch ? "Motor läuft. Schiebe den Gashebel hoch." : "Motor läuft. Gib Gas mit der Leertaste.";
-      else if (this.inputs.dynoMode === "vehicle") status = touch ? "Motor läuft. Gashebel gibt Gas, Bremse bremst, ▲ und ▼ schalten." : "Motor läuft. W gibt Gas, S bremst, E und Q schalten.";
+      if (this.inputs.dynoMode === "free") status = touch ? "Motor läuft: Gashebel schieben" : "Motor läuft. Gib Gas mit der Leertaste.";
+      else if (this.inputs.dynoMode === "vehicle") status = touch ? "Motor läuft: Gas, Bremse, ▲ ▼" : "Motor läuft. W gibt Gas, S bremst, E und Q schalten.";
       else status = "Motor läuft unter Last.";
     } else if (this.inputs.starter) status = "Starter dreht …";
-    else status = touch ? "Zündung ein. Tippe auf Starter und halte ihn, bis der Motor läuft." : "Zündung ein. Halte A, um zu starten.";
+    else status = touch ? "Bereit: Start gedrückt halten" : "Zündung ein. Halte A, um zu starten.";
     if (status !== this.lastStatus) {
       this.status.textContent = status;
+      // the line is clamped to one row (ellipsis): the full text on hover
+      this.status.title = status;
       this.lastStatus = status;
+      this.starterState.textContent = s.running ? "Motor läuft" : this.inputs.ignition ? "Bereit zum Starten" : "Zündung aus";
     }
     this.el.classList.toggle("is-running", s.running);
 
