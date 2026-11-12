@@ -6,6 +6,7 @@ import { ShiftPad } from "./shift-pad.ts";
 import type { EngineConfig, EngineState, EngineSummary } from "../core/index.ts";
 import { defaultConfig } from "../data/presets.ts";
 import { ControlPanel } from "./controls.ts";
+import { ToastStrip } from "./toasts.ts";
 import { GearboxPanel } from "./gearbox-panel.ts";
 import { fmt } from "./format.ts";
 import { InstrumentPanel } from "./gauges.ts";
@@ -50,6 +51,8 @@ export class App {
   private recorder = new Recorder();
   private console: ControlPanel;
   private sound = createSound();
+  /** Limit hints and critical events as short toasts below the header (setting "Hinweise zu Grenzwerten"). */
+  private toasts = new ToastStrip();
   private soundStarted = false;
   private last = 0;
   private announcer: HTMLElement;
@@ -180,6 +183,8 @@ export class App {
     const toggle = top.querySelector<HTMLButtonElement>(".bench-toggle")!;
     // "Fehler melden" (#55): icon button, compact enough for 390 px phones
     toggle.before(bugButton(true, "cell__bug"));
+    // toasts hang below the header and float over the stage: they never move the control bar
+    top.append(this.toasts.el);
     this.cell = cell;
     this.layoutSel = top.querySelector<HTMLSelectElement>("[data-control=layout]")!;
     this.layoutSel.addEventListener("change", () => setSettings({ layout: this.layoutSel.value as LayoutId }));
@@ -254,6 +259,7 @@ export class App {
       this.sound.setVolume(muted ? 0 : vol);
     };
     this.console.onReset = () => {
+      this.toasts.clear();
       this.gearbox.reset();
       this.sim.reset();
       this.recorder.reset();
@@ -291,6 +297,16 @@ export class App {
       },
       { signal },
     );
+    // "Ton" is on by default, but browsers start audio only from a user gesture: the first tap or key in the
+    // sandbox starts it. Later gestures resume a context the browser kept suspended (iOS wants touchend/click).
+    const unlock = () => {
+      if (this.paused || this.console.muted) return;
+      if (!this.soundStarted) void this.ensureSound();
+      else void this.sound.resume();
+    };
+    for (const ev of ["pointerdown", "pointerup", "touchend", "click", "keydown"] as const) {
+      this.root.addEventListener(ev, unlock, { signal, capture: true, passive: true });
+    }
     window.addEventListener("blur", () => this.console.releaseAll(), { signal });
     document.addEventListener(
       "visibilitychange",
@@ -462,6 +478,8 @@ export class App {
       // the recorder is shown and drawn in every view
       this.recorder.update(s, dt);
       this.console.update(s);
+      const outOfFuel = this.inputs.dynoMode === "vehicle" && this.gearbox.drivetrain.tank.empty && !s.running;
+      this.toasts.update({ state: s, outOfFuel }, now, getSettings().limitHints === "toast");
       if (this.inputs.dynoMode === "vehicle") this.gearbox.update(this.console.brakeHeld);
       this.shiftPad.update(this.inputs.dynoMode === "vehicle");
       // board computer counts only while the car drives on the chassis dyno (#40, #41)
