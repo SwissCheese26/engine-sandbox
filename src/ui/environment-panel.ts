@@ -3,7 +3,7 @@
 // built so the cockpit (issue #26) can take the same element.
 // Like the vehicle data, everything here can only be changed at standstill (review PR #39); the choice is kept per
 // browser in localStorage (pruefzelle.environment, pruefzelle.assists).
-import { DEFAULT_ASSISTS, TERRAIN_LABELS, WEATHER_LABELS, altitudeToKpa, isTerrain, terrainSamples } from "../core/index.ts";
+import { DEFAULT_ASSISTS, TERRAIN_LABELS, WEATHER_LABELS, altitudeToKpa, isMotorcycleKind, isTerrain, terrainSamples } from "../core/index.ts";
 import type { AssistSettings, Drivetrain, Environment, Terrain, Weather } from "../core/index.ts";
 import { prefs } from "./settings.ts";
 import { toUnit } from "./units.ts";
@@ -221,7 +221,7 @@ export class EnvironmentPanel {
         if (this.moving) return this.sync();
         this.drivetrain.setAssists({ [a.key]: c.checked });
         // stored as the car's choice (motorcycles switch ESP/ASR off by themselves)
-        if (this.drivetrain.kind === "car") writeJson(ASSIST_KEY, this.drivetrain.assists);
+        if (!isMotorcycleKind(this.drivetrain.kind)) writeJson(ASSIST_KEY, this.drivetrain.assists);
         else if (a.key === "abs" || a.key === "launchControl") writeJson(ASSIST_KEY, { ...(parseAssists(readJson(ASSIST_KEY))), [a.key]: c.checked });
         this.onChange();
       });
