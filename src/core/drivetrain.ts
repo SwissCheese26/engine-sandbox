@@ -78,7 +78,17 @@ export const GEARBOXES: Record<GearboxType, GearboxSpec> = {
 /** Auto-blipper downshift time, s [S]. */
 const SEQ_DOWNSHIFT_S = 0.08;
 
-export type VehicleKind = "car" | "superbike" | "tourer";
+export type VehicleKind = "car" | "superbike" | "tourer" | "truck" | "bus";
+
+/** Motorcycle presets (issue #25): rear-wheel drive fixed, ABS only. */
+export function isMotorcycleKind(kind: VehicleKind): boolean {
+  return kind === "superbike" || kind === "tourer";
+}
+
+/** Commercial vehicles (issue #31): adjustable load (Beladung), AMT / converter automatic, Vmax limiter. */
+export function isCommercialKind(kind: VehicleKind): boolean {
+  return kind === "truck" || kind === "bus";
+}
 
 export interface VehiclePreset {
   label: string;
@@ -90,6 +100,12 @@ export interface VehiclePreset {
   /** Gearboxes this vehicle can have; the first is the default. */
   gearboxes: GearboxType[];
   finalDrive: number;
+  /** Own gear ratios of the preset (issue #31 truck AMT / bus automatic); default GEARBOXES[gearboxes[0]]. */
+  gearboxSpec?: GearboxSpec;
+  /** Commercial vehicles (issue #31): permissible gross mass, kg; params.massKg is the empty mass incl. driver. */
+  fullMassKg?: number;
+  /** Default top-speed limiter of the preset, km/h (EU: trucks 90, buses 100, Directive 92/6/EEC). */
+  speedLimitKmh?: number;
 }
 
 /**
@@ -106,6 +122,39 @@ export interface VehiclePreset {
  */
 const SUPERBIKE_TYRE: TyreSetup = { type: "motorcycle", size: { widthMm: 190, aspectPct: 55, rimInch: 17 }, speedIndex: "(Y)" };
 const TOURER_TYRE: TyreSetup = { type: "motorcycle", size: { widthMm: 180, aspectPct: 55, rimInch: 17 }, speedIndex: "W" };
+/**
+ * Commercial vehicles (issue #31, docs/research/commercial.md §1, §4):
+ * - Truck: Mercedes Actros 1845 LS 4×2 + 3-axle curtain-sider, empty ≈ 15 t (tractor ≈ 8 t, trailer ≈ 7 t) incl.
+ *   driver, gross 40 t (EU 96/53/EC); cW ≈ 0.55 × A ≈ 10.5 m² → cW·A ≈ 5.8 m²; 315/70 R22.5 on the drive axle; CG
+ *   ≈ 1.4 m (tractor + loaded trailer [S]); wheelbase 3.7 m; drive axle carries ≈ 11.5 t of the 40 t; the model has
+ *   one vehicle mass with two axles, so the "front share" is the share NOT on the drive axle (≈ 70 % at 40 t) [S].
+ *   Driven wheels: 4 tyres + drums ≈ 4 × 18 kg·m² [S].
+ * - Bus: Mercedes Citaro 12 m solo city bus, empty ≈ 11.5 t + driver, gross 19 t; cW ≈ 0.65, A ≈ 7.5 m² (2.55 ×
+ *   2.95 m) [S]; 275/70 R22.5; rear (drive) axle with 2 × 2 tyres.
+ */
+const TRUCK_TYRE: TyreSetup = { type: "truck", size: { widthMm: 315, aspectPct: 70, rimInch: 22.5 }, speedIndex: "M" };
+const BUS_TYRE: TyreSetup = { type: "truck", size: { widthMm: 275, aspectPct: 70, rimInch: 22.5 }, speedIndex: "M" };
+const TRUCK_PARAMS: VehicleParams = {
+  massKg: 15000, dragCoefficient: 0.55, frontalAreaM2: 10.5, rollingResistance: 0.006, wheelRadiusM: 0.49,
+  cgHeightM: 1.4, cgToRearAxleM: 0.7 * 3.7, wheelbaseM: 3.7, driveLayout: "rwd", drivenWheelInertiaKgM2: 72,
+};
+const BUS_PARAMS: VehicleParams = {
+  massKg: 11600, dragCoefficient: 0.65, frontalAreaM2: 7.5, rollingResistance: 0.006, wheelRadiusM: 0.46,
+  cgHeightM: 1.1, cgToRearAxleM: 0.35 * 5.9, wheelbaseM: 5.9, driveLayout: "rwd", drivenWheelInertiaKgM2: 60,
+};
+/**
+ * Mercedes PowerShift 3 G 281-12 (12-speed AMT, direct top gear; Mercedes-Benz Actros data sheet) with the long-haul
+ * axle i = 2.533 → 85 km/h at ≈ 1150 rpm. Modelled with the "dsg" shift logic (automatic schedule, kickdown) and
+ * a 0.5 s shift; the real AMT interrupts the tractive force during the shift, the model's handover clutch does not [S].
+ */
+export const TRUCK_AMT: GearboxSpec = {
+  ratios: [14.93, 11.64, 9.02, 7.04, 5.4, 4.21, 3.54, 2.76, 2.14, 1.67, 1.28, 1.0], finalDrive: 2.533, efficiency: 0.95, shiftTimeS: 0.5,
+};
+/** ZF EcoLife 6 AP (6-speed converter automatic of city buses, ZF data sheet) with i = 4.78 [S]. */
+export const BUS_AUTOMATIC: GearboxSpec = {
+  ratios: [3.36, 1.91, 1.42, 1.0, 0.72, 0.62], finalDrive: 4.78, efficiency: 0.9, shiftTimeS: 0.3, converterLockRpm: 1100,
+};
+
 export const VEHICLES: Record<VehicleKind, VehiclePreset> = {
   car: { label: "Auto (Kompaktklasse)", hint: "Kompaktwagen mit Fahrer.", params: DEFAULT_VEHICLE, tyre: DEFAULT_TYRE, gearboxes: ["manual", "dsg", "cvt"], finalDrive: GEARBOXES.manual.finalDrive },
   superbike: {
@@ -119,6 +168,16 @@ export const VEHICLES: Record<VehicleKind, VehiclePreset> = {
     params: withTyre({ massKg: 350, dragCoefficient: 0.65, frontalAreaM2: 0.85, rollingResistance: 0.015, wheelRadiusM: 0.3, cgHeightM: 0.65, cgToRearAxleM: 0.72, wheelbaseM: 1.49, driveLayout: "rwd", drivenWheelInertiaKgM2: 0.6 }, TOURER_TYRE),
     tyre: TOURER_TYRE,
     gearboxes: ["sequential"], finalDrive: 3.6,
+  },
+  truck: {
+    label: "Lkw (Sattelzug 40 t)", hint: "Sattelzugmaschine mit Auflieger: 15–40 t, cW·A 5,8 m², 12-Gang-AMT, Begrenzer 85 km/h.",
+    params: withTyre(TRUCK_PARAMS, TRUCK_TYRE), tyre: TRUCK_TYRE,
+    gearboxes: ["dsg"], finalDrive: TRUCK_AMT.finalDrive, gearboxSpec: TRUCK_AMT, fullMassKg: 40000, speedLimitKmh: 85,
+  },
+  bus: {
+    label: "Bus (Stadtbus 12 m)", hint: "Solo-Stadtbus: 12–19 t, cW·A 4,9 m², Wandlerautomatik, Begrenzer 100 km/h.",
+    params: withTyre(BUS_PARAMS, BUS_TYRE), tyre: BUS_TYRE,
+    gearboxes: ["dsg"], finalDrive: BUS_AUTOMATIC.finalDrive, gearboxSpec: BUS_AUTOMATIC, fullMassKg: 19000, speedLimitKmh: 100,
   },
 };
 
@@ -182,6 +241,13 @@ export interface CarSetup {
   kind?: VehicleKind;
   /** Tank volume in litres (manufacturer data); default DEFAULT_TANK_L of the kind. */
   tankL?: number;
+  /**
+   * Commercial vehicles (issue #31): permissible gross mass in kg. vehicle.massKg is then the EMPTY mass incl. driver
+   * and the load (setLoad, 0 = leer … 1 = voll) moves the simulated mass between the two. Unset = no load control.
+   */
+  fullMassKg?: number;
+  /** Initial load share 0 … 1 (issue #31), default 1 (fully loaded, the hard case). */
+  loadShare?: number;
   /** Body/chassis; wheel radius and rolling resistance are overwritten from the tyre. */
   vehicle: VehicleParams;
   tyre: TyreSetup;
@@ -192,7 +258,7 @@ export interface CarSetup {
 }
 
 /** Governor presets in km/h, null = off. Default 250 km/h (German manufacturers' voluntary agreement) [S]. */
-export const SPEED_LIMIT_OPTIONS: readonly (number | null)[] = [null, 180, 210, 250, 270, 300];
+export const SPEED_LIMIT_OPTIONS: readonly (number | null)[] = [null, 80, 85, 90, 100, 180, 210, 250, 270, 300];
 export const DEFAULT_SPEED_LIMIT_KMH = 250;
 /** Tyre speed rating W (ETRTO / ECE-R 30): 270 km/h. Since #22 the fitted tyre's index is in state.tyreRatingKmh. */
 export const TYRE_RATING_W_KMH = 270;
@@ -234,6 +300,10 @@ export class Drivetrain {
   private wheelieHold = 0;
   /** Current vehicle preset (issue #25). */
   kind: VehicleKind = "car";
+  /** Load control (issue #31): empty / gross mass, null = none. */
+  private emptyKg = DEFAULT_VEHICLE.massKg;
+  private fullKg: number | null = null;
+  private loadSh = 0;
   /** Gear ratios in use (GEARBOXES[type] or a car's own, issue #22). */
   private spec: GearboxSpec;
   private tyreSetup: TyreSetup = DEFAULT_TYRE;
@@ -314,6 +384,12 @@ export class Drivetrain {
   /** Body/chassis parameters (mass, cW, A, layout, weight share, CG, wheelbase); a fresh object each time. */
   setVehicleParams(p: Partial<VehicleParams>) {
     this.vehicle = withTyre({ ...this.vehicle, ...p }, this.tyreSetup);
+    // a typed-in mass of a truck/bus moves the load share (and widens empty/gross if it lies outside, issue #31)
+    if (this.fullKg !== null && p.massKg !== undefined && Number.isFinite(p.massKg)) {
+      this.emptyKg = Math.min(this.emptyKg, p.massKg);
+      this.fullKg = Math.max(this.fullKg, p.massKg);
+      this.loadSh = this.fullKg > this.emptyKg ? (p.massKg - this.emptyKg) / (this.fullKg - this.emptyKg) : 0;
+    }
     this.refreshTyreState();
   }
 
@@ -401,19 +477,24 @@ export class Drivetrain {
     // another car starts at the beginning of the route (#48)
     this.positionM = 0;
     this.updateRoad();
-    const wasCar = this.kind === "car";
+    const wasCar = !isMotorcycleKind(this.kind);
     this.kind = car.kind ?? "car";
     // the car's own tank, full
     this.tank.setCapacity(car.tankL ?? DEFAULT_TANK_L[this.kind]);
     // motorcycles (issue #25 presets: CBR1000RR-class superbike, tourer) have ABS but no ESP; traction control is
     // off like on the non-electronic base bikes the presets are modelled on (issue #23 decision). The car's own
     // choice is remembered and comes back when a car is loaded again (review PR #39).
-    if (this.kind !== "car") {
+    if (isMotorcycleKind(this.kind)) {
       if (wasCar) this.carAssists = { ...this.assistSet };
       this.setAssists({ asr: false, esp: false });
     } else if (!wasCar) this.setAssists({ ...this.carAssists });
     this.tyreSetup = { type: car.tyre.type, size: { ...car.tyre.size }, speedIndex: car.tyre.speedIndex };
     this.vehicle = withTyre({ ...car.vehicle }, this.tyreSetup);
+    // load (issue #31): empty mass from the setup, gross mass for "voll"
+    this.emptyKg = car.vehicle.massKg;
+    this.fullKg = car.fullMassKg !== undefined && car.fullMassKg > car.vehicle.massKg ? car.fullMassKg : null;
+    this.loadSh = this.fullKg === null ? 0 : Math.min(1, Math.max(0, car.loadShare ?? 1));
+    if (this.fullKg !== null) this.vehicle.massKg = this.emptyKg + this.loadSh * (this.fullKg - this.emptyKg);
     this.tyreT = this.env.ambientC;
     this.clearTransient();
     this.spec = car.gearboxSpec ? { ...car.gearboxSpec, ratios: [...car.gearboxSpec.ratios] } : GEARBOXES[car.gearbox];
@@ -443,7 +524,27 @@ export class Drivetrain {
   /** Vehicle preset: sets mass/aero/wheel, the default gearbox and final drive of that vehicle (issue #25). */
   setVehicle(kind: VehicleKind) {
     const p = VEHICLES[kind];
-    this.applyCar({ kind, vehicle: p.params, tyre: p.tyre, gearbox: p.gearboxes[0]!, gearboxSpec: { ...GEARBOXES[p.gearboxes[0]!], finalDrive: p.finalDrive }, speedLimitKmh: this.st.speedLimitKmh });
+    // commercial presets bring their own limiter (EU 92/6/EEC); back on a car/bike the previous one stays
+    const limit = p.speedLimitKmh ?? (isCommercialKind(this.kind) ? DEFAULT_SPEED_LIMIT_KMH : this.st.speedLimitKmh);
+    this.applyCar({
+      kind, vehicle: p.params, tyre: p.tyre, gearbox: p.gearboxes[0]!,
+      gearboxSpec: { ...(p.gearboxSpec ?? GEARBOXES[p.gearboxes[0]!]), finalDrive: p.finalDrive }, speedLimitKmh: limit,
+      fullMassKg: p.fullMassKg,
+    });
+  }
+
+  /**
+   * Load of a commercial vehicle (issue #31): share 0 (leer) … 1 (voll); mass = empty + share·(gross − empty).
+   * Null for vehicles without load control. Only at standstill (like the other vehicle settings in the UI).
+   */
+  get load(): { share: number; emptyKg: number; fullKg: number } | null {
+    return this.fullKg === null ? null : { share: this.loadSh, emptyKg: this.emptyKg, fullKg: this.fullKg };
+  }
+
+  setLoad(share: number) {
+    if (this.fullKg === null || !Number.isFinite(share)) return;
+    this.loadSh = Math.min(1, Math.max(0, share));
+    this.vehicle = { ...this.vehicle, massKg: this.emptyKg + this.loadSh * (this.fullKg - this.emptyKg) };
   }
 
   /** Final drive ratio ("Achsübersetzung"): shorter = more pull, lower top speed. */
@@ -631,10 +732,21 @@ export class Drivetrain {
 
     // --- DSG automatic shift schedule (Drive mode) [S]: upshift point rises with pedal, downshift keeps torque
     if (s.type === "dsg" && !s.shifting && s.gear > 0) {
-      const upRpm = Math.min(limit * 0.97, idle + 900 + Math.pow(req, 0.8) * (limit * 0.97 - idle - 900));
+      // top of the schedule below the diesel governor ramp (it starts ≈ 200 rpm under the limit, diesel.md §3.2d), so
+      // low-revving truck engines (limit ≈ 2000 rpm) still upshift at full load (issue #31); cars ≥ 5000 rpm unchanged
+      const upTop = Math.min(limit * 0.97, limit - 150);
+      const upRpm = Math.min(upTop, idle + 900 + Math.pow(req, 0.8) * (upTop - idle - 900));
       const downRpm = Math.max(idle * 1.35, upRpm * 0.42);
       if (!s.manualMode) {
-        if (this.gearDwell <= 0 && rpm > upRpm && s.gear < s.gearCount && this.rpmInGear(s.gear + 1, v) > idle * 1.25) this.beginShift(s.gear + 1);
+        // engine-brake downshift (issue #31, AMT "Bremsschaltung"): rolling downhill on overrun with the engine brake
+        // working, the AMT holds a lower gear so the engine brake runs near rated speed (braking power ∝ n²)
+        const ebDown = !!this.cfg.engineBrake && pedal < 0.01 && (engine.accelMs2 ?? 0) > 0.05 && engine.engineBrakeActive === true
+          && s.gear > 1 && rpm < 0.8 * limit && this.rpmInGear(s.gear - 1, v) < 0.95 * limit;
+        // …and does not shift up again while the engine brake works below the limiter (no hunting)
+        const ebHold = !!this.cfg.engineBrake && pedal < 0.01 && engine.engineBrakeActive === true && rpm < 0.95 * limit;
+        if (ebDown) {
+          if (this.gearDwell <= 0) this.beginShift(s.gear - 1);
+        } else if (!ebHold && this.gearDwell <= 0 && rpm > upRpm && s.gear < s.gearCount && this.rpmInGear(s.gear + 1, v) > idle * 1.25) this.beginShift(s.gear + 1);
         else if (rpm < downRpm && s.gear > 1 && this.rpmInGear(s.gear - 1, v) < limit * 0.9) this.beginShift(s.gear - 1);
         // cruise control (issue #30): speed not holdable at full pedal → one gear down if the engine then runs closer
         // to its power peak (like a kickdown), at most every 3 s so it cannot hunt

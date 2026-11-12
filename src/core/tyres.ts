@@ -17,7 +17,7 @@
  * Pacejka, Tire and Vehicle Dynamics, ch. 1). Sliding friction ≈ 0.9 × peak (locked wheel / burnout).
  */
 
-export type TyreType = "standard" | "winter" | "uhp" | "semi-slick" | "slick" | "offroad" | "motorcycle";
+export type TyreType = "standard" | "winter" | "uhp" | "semi-slick" | "slick" | "offroad" | "motorcycle" | "truck";
 export type RoadSurface = "dry" | "wet" | "snow" | "ice" | "gravel";
 
 /** Speed index letters (ECE-R 30 Annex 6) → km/h. "(Y)": ZR tyre above 300 km/h, limit set by the car maker. */
@@ -77,6 +77,13 @@ export const TYRE_TYPES: Record<TyreType, TyreTypeSpec> = {
     label: "Motorrad (Sport)", mu: { dry: 1.3, wet: 0.8, snow: 0.15, ice: 0.06, gravel: 0.5 },
     rollingResistance: 0.015, coldFactor: 1, warmC: 20, hint: "Motorrad-Sportreifen, μ ≈ 1,3 längs.",
   },
+  // commercial-vehicle tyre (issue #31, commercial.md §4): hard compound, 8–9 bar → μ ≈ 0.8 dry / 0.5 wet (truck
+  // braking ≈ 0.6–0.8 g, Breuer/Bill "Bremsenhandbuch"); EU tyre label C1–C3: C3 class A ≤ 4 kg/t, typical
+  // long-haul tyres 4–6 kg/t → f_R 0.006 [B, Reg. (EU) 2020/740 Annex I]
+  truck: {
+    label: "Lkw/Bus (Nfz)", mu: { dry: 0.8, wet: 0.5, snow: 0.2, ice: 0.07, gravel: 0.55 },
+    rollingResistance: 0.006, coldFactor: 1, warmC: 20, hint: "Nutzfahrzeugreifen, μ ≈ 0,8, sehr geringer Rollwiderstand (≈ 6 kg/t).",
+  },
 };
 
 /** Sliding friction as share of the peak (locked wheel, spinning wheel) [S]. */
@@ -130,7 +137,8 @@ export function formatTyreSize(s: TyreSize): string {
 
 /** Parses "225/45 R17" / "225/45R17" / "225/45 ZR17"; null if not valid. */
 export function parseTyreSize(text: string): TyreSize | null {
-  const m = /^\s*(\d{3})\s*\/\s*(\d{2})\s*Z?R\s*(\d{2})\s*$/i.exec(text);
+  // rim with an optional ".5" for commercial-vehicle sizes (315/70 R22.5, issue #31)
+  const m = /^\s*(\d{3})\s*\/\s*(\d{2})\s*Z?R\s*(\d{2}(?:\.5)?)\s*$/i.exec(text);
   if (!m) return null;
   const size = { widthMm: Number(m[1]), aspectPct: Number(m[2]), rimInch: Number(m[3]) };
   if (size.widthMm < 115 || size.widthMm > 355 || size.aspectPct < 25 || size.aspectPct > 85 || size.rimInch < 12 || size.rimInch > 23) return null;
@@ -164,7 +172,7 @@ export function compoundFactor(type: TyreType, ambientC: number, surface: RoadSu
 }
 
 const SUMMER_COMPOUND: Record<TyreType, boolean> = {
-  standard: true, winter: false, uhp: true, "semi-slick": true, slick: true, offroad: false, motorcycle: true,
+  standard: true, winter: false, uhp: true, "semi-slick": true, slick: true, offroad: false, motorcycle: true, truck: false,
 };
 
 /**
@@ -172,9 +180,10 @@ const SUMMER_COMPOUND: Record<TyreType, boolean> = {
  * with new tread aquaplane from ≈ 80–100 km/h in deep water (ADAC aquaplaning tests; Horne's hydroplaning speed
  * v ≈ 6.36·√p[kPa] ≈ 95 km/h at 2.3 bar is the upper bound for a smooth tyre in deep water, NASA TN D-2056).
  * Wide UHP tyres float earlier than narrow ones, slicks (no grooves) very early, the round motorcycle tyre late.
+ * Truck tyres at ≈ 8.5 bar: Horne ≈ 185 km/h, deep tread → 130 km/h before the width correction [S].
  */
 export const AQUAPLANING_KMH: Record<TyreType, number> = {
-  standard: 85, winter: 85, uhp: 78, "semi-slick": 65, slick: 45, offroad: 80, motorcycle: 100,
+  standard: 85, winter: 85, uhp: 78, "semi-slick": 65, slick: 45, offroad: 80, motorcycle: 100, truck: 130,
 };
 
 /**
