@@ -334,7 +334,11 @@ export class EngineSimulator {
         x.relLoad = clamp(out.mAirCyc / full, 0, 1.2);
       }
       // --- engine brake (issue #31, commercial.md §3): extra overrun braking torque, needs the key on (pneumatic flap / valve actuator)
-      const tEb = ignition ? engineBrakeTorqueNm(cfg, rpm, pedal) : 0;
+      // only with a gear engaged, the clutch closed and no shift running (review PR #82): not on the free-revving
+      // bench, not in neutral, not during an AMT shift
+      const vc = input.dynoMode === "vehicle" ? input.vehicle : undefined;
+      const ebCoupled = !!vc && vc.totalRatio > 0 && vc.clutch > 0.3 && !vc.shifting;
+      const tEb = ignition && ebCoupled ? engineBrakeTorqueNm(cfg, rpm, pedal) : 0;
       if (tEb > 0) ebAny = true;
       const tEng = out.torqueNm - tEb;
       // --- torques on the crank (diesel.md §3.11: J·dω/dt = T − T_brake − T_starter,loss)

@@ -298,6 +298,8 @@ export interface VehicleCoupling {
   gradePct?: number;
   airDensityKgM3?: number;
   torqueCut?: number;
+  /** A gear change is in progress (issue #31): the engine brake (EngineConfig.engineBrake) is switched off meanwhile. */
+  shifting?: boolean;
 }
 
 export type Severity = "info" | "warning" | "critical";
