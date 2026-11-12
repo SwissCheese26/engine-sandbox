@@ -77,24 +77,28 @@ describe("commercial engines (issue #31)", () => {
     expect(engineBrakeTorqueNm({ ...cfg, engineBrake: undefined }, 1800, 0)).toBe(0);
   });
 
-  test("engine brake on the bench: free revving engine falls faster from 1800 rpm", () => {
-    const fall = (withEb: boolean) => {
-      const cfg = libraryConfig("lib-mercedes-om471");
-      if (!withEb) delete cfg.engineBrake;
+  test("engine brake only with a gear engaged, clutch closed and no shift running (review PR #82)", () => {
+    const cfg = libraryConfig("lib-mercedes-om471");
+    // overrun at ≈ 1600 rpm: the vehicle drives the engine; reports whether the engine brake works
+    const active = (mode: "free" | "vehicle", coupling: { clutch: number; totalRatio: number; shifting?: boolean }) => {
       const sim = new EngineSimulator(cfg);
-      const inp = { ...defaultInputs(), ignition: true, starter: true, startWarm: true, dynoMode: "free" as const };
-      for (let i = 0; i < 90; i++) sim.step(H, { ...inp, pedal: 0 });
+      const inp = { ...defaultInputs(), ignition: true, starter: true, startWarm: true };
+      for (let i = 0; i < 90; i++) sim.step(H, { ...inp, dynoMode: "free", pedal: 0 });
       inp.starter = false;
-      let i = 0;
-      for (; i < 600 && sim.state.rpm < 1900; i++) sim.step(H, { ...inp, pedal: 1 });
-      let t = 0;
-      while (sim.state.rpm > 1100 && t < 10) {
-        sim.step(H, { ...inp, pedal: 0 });
-        t += H;
+      for (let i = 0; i < 600 && sim.state.rpm < 1700; i++) sim.step(H, { ...inp, dynoMode: "free", pedal: 1 });
+      const vehicle = { vehicle: { ...VEHICLES.truck.params, massKg: 40000 }, efficiency: 0.95, clutchCapacityNm: 3500, gradePct: -4, ...coupling };
+      let on = 0;
+      for (let i = 0; i < 20; i++) {
+        sim.step(H, { ...inp, dynoMode: mode, pedal: 0, ...(mode === "vehicle" ? { vehicle } : {}) });
+        if (sim.state.engineBrakeActive) on++;
       }
-      return { t, active: sim.state.engineBrakeActive };
+      return on;
     };
-    expect(fall(true).t).toBeLessThan(0.6 * fall(false).t);
+    expect(active("free", { clutch: 1, totalRatio: 5 })).toBe(0);
+    expect(active("vehicle", { clutch: 0, totalRatio: 5 })).toBe(0);
+    expect(active("vehicle", { clutch: 1, totalRatio: 0 })).toBe(0);
+    expect(active("vehicle", { clutch: 1, totalRatio: 5, shifting: true })).toBe(0);
+    expect(active("vehicle", { clutch: 1, totalRatio: 5 })).toBeGreaterThan(0);
   });
 });
 
@@ -129,6 +133,21 @@ describe("trucks and buses on the chassis dyno (issue #31)", () => {
     expect(dt.vehicle.massKg).toBe(m);
     dt.setVehicle("truck");
     expect(dt.state.speedLimitKmh).toBe(85);
+  });
+
+  test("limiter: back from truck/bus the car's previous limiter returns (review PR #82)", () => {
+    const { dt } = rig("car-vw-golf7-gti");
+    dt.setSpeedLimit(210);
+    dt.setVehicle("truck");
+    expect(dt.state.speedLimitKmh).toBe(85);
+    dt.setVehicle("bus");
+    expect(dt.state.speedLimitKmh).toBe(100);
+    dt.setVehicle("car");
+    expect(dt.state.speedLimitKmh).toBe(210);
+    dt.setSpeedLimit(null);
+    dt.applyCar(libraryCar(ACTROS).setup);
+    dt.setVehicle("superbike");
+    expect(dt.state.speedLimitKmh).toBeNull();
   });
 
   test("40 t truck: Vmax limiter holds 85 km/h on the flat, top gears, engine running", () => {
