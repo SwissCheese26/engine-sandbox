@@ -206,7 +206,7 @@ describe("motorcycle library: weight, Vmax and 0–100", () => {
       const { dt, sim } = run(libraryConfig(car.engineId), (d) => d.applyCar(car.setup), 50);
       expect(sim.state.running).toBe(true);
       expect(Math.abs(dt.state.maxSpeedKmh / car.factory.vmaxKmh - 1)).toBeLessThan(0.12);
-      const d100 = dt.state.t0to100S! / car.factory.t0to100S - 1;
+      const d100 = dt.state.t0to100S! / car.factory.t0to100S! - 1;
       expect(d100).toBeGreaterThan(-0.1);
       expect(d100).toBeLessThan(SLOW_LAUNCH[car.id] ?? 0.35);
     }, 30000);

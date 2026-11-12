@@ -24,8 +24,10 @@ test("drains by the fuel flow, reserve and empty, refill, saved state is validat
 test("every library vehicle has a plausible tank; loading a car fills its tank", () => {
   for (const c of VEHICLE_LIBRARY) {
     const kind = c.setup.kind ?? "car";
-    expect(c.setup.tankL).toBeGreaterThan(kind === "car" ? 30 : 10);
-    expect(c.setup.tankL).toBeLessThan(kind === "car" ? 100 : 30);
+    // trucks/buses (issue #31): 200 … 1000 l
+    const [lo, hi] = kind === "car" ? [30, 100] : kind === "truck" || kind === "bus" ? [200, 1000] : [10, 30];
+    expect(c.setup.tankL).toBeGreaterThan(lo);
+    expect(c.setup.tankL).toBeLessThan(hi);
   }
   const r = cruiseRig("car-citroen-c1-10");
   expect(r.dt.tank.capacityL).toBe(35);
