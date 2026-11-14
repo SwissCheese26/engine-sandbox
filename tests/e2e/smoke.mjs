@@ -165,6 +165,7 @@ async function run(label, viewport) {
   else if (!(rpmGas > Math.max(rpmIdle, rpm0 || 0) + 300)) failures.push(`${label}: Drehzahl steigt nicht (Leerlauf ${fmt(rpmIdle)}, Gas ${fmt(rpmGas)})`);
   if (Number.isFinite(rpmIdle) && !(rpmIdle > 200)) failures.push(`${label}: Motor springt nicht an (rpm ${fmt(rpmIdle)})`);
 
+  await gearsChecks(page, label);
   await bugReport(page, label);
 
   // Esc leads back to the menu, the sandbox pauses; reload keeps the mode in the URL
@@ -181,6 +182,47 @@ async function run(label, viewport) {
   await layouts(page, label);
 
   await page.close();
+}
+
+/**
+ * #14: chassis dyno, Gänge & Zugkraft plate. The traction diagram is drawn (verdict text, ink on the canvas), the
+ * gear count can be changed at standstill (own ratios → "eigenes Fahrzeug"), the converter automatic is offered.
+ * Back to the free-revving bench at the end.
+ */
+async function gearsChecks(page, label) {
+  // the bench select sits in a collapsed console section on phones: set it like the cockpit's own button does
+  const mode = (m) => page.evaluate((m) => {
+    const sel = document.querySelector('select[data-control="mode"]');
+    sel.value = m;
+    sel.dispatchEvent(new Event("change", { bubbles: true }));
+  }, m);
+  await mode("vehicle");
+  await page.waitForSelector(".gears canvas", { state: "visible" });
+  await page.locator(".gears").scrollIntoViewIfNeeded();
+  await page.waitForTimeout(200);
+  const verdict = (await page.locator('[data-out="traction-verdict"]').textContent()) ?? "";
+  if (!/Vmax .* übersetzt|ausgelegt/.test(verdict)) failures.push(`${label}: Zugkraftdiagramm ohne Vmax-Bewertung („${verdict}“)`);
+  const ink = await page.evaluate(() => {
+    const c = document.querySelector(".gears canvas");
+    const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+    let n = 0;
+    for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i] - d[i + 2]) > 60) n++;
+    return n;
+  });
+  if (ink < 200) failures.push(`${label}: Zugkraftdiagramm leer (${ink} farbige Pixel)`);
+  const hasAuto = await page.evaluate(() => [...document.querySelectorAll('select[data-control="gearbox"] option')].some((o) => o.value === "automatic" && !o.hidden));
+  if (!hasAuto) failures.push(`${label}: Wandlerautomatik fehlt in der Getriebeauswahl`);
+  await page.selectOption('select[data-control="gear-count"]', "8");
+  await page.waitForTimeout(150);
+  const n = await page.locator('[data-out="gear-inputs"] input').count();
+  if (n !== 8) failures.push(`${label}: Gangzahl 8 nicht übernommen (${n} Felder)`);
+  await page.locator(".gears").screenshot({ path: join(outDir, `smoke-${label}-traction.png`) });
+  console.log(`${label}: Zugkraftdiagramm ${ink} Pixel, ${verdict}`);
+  // back to the free-revving bench and the generic 6-speed for the later steps
+  await page.selectOption('select[data-control="gear-count"]', "6");
+  await page.evaluate(() => localStorage.removeItem("pruefzelle.gearRatios"));
+  await mode("free");
+  await page.waitForTimeout(150);
 }
 
 /** Height of the bottom control bar in px. */
