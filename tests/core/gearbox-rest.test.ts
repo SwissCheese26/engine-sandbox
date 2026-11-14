@@ -243,3 +243,19 @@ describe("manual downshift blip (Zwischengas, issue #14)", () => {
     expect(dt.effectivePedal(0.3)).toBeGreaterThan(0.1);
   });
 });
+
+describe("traction diagram with a diesel governor (issue #14)", () => {
+  test("the governor ramp ends the curves: no drop to zero, Vmax in top gear at the governor counts as limiter", () => {
+    const cfg = defaultConfig("diesel");
+    const sum = summarize(cfg);
+    const sweep = dynoSweep(cfg, { stepRpm: 100 });
+    const short = { type: "manual" as const, spec: { ...GEARBOXES.manual, ratios: gradedRatios(3.77, 1.4, 6, 1.1) }, finalDrive: 3.45, vehicle: DEFAULT_VEHICLE };
+    const t = tractionCurves(sweep, cfg.revLimitRpm, sum.peakPowerRpm, short);
+    const tMax = Math.max(...sweep.map((p) => p.torqueNm));
+    for (const g of t.gears) for (const p of g.points) expect(p.forceN).toBeGreaterThan(0);
+    const last = t.gears[5]!.points.at(-1)!;
+    expect(last.forceN * DEFAULT_VEHICLE.wheelRadiusM / (1.4 * 3.45 * GEARBOXES.manual.efficiency)).toBeGreaterThan(0.25 * tMax);
+    expect(t.vmax.limitedBy).toBe("limiter");
+    expect(t.verdict).toBe("zu-kurz");
+  });
+});
