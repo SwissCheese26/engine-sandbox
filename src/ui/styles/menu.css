@@ -751,6 +751,7 @@
   border-color: #b3261e;
   color: #8c1d18;
   font-weight: 700;
+}
 
 /* "Fehler melden" (#55): button in the hall footer and the sandbox header, dialog based on .routepick */
 .bug-btn {
@@ -850,9 +851,6 @@ textarea.bugreport__text {
 @media (max-width: 420px) {
   .cell .cell__top {
     gap: var(--space-1);
-  }
-  .cell__top .cell__layout select {
-    width: 100px;
   }
   .cell__top .cell__bug {
     min-height: 32px;
