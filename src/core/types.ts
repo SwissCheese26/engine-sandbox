@@ -308,6 +308,22 @@ export interface VehicleCoupling {
   torqueCut?: number;
   /** A gear change is in progress (issue #31): the engine brake (EngineConfig.engineBrake) is switched off meanwhile. */
   shifting?: boolean;
+  /**
+   * Hydrodynamic torque converter between engine and gearbox (issue #14, "Wandlerautomatik", converter.ts). When set,
+   * the converter always couples engine and gearbox input (T_P = λ(ν)·(n/K)², T_T = μ(ν)·T_P) and `clutch` is the
+   * lock-up clutch in parallel to it; torqueRatio is ignored.
+   */
+  converter?: ConverterCoupling;
+}
+
+/** Converter characteristic handed to the simulator (issue #14, docs/research/vehicle.md §4). */
+export interface ConverterCoupling {
+  /** Capacity factor K at stall, rpm/√Nm (SAE J643): pump torque at stall = (n_P / K)². */
+  kFactor: number;
+  /** Torque ratio at stall (speed ratio 0), ≈ 1.8–2.5. */
+  stallTorqueRatio: number;
+  /** Coupling point: speed ratio where the torque ratio reaches 1, ≈ 0.85–0.9. */
+  couplingPoint: number;
 }
 
 export type Severity = "info" | "warning" | "critical";

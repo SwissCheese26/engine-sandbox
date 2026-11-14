@@ -10,8 +10,8 @@ import type { CarSetup, GearboxSpec, TyreSetup, VehicleParams } from "../core/in
  * Factory data (`factory`) are the test targets (tests/core/vehicle-library.test.ts: simulated 0–100 and Vmax within
  * ±12 %). Sources per car in `source`; values marked [S] are estimates from typical data of the class (cW, frontal
  * area, CG height, gear ratios where not published).
- * Automatic gearboxes with torque converter (ZF 6HP, 9G-Tronic, Aisin A343F) are modelled as "dsg" (automatic shift
- * schedule, lock-up clutch closed) with lower efficiency; their converter multiplication at launch is not modelled.
+ * Automatic gearboxes with torque converter (ZF 6HP, 9G-Tronic, Aisin A343F, ZF EcoLife) use the converter automatic
+ * "automatic" (issue #14): hydrodynamic converter with torque multiplication at launch and lock-up clutch.
  */
 export interface LibraryCar {
   id: string;
@@ -52,6 +52,8 @@ const tyre = (type: TyreSetup["type"], w: number, a: number, rim: number, idx: T
   type, size: { widthMm: w, aspectPct: a, rimInch: rim }, speedIndex: idx,
 });
 const box = (ratios: number[], finalDrive: number, efficiency: number, shiftTimeS: number): GearboxSpec => ({ ratios, finalDrive, efficiency, shiftTimeS });
+/** Torque converter (issue #14, docs/research/vehicle.md §4): stall rpm, stall torque ratio, coupling point, lock-up rpm [S]. */
+const conv = (stallRpm: number, stallTorqueRatio: number, couplingPoint: number, lockUpRpm: number) => ({ stallRpm, stallTorqueRatio, couplingPoint, lockUpRpm });
 
 /**
  * Motorcycles (issue #25 follow-up): the superbike/tourer preset of the drivetrain with the bike's own weight
@@ -126,9 +128,9 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
       tankL: 70,
       vehicle: body(mass(1590, "DIN"), 0.28, 2.26, "rwd", 0.51, 0.53, 2.888),
       tyre: tyre("standard", 245, 45, 17, "W"),
-      gearbox: "dsg",
+      gearbox: "automatic",
       // ZF 6HP26: 4.171/2.340/1.521/1.143/0.867/0.691, final 2.56 [S]
-      gearboxSpec: { ...box([4.171, 2.34, 1.521, 1.143, 0.867, 0.691], 2.56, 0.9, 0.2), converterLockRpm: 2400 },
+      gearboxSpec: { ...box([4.171, 2.34, 1.521, 1.143, 0.867, 0.691], 2.56, 0.9, 0.2), converter: conv(2300, 2.0, 0.87, 1300) },
       speedLimitKmh: 250,
     },
     factory: { kerbKg: 1590, kerbNorm: "DIN", t0to100S: 6.8, vmaxKmh: 248, vmaxGoverned: false, cw: 0.28 },
@@ -253,9 +255,9 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
       tankL: 50,
       vehicle: body(1680, 0.23, 2.33, "rwd", 0.53, 0.53, 2.939),
       tyre: tyre("standard", 225, 55, 17, "W"),
-      gearbox: "dsg",
+      gearbox: "automatic",
       // 9G-Tronic: 5.35/3.24/2.25/1.64/1.21/1.00/0.86/0.72/0.60, final 2.65 [S]
-      gearboxSpec: { ...box([5.35, 3.24, 2.25, 1.64, 1.21, 1.0, 0.86, 0.72, 0.6], 2.65, 0.9, 0.15), converterLockRpm: 2400 },
+      gearboxSpec: { ...box([5.35, 3.24, 2.25, 1.64, 1.21, 1.0, 0.86, 0.72, 0.6], 2.65, 0.9, 0.15), converter: conv(2300, 2.0, 0.87, 1300) },
       speedLimitKmh: null,
     },
     factory: { kerbKg: 1680, kerbNorm: "EU", t0to100S: 7.3, vmaxKmh: 240, vmaxGoverned: false, cw: 0.23 },
@@ -267,9 +269,9 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
       tankL: 87,
       vehicle: body(mass(1940, "DIN"), 0.4, 2.95, "awd", 0.52, 0.72, 2.79),
       tyre: tyre("offroad", 265, 65, 17, "S"),
-      gearbox: "dsg",
+      gearbox: "automatic",
       // Aisin A343F 4-speed automatic: 2.804/1.531/1.000/0.705, final 3.909, permanent 4WD [S]
-      gearboxSpec: { ...box([2.804, 1.531, 1.0, 0.705], 3.909, 0.86, 0.25), converterLockRpm: 1600 },
+      gearboxSpec: { ...box([2.804, 1.531, 1.0, 0.705], 3.909, 0.86, 0.25), converter: conv(2000, 2.1, 0.85, 1600) },
       speedLimitKmh: null,
     },
     factory: { kerbKg: 1940, kerbNorm: "DIN", t0to100S: 12.8, vmaxKmh: 170, vmaxGoverned: false },
@@ -338,7 +340,7 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
       kind: "bus", tankL: 260,
       vehicle: VEHICLES.bus.params,
       tyre: VEHICLES.bus.tyre,
-      gearbox: "dsg", gearboxSpec: { ...BUS_AUTOMATIC },
+      gearbox: "automatic", gearboxSpec: structuredClone(BUS_AUTOMATIC),
       speedLimitKmh: 100, fullMassKg: 19000, loadShare: 0.5,
     },
     factory: { kerbKg: 11600, kerbNorm: "empty", t0to100S: null, vmaxKmh: 100, vmaxGoverned: true, grossKg: 19000 },

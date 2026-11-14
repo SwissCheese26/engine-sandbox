@@ -17,6 +17,7 @@ import { isAirCooled } from "./thermal.ts";
 import { PEAK_SLIP, tyreForceFactor } from "./tyres.ts";
 import { drivenAxleLoadN, wheelieLimitN } from "./vehicle.ts";
 import type { EngineConfig, EngineState, SimInputs, VehicleCoupling, Warning } from "./types.ts";
+import { converterTorques } from "./converter.ts";
 
 const clamp = (x: number, lo: number, hi: number) => (x < lo ? lo : x > hi ? hi : x);
 const fin = (x: number, fallback: number) => (Number.isFinite(x) ? x : fallback);
@@ -604,6 +605,39 @@ function stepVehicle(x: Internal, c: VehicleCoupling, engineTorqueNm: number, J:
     [dw, dv] = solve2(mD + h * kt, -h * kt, -h * kt, m + h * kt, h * (Fd - Ft0), h * (Ft0 - R));
     x.vWheel = Math.max(0, w0 + dw);
     x.rpm = x.vWheel * a * RPM_PER_RADS;
+  } else if (c.converter && i > 0) {
+    // torque converter (issue #14, converter.ts) with the lock-up clutch in parallel: pump torque P(ωe, ωt) loads
+    // the engine, turbine torque Q(ωe, ωt) drives the gearbox (ωt = a·vw). Both linearised numerically in the same
+    // implicit step: P ≈ P0 + Pe·dωe + Pt·a·dw, Q ≈ Q0 + Qe·dωe + Qt·a·dw.
+    const conv = c.converter;
+    const lu = (we: number, wt: number) => cap * Math.tanh((we - wt) / 3);
+    const pq = (we: number, wt: number): [number, number] => {
+      const t = converterTorques(conv, we * RPM_PER_RADS, wt * RPM_PER_RADS);
+      const l = lu(we, wt);
+      return [t.pumpNm + l, t.turbineNm + l];
+    };
+    const wt0 = a * w0;
+    const e = 0.05;
+    const [P0, Q0] = pq(wEng, wt0);
+    const [Pe1, Qe1] = pq(wEng + e, wt0);
+    const [Pt1, Qt1] = pq(wEng, wt0 + e);
+    const Pe = (Pe1 - P0) / e;
+    const Qe = (Qe1 - Q0) / e;
+    const Pt = (Pt1 - P0) / e;
+    const Qt = (Qt1 - Q0) / e;
+    const g = a * (Q0 >= 0 ? eta : 1 / eta);
+    const Fd0 = cut(g * Q0);
+    const A = [
+      [J + h * Pe, h * Pt * a, 0],
+      [-h * g * Qe, mW - h * g * Qt * a + h * kt, -h * kt],
+      [0, -h * kt, m + h * kt],
+    ];
+    const b = [h * (engineTorqueNm - P0), h * (Fd0 - Ft0), h * (Ft0 - R)];
+    const [de, dW, dV] = solve3(A, b);
+    dw = dW;
+    dv = dV;
+    x.rpm = Math.max(0, wEng + de) * RPM_PER_RADS;
+    x.vWheel = Math.max(0, w0 + dw);
   } else {
     // engine | clutch | driven side | tyre | vehicle, clutch torque tc ≈ tc0 + kc·Δrel (rel = ωe − a·vw)
     const rel = wEng - a * w0;
@@ -758,6 +792,17 @@ function tiedStep(x: Internal, c: VehicleCoupling, engineTorqueNm: number, J: nu
     const fDrive = cut((engineTorqueNm * i * (engineTorqueNm >= 0 ? eta : 1 / eta)) / r);
     x.vSpeed = Math.max(0, x.vSpeed + (net(fDrive) / mEff) * h);
     x.rpm = ((x.vSpeed / r) * i) * RPM_PER_RADS;
+    x.tyreF = fDrive;
+  } else if (c.converter && i > 0) {
+    // torque converter (issue #14) + lock-up clutch, explicit (the converter is soft against J and the mass)
+    const t = converterTorques(c.converter, x.rpm, wIn * RPM_PER_RADS);
+    const l = cap * Math.tanh(slip / 3);
+    let wE = wEng + ((engineTorqueNm - t.pumpNm - l) / J) * h;
+    if (wE < 0) wE = 0;
+    x.rpm = wE * RPM_PER_RADS;
+    const tt = t.turbineNm + l;
+    const fDrive = cut((tt * i * (tt >= 0 ? eta : 1 / eta)) / r);
+    x.vSpeed = Math.max(0, x.vSpeed + (net(fDrive) / veh.massKg) * h);
     x.tyreF = fDrive;
   } else {
     const tc = i > 0 ? cap * Math.tanh(slip / 3) : 0;

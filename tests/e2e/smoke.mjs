@@ -3,7 +3,7 @@
 // sandbox through its door, and at the end checks Esc (back to the menu) and reload (#sandbox stays).
 // Serves dist/ with a tiny built-in node:http server, loads the app, fails on console/page errors,
 // starts the engine with the keyboard (I = ignition, hold S = starter, hold Space = throttle),
-// checks that the rpm readout rises, and writes screenshots (1440×900, 390×844) to
+// checks that the rpm readout rises, and writes screenshots (1440×900, 390×844, 360×740) to
 // tests/e2e/screenshots/.
 //
 // The rpm is read from the visible readout ([data-gauge="rpm"] .gauge__value), not from a debug hook.
@@ -86,7 +86,7 @@ async function readRpm(page) {
 
 async function run(label, viewport) {
   // the phone run is a touch device, so the brake pedal (shown on touch screens only) is tested there
-  const touch = label === "mobile";
+  const touch = label !== "desktop";
   const page = await browser.newPage({ viewport, deviceScaleFactor: 1, hasTouch: touch, isMobile: touch });
   page.on("console", (m) => {
     if (m.type() !== "error") return;
@@ -166,6 +166,7 @@ async function run(label, viewport) {
   else if (!(rpmGas > Math.max(rpmIdle, rpm0 || 0) + 300)) failures.push(`${label}: Drehzahl steigt nicht (Leerlauf ${fmt(rpmIdle)}, Gas ${fmt(rpmGas)})`);
   if (Number.isFinite(rpmIdle) && !(rpmIdle > 200)) failures.push(`${label}: Motor springt nicht an (rpm ${fmt(rpmIdle)})`);
 
+  await gearsChecks(page, label);
   await bugReport(page, label);
 
   // Esc leads back to the menu, the sandbox pauses; reload keeps the mode in the URL
@@ -182,6 +183,54 @@ async function run(label, viewport) {
   await layouts(page, label);
 
   await page.close();
+}
+
+/**
+ * #14: chassis dyno, Gänge & Zugkraft plate. The traction diagram is drawn (verdict text, ink on the canvas), the
+ * gear count can be changed at standstill (own ratios → "eigenes Fahrzeug"), the converter automatic is offered.
+ * Back to the free-revving bench at the end.
+ */
+async function gearsChecks(page, label) {
+  // the bench select sits in a collapsed console section on phones: set it like the cockpit's own button does
+  const mode = (m) => page.evaluate((m) => {
+    const sel = document.querySelector('select[data-control="mode"]');
+    sel.value = m;
+    sel.dispatchEvent(new Event("change", { bubbles: true }));
+  }, m);
+  await mode("vehicle");
+  await page.waitForSelector(".gears canvas", { state: "visible" });
+  await page.locator(".gears").scrollIntoViewIfNeeded();
+  await page.waitForTimeout(200);
+  const verdict = (await page.locator('[data-out="traction-verdict"]').textContent()) ?? "";
+  if (!/Vmax .* übersetzt|ausgelegt/.test(verdict)) failures.push(`${label}: Zugkraftdiagramm ohne Vmax-Bewertung („${verdict}“)`);
+  const ink = await page.evaluate(() => {
+    const c = document.querySelector(".gears canvas");
+    const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
+    let n = 0;
+    for (let i = 0; i < d.length; i += 4) if (Math.abs(d[i] - d[i + 2]) > 60) n++;
+    return n;
+  });
+  if (ink < 200) failures.push(`${label}: Zugkraftdiagramm leer (${ink} farbige Pixel)`);
+  const hasAuto = await page.evaluate(() => [...document.querySelectorAll('select[data-control="gearbox"] option')].some((o) => o.value === "automatic" && !o.hidden));
+  if (!hasAuto) failures.push(`${label}: Wandlerautomatik fehlt in der Getriebeauswahl`);
+  await page.selectOption('select[data-control="gear-count"]', "8");
+  await page.waitForTimeout(150);
+  const n = await page.locator('[data-out="gear-inputs"] input').count();
+  if (n !== 8) failures.push(`${label}: Gangzahl 8 nicht übernommen (${n} Felder)`);
+  // touch: 44 px targets; the plate fits the phone width
+  const sizes = await page.evaluate(() => ({
+    minH: Math.min(...[...document.querySelectorAll(".gears input, .gears select, .gears button")].map((e) => e.getBoundingClientRect().height)),
+    overflow: document.documentElement.scrollWidth - window.innerWidth,
+  }));
+  if (label !== "desktop" && sizes.minH < 44) failures.push(`${label}: Gänge-Bedienelemente unter 44 px (${sizes.minH})`);
+  if (sizes.overflow > 0) failures.push(`${label}: Gänge-Platte scrollt horizontal (${sizes.overflow} px)`);
+  await page.locator(".gears").screenshot({ path: join(outDir, `smoke-${label}-traction.png`) });
+  console.log(`${label}: Zugkraftdiagramm ${ink} Pixel, ${verdict}`);
+  // back to the free-revving bench and the generic 6-speed for the later steps
+  await page.selectOption('select[data-control="gear-count"]', "6");
+  await page.evaluate(() => localStorage.removeItem("pruefzelle.gearRatios"));
+  await mode("free");
+  await page.waitForTimeout(150);
 }
 
 /** Height of the bottom control bar in px. */
@@ -248,10 +297,11 @@ async function deckStaysStill(page, label, h0) {
   const live = await page.evaluate(() => ({ toasts: document.querySelector(".toasts").getAttribute("aria-live"), phone: matchMedia("(max-width: 700px)").matches }));
   if ((live.toasts === "polite") !== live.phone) failures.push(`${label}: Live-Region doppelt oder fehlt (${JSON.stringify(live)})`);
   const sel = await page.evaluate(() => { const s = document.querySelector('select[data-control="layout"]'); return { w: s.clientWidth, need: s.scrollWidth }; });
-  if (label === "mobile" && sel.w < 110) failures.push(`${label}: Ansichtsauswahl zu schmal (${sel.w} px)`);
+  if (label !== "desktop" && sel.w < 110) failures.push(`${label}: Ansichtsauswahl zu schmal (${sel.w} px)`);
   // a wider page makes phones zoom out (innerWidth grows with it), so compare with the device width
   const pageW = await page.evaluate(() => document.documentElement.scrollWidth);
-  if (label === "mobile" && pageW > 390) failures.push(`${label}: Seite breiter als das Handy (${pageW} px)`);
+  const devW = await page.evaluate(() => window.screen.width || 390);
+  if (label !== "desktop" && pageW > Math.max(devW, 360)) failures.push(`${label}: Seite breiter als das Handy (${pageW} px)`);
   if (crit !== 1) failures.push(`${label}: Motorschaden erscheint nicht als Hinweis (${crit})`);
   await page.evaluate(() => {
     const app = window.__pruefzelle;
@@ -337,7 +387,7 @@ async function layouts(page, label) {
   // brake: S on the keyboard, the brake pedal on touch screens
   await page.keyboard.up("w");
   const brakeShown = await page.isVisible(".brakepedal");
-  const touch = label === "mobile";
+  const touch = label !== "desktop";
   if (touch !== brakeShown) failures.push(`${label}: Bremspedal ${brakeShown ? "sichtbar ohne" : "fehlt bei"} Touch`);
   const b0 = await readNum(page, '[data-ck="speed-big"]');
   if (brakeShown) {
@@ -487,6 +537,8 @@ const fmt = (n) => (Number.isFinite(n) ? Math.round(n).toString() : String(n));
 try {
   await run("desktop", { width: 1440, height: 900 });
   if (!skipped) await run("mobile", { width: 390, height: 844 });
+  // smallest common phone width (review PR #90)
+  if (!skipped) await run("small", { width: 360, height: 740 });
 } catch (e) {
   failures.push(`Ausnahme: ${e?.stack ?? e}`);
 } finally {

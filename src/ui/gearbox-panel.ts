@@ -4,10 +4,11 @@
 // fitted tyre's speed index.
 // Issue #23: Umwelt- und Assistenz-Platte (environment-panel.ts) and the warning-lamp strip under the gear indicator.
 import { TripPanel } from "./trip-panel.ts";
-import { Drivetrain, FuelTank, GEARBOXES, VEHICLES, theoreticalVmax, dynoSweep, SPEED_LIMIT_OPTIONS, isCommercialKind } from "../core/index.ts";
+import { Drivetrain, FuelTank, GEARBOXES, VEHICLES, theoreticalVmax, dynoSweep, SPEED_LIMIT_OPTIONS, isAutomaticType, isCommercialKind } from "../core/index.ts";
 import type { EngineConfig, EngineSummary, GearboxType, VehicleKind } from "../core/index.ts";
 import { EnvironmentPanel, WarningLamps } from "./environment-panel.ts";
 import { VehiclePanel } from "./vehicle-panel.ts";
+import { GearPlate } from "./gear-plate.ts";
 import { CruisePanel } from "./cruise-panel.ts";
 import { prefs } from "./settings.ts";
 import { toUnit } from "./units.ts";
@@ -15,6 +16,7 @@ import { toUnit } from "./units.ts";
 const TYPE_LABEL: Record<GearboxType, string> = {
   manual: "Handschalter, 6 Gänge",
   dsg: "Doppelkupplung (DSG), 7 Gänge",
+  automatic: "Wandlerautomatik, 8 Gänge",
   cvt: "Stufenlos (CVT)",
   sequential: "Sequenziell, 6 Gänge, Quickshifter",
 };
@@ -57,6 +59,8 @@ export class GearboxPanel {
   private spinEl: HTMLElement;
   private lockEl: HTMLElement;
   readonly vehiclePanel: VehiclePanel;
+  /** Gänge & Zugkraft (issue #14). */
+  readonly gears: GearPlate;
   readonly environmentPanel: EnvironmentPanel;
   readonly lamps = new WarningLamps();
   /** Tempomat-Leiste (issue #30). */
@@ -203,7 +207,15 @@ export class GearboxPanel {
       // a loaded motorcycle switches ESP/ASR off (issue #23)
       this.environmentPanel?.sync();
     };
-    el.append(this.vehiclePanel.el);
+    this.gears = new GearPlate(this.drivetrain, cfg, summary);
+    // own ratios: the loaded library car becomes "eigenes Fahrzeug"
+    this.gears.onEdit = () => {
+      this.vehiclePanel.markOwn();
+      // in N while rolling the car keeps rolling (review PR #90)
+      if (this.drivetrain.state.speedKmh <= 0.5) this.onResetVehicle();
+      this.syncSetup();
+    };
+    el.append(this.gears.el, this.vehiclePanel.el);
     this.environmentPanel = new EnvironmentPanel(this.drivetrain);
     el.append(this.environmentPanel.el);
     q(".gearbox__gear").after(this.lamps.el);
@@ -213,6 +225,7 @@ export class GearboxPanel {
 
     this.vehicleSel.addEventListener("change", () => {
       this.drivetrain.setVehicle(this.vehicleSel.value as VehicleKind);
+      this.gears.restore();
       this.onResetVehicle();
       this.vehiclePanel.sync();
       this.environmentPanel.sync();
@@ -220,6 +233,7 @@ export class GearboxPanel {
     });
     this.typeSel.addEventListener("change", () => {
       this.drivetrain.setType(this.typeSel.value as GearboxType);
+      this.gears.restore();
       this.syncSetup();
     });
     this.fdInput.addEventListener("input", () => {
@@ -275,7 +289,10 @@ export class GearboxPanel {
 
   setVisible(on: boolean) {
     this.el.hidden = !on;
-    if (on) this.reset();
+    if (on) {
+      this.reset();
+      this.gears.redraw();
+    }
   }
 
   configure(cfg: EngineConfig, summary: EngineSummary) {
@@ -285,6 +302,7 @@ export class GearboxPanel {
     this.drivetrain.setEngine(cfg, summary);
     this.drivetrain.reset();
     this.sprint = { running: false, done: false, t60: null };
+    this.gears.configure(cfg, summary);
     this.syncSetup();
   }
 
@@ -326,7 +344,8 @@ export class GearboxPanel {
     for (const o of this.typeSel.options) {
       const t = o.value as GearboxType;
       const n = t === s.type ? spec.ratios.length : GEARBOXES[t].ratios.length;
-      o.textContent = t === "dsg" && t === s.type && spec.converterLockRpm ? `Automatik (Wandler), ${n} Gänge`
+      o.textContent = t === "automatic" ? `Wandlerautomatik, ${n} Gänge`
+        : t === "dsg" && t === s.type && spec.converterLockRpm ? `Automatik (Wandler), ${n} Gänge`
         : t === "dsg" && t === s.type && isCommercialKind(this.drivetrain.kind) ? `Automatisiertes Schaltgetriebe (AMT), ${n} Gänge`
         : t === "manual" ? `Handschalter, ${n} Gänge` : t === "dsg" ? `Doppelkupplung (DSG), ${n} Gänge` : TYPE_LABEL[t];
     }
@@ -336,6 +355,7 @@ export class GearboxPanel {
     this.fdInput.value = String(s.finalDrive);
     this.limitSel.value = s.speedLimitKmh === null ? "off" : String(s.speedLimitKmh);
     this.fdOut.textContent = fmt1(s.finalDrive).replace(",0", ",00").replace(/,(\d)$/, ",$10");
+    this.gears?.sync();
     const cvt = s.type === "cvt";
     this.downBtn.hidden = cvt;
     this.upBtn.hidden = cvt;
@@ -414,7 +434,7 @@ export class GearboxPanel {
     if (speed !== this.last.speed) this.speedEl.textContent = this.last.speed = speed;
     if (vmax !== this.last.vmax) this.vmaxEl.textContent = this.last.vmax = vmax;
     if (t100 !== this.last.t100) this.t100El.textContent = this.last.t100 = t100;
-    this.autoBtn.hidden = !(s.type === "dsg" && s.manualMode);
+    this.autoBtn.hidden = !(isAutomaticType(s.type) && s.manualMode);
     const vmaxNote = s.maxSpeedLimited && s.maxSpeedKmh > 0.5;
     if (vmaxNote !== this.last.vmaxNote) this.vmaxNoteEl.hidden = !(this.last.vmaxNote = vmaxNote);
     if (s.limiting !== this.last.gov) this.govNoteEl.hidden = !(this.last.gov = s.limiting);
@@ -429,6 +449,7 @@ export class GearboxPanel {
     if (s.wheelSpin !== this.last.spin) this.spinEl.hidden = !(this.last.spin = s.wheelSpin);
     if (s.wheelsLocked !== this.last.locked) this.lockEl.hidden = !(this.last.locked = s.wheelsLocked);
     this.vehiclePanel.update();
+    this.gears.update();
     this.lamps.update(d);
     this.cruise.update();
     this.environmentPanel.update(s.speedKmh);

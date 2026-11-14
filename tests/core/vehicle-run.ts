@@ -15,13 +15,14 @@ export function driveCar(car: LibraryCar, seconds = 90, tcCut = 3, tcFloor = 0.5
   const inp = { ...defaultInputs(), ignition: true, starter: true, startWarm: true, dynoMode: "vehicle" as const };
   const h = 1 / 60;
   // tc: torque factor of a simple traction control (like ASR: driver pedal stays down, engine torque is cut)
-  const step = (pedal: number, tc = 1) => {
-    const vehicle = dt.inputs(h, sim.state, pedal);
+  // brake held while the engine starts and idles (a converter automatic creeps in D otherwise, issue #14)
+  const step = (pedal: number, tc = 1, brake = 0) => {
+    const vehicle = dt.inputs(h, sim.state, pedal, brake);
     sim.step(h, { ...inp, vehicle, pedal: dt.effectivePedal(pedal) * tc });
   };
-  for (let i = 0; i < 90; i++) step(0);
+  for (let i = 0; i < 90; i++) step(0, 1, 1);
   inp.starter = false;
-  for (let i = 0; i < 150; i++) step(0);
+  for (let i = 0; i < 150; i++) step(0, 1, 1);
   let pedal = 1; // traction-control torque factor
   let spinS = 0;
   let speed80 = 0;
