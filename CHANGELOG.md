@@ -8,20 +8,20 @@ _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `
 
 ### Neu
 
-- „Was ist neu“ im Hauptmenü: alle Änderungen auf einen Blick, mit Hinweis auf Neues seit deinem letzten Besuch. ([#50](https://github.com/SwissCheese26/engine-sandbox/issues/50))
+- „Was ist neu“ im Hauptmenü: alle Änderungen auf einen Blick, mit Hinweis auf Neues seit deinem letzten Besuch. ([#50](https://github.com/SwissCheese26/engine-sandbox/issues/50), [#88](https://github.com/SwissCheese26/engine-sandbox/issues/88))
 
 ### Behoben
 
-- Das Fenster „Fehler melden“ ist wieder richtig gestaltet. ([#50](https://github.com/SwissCheese26/engine-sandbox/issues/50))
+- Das Fenster „Fehler melden“ ist jetzt richtig gestaltet. ([#50](https://github.com/SwissCheese26/engine-sandbox/issues/50), [#88](https://github.com/SwissCheese26/engine-sandbox/issues/88))
 
 ## 2026-11-12 – Lkw, Busse und neue Cockpits
 
 ### Neu
 
-- Lkw und Busse: Nfz-Dieselmotoren, Motorbremse, Sattelzug und Stadtbus. ([#31](https://github.com/SwissCheese26/engine-sandbox/issues/31), [#82](https://github.com/SwissCheese26/engine-sandbox/issues/82))
-- Sieben Cockpit-Designs zur Wahl: Nachtfahrt, Sportlimousine, Oldschool, Digital, Head-up und Motorrad. ([#83](https://github.com/SwissCheese26/engine-sandbox/issues/83), [#84](https://github.com/SwissCheese26/engine-sandbox/issues/84))
+- Lkw und Busse: Lkw- und Busdiesel, Motorbremse, Sattelzug und Stadtbus. ([#31](https://github.com/SwissCheese26/engine-sandbox/issues/31), [#82](https://github.com/SwissCheese26/engine-sandbox/issues/82))
+- Sechs neue Cockpit-Designs: Nachtfahrt, Sportlimousine, Oldschool, Digital, Head-up und Motorrad. ([#83](https://github.com/SwissCheese26/engine-sandbox/issues/83), [#84](https://github.com/SwissCheese26/engine-sandbox/issues/84))
 - „Fehler melden“ direkt im Spiel, mit Diagnose, die du vor dem Absenden prüfen kannst. ([#55](https://github.com/SwissCheese26/engine-sandbox/issues/55), [#79](https://github.com/SwissCheese26/engine-sandbox/issues/79))
-- Zündschlüssel und Startknopf; der Ton ist von Anfang an an. ([#85](https://github.com/SwissCheese26/engine-sandbox/issues/85))
+- Zündschlüssel und Startknopf; der Ton ist gleich eingeschaltet. ([#85](https://github.com/SwissCheese26/engine-sandbox/issues/85))
 
 ### Geändert
 
@@ -38,10 +38,6 @@ _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `
 - Schaltknöpfe in der Bedienleiste, mit Einstellung und Beispielbild. ([#71](https://github.com/SwissCheese26/engine-sandbox/issues/71))
 - Einstellung für den Gashebel auf der Rolle: zurückfedern oder Handgas. ([#64](https://github.com/SwissCheese26/engine-sandbox/issues/64))
 - Citroën C1 1.0 (2008, 68 PS) in der Bibliothek; Motorräder mit echtem Gewicht. ([#65](https://github.com/SwissCheese26/engine-sandbox/issues/65), [#67](https://github.com/SwissCheese26/engine-sandbox/issues/67))
-
-### Geändert
-
-- Zuverlässigere Veröffentlichung, auch wenn GitHub kurz hakt. ([#62](https://github.com/SwissCheese26/engine-sandbox/issues/62), [#63](https://github.com/SwissCheese26/engine-sandbox/issues/63))
 
 ### Behoben
 
@@ -95,7 +91,6 @@ _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `
 ### Geändert
 
 - Steuerung: S bremst, der Anlasser liegt auf A. ([#20](https://github.com/SwissCheese26/engine-sandbox/issues/20))
-- Rechenwerte werden gegen echte Referenzmotoren geprüft. ([#7](https://github.com/SwissCheese26/engine-sandbox/issues/7), [#10](https://github.com/SwissCheese26/engine-sandbox/issues/10))
 
 ## 2026-10-29 – Motorsound
 

@@ -23,18 +23,18 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-11-14",
     title: "Was ist neu",
     items: [
-      { kind: "neu", text: "„Was ist neu“ im Hauptmenü: alle Änderungen auf einen Blick, mit Hinweis auf Neues seit deinem letzten Besuch.", refs: [50] },
-      { kind: "behoben", text: "Das Fenster „Fehler melden“ ist wieder richtig gestaltet.", refs: [50] },
+      { kind: "neu", text: "„Was ist neu“ im Hauptmenü: alle Änderungen auf einen Blick, mit Hinweis auf Neues seit deinem letzten Besuch.", refs: [50, 88] },
+      { kind: "behoben", text: "Das Fenster „Fehler melden“ ist jetzt richtig gestaltet.", refs: [50, 88] },
     ],
   },
   {
     date: "2026-11-12",
     title: "Lkw, Busse und neue Cockpits",
     items: [
-      { kind: "neu", text: "Lkw und Busse: Nfz-Dieselmotoren, Motorbremse, Sattelzug und Stadtbus.", refs: [31, 82] },
-      { kind: "neu", text: "Sieben Cockpit-Designs zur Wahl: Nachtfahrt, Sportlimousine, Oldschool, Digital, Head-up und Motorrad.", refs: [83, 84] },
+      { kind: "neu", text: "Lkw und Busse: Lkw- und Busdiesel, Motorbremse, Sattelzug und Stadtbus.", refs: [31, 82] },
+      { kind: "neu", text: "Sechs neue Cockpit-Designs: Nachtfahrt, Sportlimousine, Oldschool, Digital, Head-up und Motorrad.", refs: [83, 84] },
       { kind: "neu", text: "„Fehler melden“ direkt im Spiel, mit Diagnose, die du vor dem Absenden prüfen kannst.", refs: [55, 79] },
-      { kind: "neu", text: "Zündschlüssel und Startknopf; der Ton ist von Anfang an an.", refs: [85] },
+      { kind: "neu", text: "Zündschlüssel und Startknopf; der Ton ist gleich eingeschaltet.", refs: [85] },
       { kind: "geändert", text: "Ruhigere Bedienleiste: Hinweise zu Grenzwerten erscheinen als kurze Einblendungen.", refs: [85] },
       { kind: "geändert", text: "Handy und Tablet: Touch wird erkannt, der Bildschirm bleibt an, kurze Vibration als Rückmeldung; neue Einstellungen dazu.", refs: [44, 66, 80] },
     ],
@@ -52,7 +52,6 @@ export const CHANGELOG: ChangelogEntry[] = [
       { kind: "behoben", text: "Die Motorliste zeigt wieder die passenden Autos zum Motor.", refs: [69] },
       { kind: "behoben", text: "Cockpit am Handy: Tempomat und Mitteldisplay rutschen unter die kleinen Anzeigen.", refs: [68, 70] },
       { kind: "behoben", text: "Schaltknöpfe und Bremse sitzen auf Höhe des Gashebels.", refs: [73] },
-      { kind: "geändert", text: "Zuverlässigere Veröffentlichung, auch wenn GitHub kurz hakt.", refs: [62, 63] },
     ],
   },
   {
@@ -98,7 +97,6 @@ export const CHANGELOG: ChangelogEntry[] = [
       { kind: "neu", text: "Vmax-Begrenzer, auf Wunsch abschaltbar.", refs: [32, 34] },
       { kind: "neu", text: "Einheiten per Klick wechseln (PS, lb·ft, l/100 km …).", refs: [21] },
       { kind: "geändert", text: "Steuerung: S bremst, der Anlasser liegt auf A.", refs: [20] },
-      { kind: "geändert", text: "Rechenwerte werden gegen echte Referenzmotoren geprüft.", refs: [7, 10] },
     ],
   },
   {
