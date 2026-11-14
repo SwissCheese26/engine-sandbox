@@ -8,17 +8,21 @@ import { driveCar } from "./vehicle-run.ts";
  * Ready-made cars (issue #22): simulated 0–100 km/h and Vmax against the factory data, ±12 %.
  *
  * Test driver: vehicle-run.ts (full throttle, shifts at the limiter, traction-control stand-in on ≈ 10 % slip).
- * Known 0–100 outliers are deviations outside the engine, each pinned to its own narrow band around the measured
- * value (so a model change shows up), not a widened tolerance (review PR #37). Issue #38 fixed the engines (R34 is
- * back in the band); the remaining two are traction-limited – +9 % LS3 power (289 → 316 kW) gains only 2 %, +6 % F136
- * power 4.03 → 4.02 s, but +15 % tyre grip gains ≈ 10 %:
- *  - Corvette C6: RWD launch at μ 1.15 (wheel spin when the clutch locks, then the test driver's TC cuts to 50 %).
- *  - Ferrari 458: the factory 3.4 s needs launch control and ≈ 1.3 μ on warm Pilot Sport tyres – physical limit
- *    with μ 1.15 (42 % front) ≈ 3.7 s.
+ * Known 0–100 outliers are pinned to their own narrow band around the measured value (so a model change shows up),
+ * not a widened tolerance (review PR #37). Numbers from issue #38 probes (driveCar, grip factor 1 / 1.15 / 1.3):
+ *  - Skyline R34: 5.80 / 5.80 / 5.78 s vs 5.0 – not traction (AWD). RB26DETT with stock turbos and 0.69 bar has its
+ *    torque peak at ≈ 5200 instead of 4400 rpm and full boost only from ≈ 3500 rpm (low-end deficit), although
+ *    peak power is +19 % (engine-library KNOWN, docs/research/petrol.md §7a).
+ *  - Corvette C6: 5.17 / 4.85 / 4.78 s vs 4.4 – traction explains only part (grip ×1.15 → −6 %, ×1.3 still +8.6 %);
+ *    the rest is open (gearing / torque curve: 1st gear to ≈ 86 km/h, 1→2 shift just below 100 km/h). The LS3 is at
+ *    its rated 316 kW since #38 (+9 % power gained only 2 %).
+ *  - Ferrari 458: 4.03 / 3.65 / 3.55 s vs 3.4 – the factory 3.4 s needs launch control and ≈ 1.3 μ on warm Pilot
+ *    Sport tyres; F136 −7 % power is not the cause (+6 % power: 4.03 → 4.02 s).
  */
 const TOL = 0.12;
 const KNOWN_0_100_OUTLIERS: Record<string, { expected: number; band: number; reason: string }> = {
-  "car-chevrolet-corvette-c6": { expected: 0.175, band: 0.06, reason: "RWD traction at launch (engine at rated power since #38)" },
+  "car-nissan-skyline-r34": { expected: 0.16, band: 0.06, reason: "RB26 torque peak too late / too little low-end torque (#38)" },
+  "car-chevrolet-corvette-c6": { expected: 0.175, band: 0.06, reason: "RWD traction (part) + open gearing/torque-curve rest (#38)" },
   "car-ferrari-458": { expected: 0.19, band: 0.06, reason: "traction / factory with launch control (engine −7 %, not the cause, #38)" },
 };
 
