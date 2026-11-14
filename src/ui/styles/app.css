@@ -1684,6 +1684,19 @@ kbd {
   height: 240px;
   border-radius: 2px;
 }
+/* touch and phone width: 44 px targets (review PR #90), also after a key press on a touch device switched the hints back */
+.is-touch .gears.gears input,
+.is-touch .gears.gears select,
+.is-touch .gears.gears button {
+  min-height: 44px;
+}
+@media (pointer: coarse), (max-width: 760px) {
+  .gears.gears input,
+  .gears.gears select,
+  .gears.gears button {
+    min-height: 44px;
+  }
+}
 @media (max-width: 760px) {
   .gears {
     grid-template-columns: 1fr;

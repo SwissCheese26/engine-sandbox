@@ -16,19 +16,42 @@ export const RATIOS_KEY = "pruefzelle.gearRatios";
 const PROGRESSIVE = 1.1;
 const UI_MAX_GEARS = 10;
 
-interface SavedRatios {
+export interface SavedRatios {
   kind: string;
   type: string;
   ratios: number[];
 }
 
-function loadSaved(): SavedRatios | null {
+/** Stored own ratios (localStorage JSON), shape-checked; anything else → null. The values are checked by the core. */
+export function parseSavedRatios(raw: unknown): SavedRatios | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Partial<Record<keyof SavedRatios, unknown>>;
+  if (typeof r.kind !== "string" || typeof r.type !== "string" || !Array.isArray(r.ratios)) return null;
+  return { kind: r.kind, type: r.type, ratios: r.ratios.map((x) => (typeof x === "number" ? x : Number.NaN)) };
+}
+
+/** A typed ratio: German decimal comma or point, e.g. "3,77" → 3.77; anything else → NaN. */
+export function parseRatioInput(text: string): number {
+  const t = text.trim().replace(",", ".");
+  return /^\d+(\.\d*)?$|^\.\d+$/.test(t) ? Number(t) : Number.NaN;
+}
+
+function loadSaved(): { saved: SavedRatios | null; corrupt: boolean } {
   try {
-    const raw = JSON.parse(localStorage.getItem(RATIOS_KEY) ?? "null") as Partial<SavedRatios> | null;
-    if (!raw || typeof raw.kind !== "string" || typeof raw.type !== "string" || !Array.isArray(raw.ratios)) return null;
-    return { kind: raw.kind, type: raw.type, ratios: raw.ratios.map(Number) };
+    const text = localStorage.getItem(RATIOS_KEY);
+    if (text === null) return { saved: null, corrupt: false };
+    const saved = parseSavedRatios(JSON.parse(text));
+    return { saved, corrupt: saved === null };
   } catch {
-    return null;
+    return { saved: null, corrupt: true };
+  }
+}
+
+function dropSaved() {
+  try {
+    localStorage.removeItem(RATIOS_KEY);
+  } catch {
+    // storage blocked
   }
 }
 
@@ -44,7 +67,10 @@ export class GearPlate {
   private verdictEl: HTMLElement;
   private sweep: DynoPoint[] = [];
   private traction: TractionResult | null = null;
-  private moving = false;
+  private locked = false;
+  private lockEl!: HTMLElement;
+  /** Saved own ratios waiting for standstill / N (restore while rolling). */
+  private pendingRestore = false;
   private envKey = "";
   /** Called after own ratios were applied (the car becomes "eigenes Fahrzeug", Vmax is recalculated). */
   onEdit: () => void = () => {};
@@ -68,6 +94,7 @@ export class GearPlate {
           <button type="button" class="btn btn--small" data-control="gear-grade" title="Gänge zwischen 1. und höchstem Gang neu verteilen">Abstufen</button>
         </div>
         <div class="gears__grid" data-out="gear-inputs"></div>
+        <p class="vehicle__hint" data-out="gear-lock" hidden>Bremse treten oder N einlegen, dann lassen sich die Gänge ändern.</p>
         <p class="vehicle__hint" data-out="gear-msg" role="status"></p>
       </div>
       <figure class="gears__traction">
@@ -84,12 +111,13 @@ export class GearPlate {
     this.editor = q(".gears__editor");
     this.canvas = q(".gears__traction canvas");
     this.verdictEl = q("[data-out=traction-verdict]");
+    this.lockEl = q("[data-out=gear-lock]");
     this.countSel.addEventListener("change", () => this.regrade(Number(this.countSel.value)));
     this.gradeBtn.addEventListener("click", () => this.regrade(this.drivetrain.gearbox.ratios.length));
     this.grid.addEventListener("change", (e) => {
       const input = e.target as HTMLInputElement;
       const k = Number(input.dataset.gear);
-      const v = Number(input.value.replace(",", "."));
+      const v = parseRatioInput(input.value);
       const r = [...this.drivetrain.gearbox.ratios];
       r[k] = v;
       this.apply(r);
@@ -115,12 +143,31 @@ export class GearPlate {
     }
   }
 
-  /** Own ratios of the last visit, if they belong to the loaded vehicle kind and gearbox type. */
+  /**
+   * Own ratios of the last visit, if they belong to the loaded vehicle kind and gearbox type. While the gearbox is
+   * locked (rolling in gear) they wait until it is editable; corrupt or invalid saves are dropped with a note.
+   */
   restore(): boolean {
-    const s = loadSaved();
+    this.pendingRestore = false;
+    const { saved, corrupt } = loadSaved();
     const d = this.drivetrain;
-    if (!s || s.kind !== d.kind || s.type !== d.state.type || d.state.speedKmh > 0.5) return false;
-    return d.setRatios(s.ratios) === null;
+    if (corrupt) {
+      dropSaved();
+      this.msg.textContent = "Gespeicherte Übersetzungen waren beschädigt und wurden verworfen.";
+      return false;
+    }
+    if (!saved || saved.kind !== d.kind || saved.type !== d.state.type) return false;
+    if (!d.ratiosEditable) {
+      this.pendingRestore = true;
+      return false;
+    }
+    const err = d.setRatios(saved.ratios);
+    if (err) {
+      dropSaved();
+      this.msg.textContent = `Gespeicherte Übersetzungen nicht übernommen (${err}), es gelten die Werkswerte.`;
+      return false;
+    }
+    return true;
   }
 
   private regrade(count: number) {
@@ -131,7 +178,10 @@ export class GearPlate {
   }
 
   private apply(ratios: number[]) {
-    if (this.moving) return this.sync();
+    if (this.locked) {
+      this.msg.textContent = "Nicht übernommen: Bremse treten oder N einlegen.";
+      return this.syncInputs();
+    }
     const err = this.drivetrain.setRatios(ratios);
     if (err) {
       this.msg.textContent = `Nicht übernommen: ${err}.`;
@@ -163,7 +213,7 @@ export class GearPlate {
         </label>`).join("");
     }
     this.grid.querySelectorAll<HTMLInputElement>("input").forEach((inp, k) => (inp.value = r[k]!.toFixed(3)));
-    this.setLocked(this.moving);
+    this.setLocked(this.locked);
   }
 
   /** Fills the editor from the drivetrain and redraws the diagram (after any vehicle/gearbox change). */
@@ -199,7 +249,9 @@ export class GearPlate {
       : t.verdict === "zu-lang"
         ? "zu lang übersetzt: Der letzte Gang erreicht die Nennleistung nicht, ein kürzerer bringt mehr Vmax und Durchzug."
         : "auf Vmax ausgelegt: Der Schnittpunkt liegt bei der Nennleistung.";
-    this.verdictEl.textContent = `${where}, ${verdict}`;
+    const cu = t.gears[0]?.converterUntilKmh;
+    const conv = cu ? ` Im 1. Gang verstärkt der Wandler das Moment bis ${fmt(toUnit("speed", cu))} ${u}.` : "";
+    this.verdictEl.textContent = `${where}, ${verdict}${conv}`;
   }
 
   private draw() {
@@ -255,9 +307,10 @@ export class GearPlate {
     ctx.textBaseline = "top";
     ctx.textAlign = "left";
     ctx.fillText(kN ? "Zugkraft kN" : "Zugkraft N", 4, 3);
+    // unit above the plot (top right), clear of the Vmax line and its label
     ctx.textAlign = "right";
     ctx.textBaseline = "bottom";
-    ctx.fillText(u, padL + pw - 3, padT + ph - 3);
+    ctx.fillText(`v in ${u}`, padL + pw, padT - 3);
     // gears: alternating ink so neighbours stay apart, labels at the curve's peak
     ctx.lineWidth = 2;
     t.gears.forEach((g, k) => {
@@ -309,17 +362,22 @@ export class GearPlate {
     ctx.fillText("Fahrwiderstand", x(t.resistance[Math.round(t.resistance.length * 0.25)]!.kmh) + 4, y(t.resistance[Math.round(t.resistance.length * 0.25)]!.forceN) - 4);
   }
 
-  private setLocked(moving: boolean) {
-    for (const c of this.editor.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>("input, select, button")) c.disabled = moving;
+  private setLocked(locked: boolean) {
+    for (const c of this.editor.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>("input, select, button")) c.disabled = locked;
+    this.lockEl.hidden = !locked;
   }
 
-  /** Per frame: lock while moving; redraw when the environment (gradient, altitude) changed. */
+  /** Per frame: lock while rolling in gear (hint: brake or N); redraw when the environment changed. */
   update() {
     const d = this.drivetrain;
-    const moving = d.state.speedKmh > 0.5;
-    if (moving !== this.moving) {
-      this.moving = moving;
-      this.setLocked(moving);
+    const locked = !d.ratiosEditable;
+    if (locked !== this.locked) {
+      this.locked = locked;
+      this.setLocked(locked);
+      if (!locked && this.pendingRestore && this.restore()) {
+        this.sync();
+        this.onEdit();
+      }
     }
     const env = d.environment;
     if (`${env.gradePct}|${env.altitudeM}|${env.ambientC}` !== this.envKey) {

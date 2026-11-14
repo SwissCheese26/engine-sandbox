@@ -211,7 +211,8 @@ export class GearboxPanel {
     // own ratios: the loaded library car becomes "eigenes Fahrzeug"
     this.gears.onEdit = () => {
       this.vehiclePanel.markOwn();
-      this.onResetVehicle();
+      // in N while rolling the car keeps rolling (review PR #90)
+      if (this.drivetrain.state.speedKmh <= 0.5) this.onResetVehicle();
       this.syncSetup();
     };
     el.append(this.gears.el, this.vehiclePanel.el);

@@ -80,6 +80,37 @@ describe("gear ratios and Abstufung (issue #14)", () => {
   });
 });
 
+describe("ratios while rolling (review PR #90)", () => {
+  test("rejected rolling in gear, allowed in N while rolling and after braking to a stop; creeping automatic", () => {
+    const cfg = libraryConfig("lib-bmw-m57d30tu2");
+    const { dt, step } = rig(cfg, "automatic");
+    const r = gradedRatios(4.5, 0.65, 8, 1.1);
+    for (let i = 0; i < 5 * 60; i++) step(0); // creeps in D
+    expect(dt.state.speedKmh).toBeGreaterThan(3);
+    expect(dt.ratiosEditable).toBe(false);
+    const before = [...dt.gearbox.ratios];
+    expect(dt.setRatios(r)).toMatch(/Bremse|N/);
+    expect(dt.gearbox.ratios).toEqual(before);
+    // brake held: the car stops, the plate unlocks, the car starts again in 1st gear
+    for (let i = 0; i < 3 * 60; i++) step(0, 1);
+    expect(dt.state.speedKmh).toBeLessThan(0.5);
+    expect(dt.ratiosEditable).toBe(true);
+    expect(dt.setRatios(r)).toBeNull();
+    expect(dt.state.gear).toBe(1);
+    // rolling in N: editable, stays in N
+    for (let i = 0; i < 4 * 60; i++) step(0.4);
+    expect(dt.state.speedKmh).toBeGreaterThan(5);
+    while (dt.state.gear > 0) {
+      dt.shift(-1);
+      for (let i = 0; i < 30; i++) step(0);
+    }
+    expect(dt.state.gear).toBe(0);
+    expect(dt.setRatios(gradedRatios(4.5, 0.65, 6, 1))).toBeNull();
+    expect(dt.state.gear).toBe(0);
+    expect(dt.state.gearCount).toBe(6);
+  });
+});
+
 describe("torque converter characteristic (issue #14, vehicle.md §4)", () => {
   const c = { kFactor: 120, stallTorqueRatio: 2, couplingPoint: 0.87 };
   test("torque ratio 2 at stall, 1 from the coupling point; capacity 0 at ν = 1", () => {
@@ -90,6 +121,9 @@ describe("torque converter characteristic (issue #14, vehicle.md §4)", () => {
     expect(converterCapacity(0, 0.87)).toBe(1);
     expect(converterCapacity(1, 0.87)).toBe(0);
     expect(converterCapacity(0.87, 0.87)).toBeCloseTo(0.8, 6);
+    // the coupling point is clamped to 0.5 … 0.97 in both functions
+    expect(converterTorqueRatio(0.98, 2, 1.2)).toBe(1);
+    expect(converterTorqueRatio(0.25, 2, 0.1)).toBeCloseTo(1.5, 6);
   });
 
   test("stall: K from stall speed and torque; turbine torque = μ₀ × pump torque; no torque at ν = 1", () => {
@@ -213,6 +247,18 @@ describe("traction diagram (issue #14, vehicle.md §6)", () => {
     // the matched gearing is the fastest of the three
     expect(matched.vmax.kmh).toBeGreaterThanOrEqual(long.vmax.kmh);
     expect(matched.vmax.kmh).toBeGreaterThanOrEqual(short.vmax.kmh);
+  });
+
+  test("converter automatic: 1st gear starts at 0 km/h with converter multiplication above the locked curve", () => {
+    const spec = GEARBOXES.automatic;
+    const t = tractionCurves(sweep, cfg.revLimitRpm, sum.peakPowerRpm, { type: "automatic", spec, finalDrive: spec.finalDrive, vehicle: DEFAULT_VEHICLE });
+    const g1 = t.gears[0]!;
+    expect(g1.converterUntilKmh).toBeGreaterThan(5);
+    expect(g1.points[0]!.kmh).toBe(0);
+    const locked = tractionCurves(sweep, cfg.revLimitRpm, sum.peakPowerRpm, { type: "automatic", spec: { ...spec, converter: undefined }, finalDrive: spec.finalDrive, vehicle: DEFAULT_VEHICLE });
+    // at stall: μ₀ × pump torque (= engine torque at stall) – more than the locked 1st gear can give anywhere
+    expect(g1.points[0]!.forceN).toBeGreaterThan(1.3 * Math.max(...locked.gears[0]!.points.map((p) => p.forceN)));
+    expect(t.gears[1]!.converterUntilKmh).toBeUndefined();
   });
 
   test("uphill lowers Vmax; CVT gives a single envelope", () => {
