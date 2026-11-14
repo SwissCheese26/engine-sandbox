@@ -40,11 +40,15 @@ export function converterCapacity(nu: number, couplingPoint: number): number {
 /** Torque ratio μ(ν) = T_T / T_P. */
 export function converterTorqueRatio(nu: number, stallTorqueRatio: number, couplingPoint: number): number {
   const mu0 = Math.max(1, stallTorqueRatio);
+  const cp = Math.min(0.97, Math.max(0.5, couplingPoint));
   const v = Math.max(0, nu);
-  return v >= couplingPoint ? 1 : mu0 - ((mu0 - 1) * v) / couplingPoint;
+  return v >= cp ? 1 : mu0 - ((mu0 - 1) * v) / cp;
 }
 
-/** Capacity factor K (rpm/√Nm) so the converter stalls at stallRpm with the engine torque there. */
+/**
+ * Capacity factor K (rpm/√Nm) so the converter stalls at stallRpm: pass the engine's full-load torque AT stallRpm
+ * (the drivetrain takes it from the steady full-load curve).
+ */
 export function converterK(stallRpm: number, engineTorqueAtStallNm: number): number {
   return stallRpm / Math.sqrt(Math.max(10, engineTorqueAtStallNm));
 }

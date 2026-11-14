@@ -74,6 +74,7 @@ Die Gänge lassen sich aus der Übersetzung des 1. und des höchsten Gangs berec
 ## 6. Zugkraftdiagramm (#14)
 
 - **Zugkraft am Rad** je Gang: F = T_Volllast(n) · i_Gang · i_Achse · η / r_dyn bei v = n · 2π · r_dyn / (60 · i_Gang · i_Achse) [B9, B5]. Die Kurven aller Gänge bilden die „Zugkrafthyperbel“.
+- **Wandlerautomatik:** Im 1. Gang zeigt das Diagramm unterhalb des Kupplungspunkts den Wandlerbereich. Der Motor läuft dort, wo sein Volllastmoment gleich dem Pumpenmoment λ(ν)·(n/K)² ist, und am Rad wirkt μ(ν)·T_P (§4). Für die höheren Gänge bleibt die Wandlung weg: Dort ist die Überbrückungskupplung geschlossen bzw. ν liegt über dem Kupplungspunkt. Hinter dem Wandlerbereich gilt die normale Volllastkurve.
 - **Fahrwiderstand:** F_W = m·g·(f_R·cos θ + sin θ) + ½·ρ·c_W·A·v² [B5].
 - **Vmax** ist der höchste Schnittpunkt von Zugkraft und Fahrwiderstand über alle Gänge, oder die Geschwindigkeit am Drehzahlbegrenzer, wenn die Zugkraft dort noch über dem Widerstand liegt.
 - **Bewertung** [B9, S]:

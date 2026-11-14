@@ -30,6 +30,7 @@ import { DEFAULT_TYRE, TYRE_TYPES, aquaplaningFactor, compoundFactor, speedRatin
 import type { RoadSurface, TyreSetup } from "./tyres.ts";
 import { drivenAxleLoadN, wheelieLimitN } from "./vehicle.ts";
 import { converterK } from "./converter.ts";
+import { dynoSweep } from "./dyno.ts";
 import type { ConverterSpec } from "./converter.ts";
 import type { ConverterCoupling, EngineConfig, EngineState, EngineSummary, VehicleCoupling, VehicleParams } from "./types.ts";
 
@@ -397,6 +398,8 @@ export class Drivetrain {
   /** Cruise control and driver speed limiter (issue #30). */
   private cc = new CruiseControl();
   private ccDownT = 0;
+  /** Full-load torque at a converter's stall speed, per stall rpm (issue #14). */
+  private stallTorque = new Map<number, number>();
   /** Lock-up clutch of the converter automatic 0 … 1 (issue #14). */
   private lockup = 0;
   /** Engine speed of the last frame (manual downshift blip, issue #14). */
@@ -434,6 +437,7 @@ export class Drivetrain {
   setEngine(cfg: EngineConfig, summary: EngineSummary) {
     this.cfg = cfg;
     this.summary = summary;
+    this.stallTorque.clear();
   }
 
   setType(type: GearboxType) {
@@ -454,13 +458,23 @@ export class Drivetrain {
    */
   setRatios(ratios: readonly number[]): string | null {
     if (this.st.type === "cvt") return "Das CVT hat keine Gänge";
-    if (this.st.speedKmh > 0.5) return "Nur im Stand";
+    if (!this.ratiosEditable) return "Nur im Stand (Bremse treten) oder in N";
     const err = validateRatios(ratios);
     if (err) return err;
+    const neutral = this.st.gear === 0;
     this.clearTransient();
     this.spec = { ...this.spec, ratios: [...ratios] };
-    Object.assign(this.st, { gear: 1, gearCount: ratios.length, ratio: ratios[0]!, shifting: false });
+    // in N (also rolling) the gearbox stays in N; at standstill it starts again in 1st gear
+    Object.assign(this.st, { gear: neutral ? 0 : 1, gearCount: ratios.length, ratio: ratios[0]!, shifting: false });
     return null;
+  }
+
+  /**
+   * Gear ratios can be changed (issue #14, review PR #90): not on the CVT; at standstill (≤ 0.5 km/h – a converter
+   * automatic creeping in D stops when the brake is held) or in N, also while rolling.
+   */
+  get ratiosEditable(): boolean {
+    return this.st.type !== "cvt" && (this.st.speedKmh <= 0.5 || (this.st.gear === 0 && !this.st.shifting));
   }
 
   get tyre(): TyreSetup {
@@ -1077,7 +1091,22 @@ export class Drivetrain {
   private converterCoupling(): ConverterCoupling | undefined {
     const c = this.spec.converter;
     if (!c) return undefined;
-    return { kFactor: converterK(c.stallRpm, this.summary.peakTorqueNm), stallTorqueRatio: c.stallTorqueRatio, couplingPoint: c.couplingPoint };
+    return { kFactor: converterK(c.stallRpm, this.torqueAtStall(c.stallRpm)), stallTorqueRatio: c.stallTorqueRatio, couplingPoint: c.couplingPoint };
+  }
+
+  /** Steady full-load torque at the stall speed (dyno.ts), cached per engine; the peak torque as fallback. */
+  private torqueAtStall(rpm: number): number {
+    let t = this.stallTorque.get(rpm);
+    if (t === undefined) {
+      try {
+        t = dynoSweep(this.cfg, { fromRpm: rpm, toRpm: rpm, stepRpm: 10 })[0]?.torqueNm ?? Number.NaN;
+      } catch {
+        t = Number.NaN;
+      }
+      if (!(t > 10)) t = this.summary.peakTorqueNm;
+      this.stallTorque.set(rpm, t);
+    }
+    return t;
   }
 
   /**

@@ -4,12 +4,13 @@
  * speed as their highest intersection (or at the rev limiter) and whether the gearing is too short / too long.
  * Pure computation, no DOM.
  */
+import { converterCapacity, converterK, converterTorqueRatio } from "./converter.ts";
 import type { GearboxSpec, GearboxType } from "./drivetrain.ts";
 import type { VehicleParams } from "./types.ts";
 
 export interface TractionSetup {
   type: GearboxType;
-  spec: Pick<GearboxSpec, "ratios" | "efficiency">;
+  spec: Pick<GearboxSpec, "ratios" | "efficiency"> & Partial<Pick<GearboxSpec, "converter">>;
   finalDrive: number;
   vehicle: VehicleParams;
 }
@@ -34,6 +35,8 @@ export interface TractionGear {
   /** Highest speed this gear reaches: intersection with the resistance or the rev limiter. */
   vmaxKmh: number;
   limitedBy: "limiter" | "resistance";
+  /** Converter automatic, 1st gear: up to this speed the points are the converter range (torque multiplication). */
+  converterUntilKmh?: number;
 }
 
 export type TractionVerdict = "zu-kurz" | "zu-lang" | "passend";
@@ -125,6 +128,40 @@ export function tractionCurves(
     gears = [{ gear: 1, ratio: lo, points, ...gearVmax(points, res) }];
   } else {
     gears = setup.spec.ratios.map((ratio, k) => gearCurve(ratio, k + 1));
+    const conv = setup.spec.converter;
+    if (conv && gears.length) {
+      // converter automatic (vehicle.md §6): 1st gear below the coupling point runs through the slipping converter
+      const g1 = gears[0]!;
+      const cp = Math.min(0.97, Math.max(0.5, conv.couplingPoint));
+      const K = converterK(conv.stallRpm, torqueAt(curve, conv.stallRpm));
+      const pts: TractionPoint[] = [];
+      const vEnd = kmhAt(nHi, g1.ratio);
+      for (let k = 0; k <= steps; k++) {
+        const kmh = (vEnd * k) / steps;
+        const nT = (kmh / 3.6 / r) * g1.ratio * fd * RAD_TO_RPM;
+        // engine speed where the full-load torque equals the pump torque λ(ν)·(n/K)² (bisection, monotone)
+        let lo = Math.max(nT, 1);
+        let hi = nHi;
+        const f = (n: number) => torqueAt(curve, n) - converterCapacity(nT / n, cp) * (n / K) ** 2;
+        if (f(hi) > 0) break; // the converter cannot hold the engine below the limiter
+        for (let it = 0; it < 40; it++) {
+          const mid = 0.5 * (lo + hi);
+          if (f(mid) > 0) lo = mid;
+          else hi = mid;
+        }
+        const nP = 0.5 * (lo + hi);
+        const nu = nT / nP;
+        if (nu >= cp) break;
+        const tT = converterTorqueRatio(nu, conv.stallTorqueRatio, cp) * converterCapacity(nu, cp) * (nP / K) ** 2;
+        pts.push({ kmh, forceN: (Math.max(0, tT) * g1.ratio * fd * eta) / r });
+      }
+      if (pts.length > 1) {
+        const until = pts[pts.length - 1]!.kmh;
+        g1.points = [...pts, ...g1.points.filter((p) => p.kmh > until)];
+        g1.converterUntilKmh = until;
+        Object.assign(g1, gearVmax(g1.points, res));
+      }
+    }
   }
 
   let best = gears[0]!;
