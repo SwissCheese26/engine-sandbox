@@ -81,9 +81,10 @@ export function tractionCurves(
 ): TractionResult {
   let curve = fullLoad.filter((p) => Number.isFinite(p.torqueNm) && p.rpm <= limitRpm + 1e-9);
   // the diesel governor ramp (torque → 0 within ≈ 200 rpm below the limit, diesel.md §3.2d) counts as the limiter:
-  // the curve ends where the torque above the power peak falls below 30 % of its maximum
-  const tMax = Math.max(...curve.map((p) => p.torqueNm));
-  const cutAt = curve.findIndex((p) => p.rpm > peakPowerRpm && p.torqueNm < 0.3 * tMax);
+  // the curve ends where the torque above the power peak falls below 75 % of the torque at the power peak (a petrol
+  // engine's tail stays above, the governor ramp falls through it within one or two sweep steps)
+  const tAtPeak = curve.reduce((b, p) => (Math.abs(p.rpm - peakPowerRpm) < Math.abs(b.rpm - peakPowerRpm) ? p : b), curve[0]!).torqueNm;
+  const cutAt = curve.findIndex((p) => p.rpm > peakPowerRpm && p.torqueNm < 0.75 * tAtPeak);
   if (cutAt >= 2) curve = curve.slice(0, cutAt);
   const r = setup.vehicle.wheelRadiusM;
   const eta = setup.spec.efficiency;
