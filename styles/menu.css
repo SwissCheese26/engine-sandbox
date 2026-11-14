@@ -1,0 +1,964 @@
+/* Hauptmenü (Hallenfront mit Rolltoren) und Einstellungen (#42, #24). Tokens in tokens.css.
+   Gelb kommt hier nicht vor: Gelb heißt Grenze (docs/process/design.md). */
+
+.screen--menu,
+.screen--settings {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+[tabindex="-1"]:focus {
+  box-shadow: none;
+}
+
+/* ── Hallenfront ──────────────────────────────────────────────────────── */
+.hall {
+  --frame: #1d2622;
+  --inside: #141b18;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  /* wall cladding: vertical sheet seams every 120px, quiet */
+  background:
+    repeating-linear-gradient(90deg, transparent 0 118px, rgba(29, 38, 34, 0.35) 118px 119px, rgba(255, 255, 255, 0.04) 119px 120px),
+    var(--hammer);
+}
+.hall__wall {
+  padding: var(--space-7) clamp(16px, 5vw, 72px) var(--space-6);
+  max-width: 1400px;
+  width: 100%;
+  margin: 0 auto;
+}
+.hall__name {
+  font-size: clamp(3.2rem, 10vw, 8.5rem);
+  font-weight: 700;
+  line-height: 0.88;
+  letter-spacing: -0.02em;
+  color: var(--alu);
+  /* painted on the wall: a hair of lacquer shadow under the letters */
+  text-shadow: 0 2px 0 rgba(20, 27, 24, 0.55);
+}
+.hall__sub {
+  margin-top: var(--space-4);
+  font-size: var(--fs-20);
+  color: var(--alu-shade);
+  max-width: 46ch;
+}
+
+.hall__front {
+  max-width: 1400px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 clamp(16px, 5vw, 72px);
+  display: flex;
+  align-items: flex-end;
+}
+.hall__doors {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(150px, 0.6fr);
+  align-items: end;
+  gap: clamp(16px, 2.4vw, 40px);
+}
+
+/* roller door: steel frame, painted bay number on the lintel, slatted shutter, sign plate in front */
+.door {
+  display: grid;
+  grid-template-rows: auto clamp(260px, 44vh, 470px);
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  font: inherit;
+}
+.door__lintel {
+  display: block;
+  background: var(--frame);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-plate) var(--radius-plate) 0 0;
+}
+.door__no {
+  font-family: var(--font-num);
+  font-weight: 600;
+  font-size: var(--fs-20);
+  color: var(--alu);
+  letter-spacing: 0.02em;
+}
+.door__opening {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border: 10px solid var(--frame);
+  border-top-width: 0;
+  border-bottom: 0;
+  /* hall inside: dark, the work lights fall on the floor of the test cell */
+  background:
+    radial-gradient(ellipse 70% 40% at 50% 100%, rgba(211, 214, 207, 0.28), transparent 72%),
+    var(--inside);
+}
+.door__shutter {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(to top, #3a4440 0 7px, #8d938a 7px 9px, transparent 9px),
+    repeating-linear-gradient(
+      to bottom,
+      #e2e4de 0 2px,
+      var(--alu) 2px 14px,
+      var(--alu-shade) 14px 20px,
+      #8f958c 20px 22px
+    );
+  transition: transform 520ms cubic-bezier(0.3, 0.7, 0.2, 1);
+}
+.door__plate {
+  position: absolute;
+  left: 22px;
+  right: 22px;
+  bottom: 22px;
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-4) var(--space-4) var(--space-3);
+  background: var(--alu);
+  color: var(--engrave);
+  border-radius: var(--radius-plate);
+  min-height: 136px;
+  align-content: start;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), 0 2px 0 rgba(20, 27, 24, 0.5), 0 10px 18px -8px rgba(20, 27, 24, 0.6);
+}
+.door {
+  position: relative;
+}
+.door__title {
+  font-size: var(--fs-31);
+  font-weight: 700;
+  line-height: 1.05;
+}
+.door__text {
+  font-size: var(--fs-14);
+  color: #4a5250;
+  max-width: 34ch;
+}
+.door__soon {
+  justify-self: start;
+  margin-top: var(--space-1);
+  padding: 1px var(--space-2);
+  border: 1px solid #6b726c;
+  border-radius: 2px;
+  font-size: var(--fs-12);
+  font-weight: 600;
+  color: #4a5250;
+}
+
+.door__open {
+  justify-self: start;
+  margin-top: var(--space-1);
+  padding: 1px var(--space-2);
+  border-radius: 2px;
+  background: var(--engrave);
+  color: var(--alu);
+  font-size: var(--fs-12);
+  font-weight: 600;
+}
+
+/* the open door answers: the shutter rolls up a quarter, the lit hall shows behind the sign */
+.door:not(.is-closed):hover .door__shutter,
+.door:not(.is-closed):focus-visible .door__shutter {
+  transform: translateY(-38%);
+}
+.door:not(.is-closed):focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+.door:not(.is-closed):focus-visible .door__lintel,
+.door:not(.is-closed):focus-visible .door__opening {
+  box-shadow: var(--focus);
+}
+.door:not(.is-closed):active .door__shutter {
+  transform: translateY(-46%);
+}
+/* closed bays: lacquered shutter, plate dimmed */
+.door.is-closed {
+  cursor: not-allowed;
+}
+.door.is-closed:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+.door.is-closed:focus-visible .door__lintel,
+.door.is-closed:focus-visible .door__opening {
+  box-shadow: var(--focus);
+}
+.hall__wall {
+  position: relative;
+}
+/* phones: settings at the top (the side door sits far down there) */
+.hall__settings-top {
+  display: none;
+  text-decoration: none;
+}
+.door.is-closed .door__shutter {
+  background:
+    linear-gradient(to top, #2a3330 0 7px, transparent 7px),
+    repeating-linear-gradient(to bottom, #67766f 0 2px, var(--hammer-light) 2px 14px, #505e57 14px 20px, #3e4a45 20px 22px);
+}
+.door.is-closed .door__plate {
+  background: var(--alu-shade);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), 0 2px 0 rgba(20, 27, 24, 0.5);
+}
+.door.is-closed .door__no {
+  color: var(--alu-shade);
+}
+
+/* side door to the office (Einstellungen) */
+.hall__side {
+  align-self: end;
+}
+.sidedoor {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  gap: var(--space-4);
+  height: clamp(220px, 32vh, 330px);
+  padding: var(--space-4);
+  background: var(--hammer-deep);
+  border: 8px solid var(--frame);
+  border-bottom: 0;
+  border-radius: var(--radius-plate) var(--radius-plate) 0 0;
+  color: var(--alu);
+  text-decoration: none;
+}
+.sidedoor:hover {
+  background: #34423c;
+}
+.sidedoor:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+.sidedoor__window {
+  display: block;
+  height: 64px;
+  border: 3px solid var(--frame);
+  /* wired glass */
+  background:
+    repeating-linear-gradient(0deg, transparent 0 9px, rgba(35, 41, 42, 0.45) 9px 10px),
+    repeating-linear-gradient(90deg, transparent 0 9px, rgba(35, 41, 42, 0.45) 9px 10px),
+    linear-gradient(160deg, #8fa09a, #5f706a);
+}
+.sidedoor__sign {
+  display: grid;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--alu);
+  color: var(--engrave);
+  border-radius: var(--radius-plate);
+}
+.sidedoor__title {
+  font-size: var(--fs-20);
+  font-weight: 700;
+}
+.sidedoor__text {
+  font-size: var(--fs-14);
+  color: #4a5250;
+}
+.sidedoor__handle {
+  align-self: center;
+  justify-self: end;
+  width: 30px;
+  height: 8px;
+  border-radius: 4px;
+  background: linear-gradient(#e2e4de, #8f958c);
+  box-shadow: 0 1px 0 #141b18;
+}
+
+.hall__floor {
+  border-top: 6px solid var(--frame);
+  background:
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.25), transparent 40px),
+    #3a4541;
+  padding: var(--space-5) clamp(16px, 5vw, 72px) var(--space-6);
+}
+.hall__floor p {
+  max-width: calc(1400px - 2 * clamp(16px, 5vw, 72px));
+  margin: 0 auto;
+  font-size: var(--fs-14);
+  color: var(--alu-shade);
+}
+
+@media (max-width: 1099px) {
+  .hall__doors {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .hall__side {
+    grid-column: 1 / -1;
+  }
+  .sidedoor {
+    height: auto;
+    grid-template-columns: 72px minmax(0, 1fr) auto;
+    grid-template-rows: none;
+    align-items: center;
+    border-bottom: 8px solid var(--frame);
+    border-radius: var(--radius-plate);
+  }
+  .sidedoor__window {
+    height: 48px;
+  }
+  .door__title {
+    font-size: var(--fs-25);
+  }
+}
+@media (max-width: 700px) {
+  .hall__wall {
+    padding-top: var(--space-7);
+    padding-bottom: var(--space-4);
+  }
+  .hall__sub {
+    font-size: var(--fs-16);
+  }
+  .hall__doors {
+    grid-template-columns: 1fr;
+    gap: var(--space-4);
+  }
+  .hall__settings-top {
+    display: inline-flex;
+    position: absolute;
+    top: var(--space-4);
+    right: 16px;
+  }
+  .hall__side {
+    display: none;
+  }
+  /* compact doors: a strip of shutter above the sign, height follows the sign */
+  .door {
+    grid-template-rows: auto auto;
+  }
+  .door__opening {
+    padding: 26px 10px 10px;
+  }
+  .door__plate {
+    position: relative;
+    left: auto;
+    right: auto;
+    bottom: auto;
+    min-height: 0;
+    padding: var(--space-2) var(--space-3);
+  }
+  .door__text {
+    font-size: var(--fs-12);
+  }
+  .door__title {
+    font-size: var(--fs-20);
+  }
+  .door__lintel {
+    padding: var(--space-1) var(--space-3);
+  }
+  .door__no {
+    font-size: var(--fs-16);
+  }
+  .hall__floor {
+    margin-top: var(--space-5);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .door__shutter {
+    transition: none;
+  }
+}
+
+/* ── Einstellungen (Meisterbüro) ──────────────────────────────────────── */
+.office__top {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-5);
+  background: var(--hammer-deep);
+  border-bottom: 1px solid #1f2925;
+}
+.office__top .btn {
+  text-decoration: none;
+}
+.office__title {
+  font-size: var(--fs-20);
+  font-weight: 600;
+}
+.office__body {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-5) var(--space-7);
+  display: grid;
+  gap: var(--space-5);
+}
+.office__plate {
+  padding: var(--space-5) var(--space-5) var(--space-4);
+}
+.office__plate .plate__effect {
+  margin-bottom: var(--space-4);
+}
+.office__legend {
+  padding: 0 var(--space-2);
+  margin-bottom: var(--space-2);
+  font-size: var(--fs-14);
+  font-weight: 700;
+  color: #4a5250;
+}
+.presets,
+.quantities {
+  border: 0;
+  margin: 0 0 var(--space-5);
+  padding: 0;
+  min-width: 0;
+}
+/* preset selector: a row per position, the lever shows which one is engaged */
+.preset {
+  position: relative;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--space-3);
+  padding: var(--space-3) var(--space-2);
+  border-top: 1px solid rgba(35, 41, 42, 0.14);
+  cursor: pointer;
+}
+.preset:last-of-type {
+  border-bottom: 1px solid rgba(35, 41, 42, 0.14);
+}
+.preset input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.preset__lever {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid #6b726c;
+  background: #e6e8e2;
+  position: relative;
+}
+.preset input:checked ~ .preset__lever {
+  border-color: var(--engrave);
+  background: var(--engrave);
+}
+.preset input:checked ~ .preset__lever::after {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: var(--alu);
+}
+.preset input:focus-visible ~ .preset__lever {
+  box-shadow: var(--focus);
+}
+.preset__name {
+  font-weight: 600;
+  font-size: var(--fs-16);
+}
+.preset__hint {
+  font-family: var(--font-num);
+  font-size: var(--fs-14);
+  color: #4a5250;
+  text-align: right;
+}
+.preset:hover {
+  background: rgba(35, 41, 42, 0.05);
+}
+.quantities__note {
+  padding: 0 var(--space-2) var(--space-2);
+  font-size: var(--fs-14);
+  color: #4a5250;
+}
+.quantity .seg {
+  grid-column: auto;
+  justify-content: flex-end;
+}
+.quantity .seg__opt span {
+  min-width: 52px;
+  font-family: var(--font-num);
+}
+.office__preview {
+  padding-top: var(--space-2);
+  margin-bottom: var(--space-5);
+}
+@media (min-width: 1100px) {
+  .units-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: var(--space-6);
+    align-items: start;
+  }
+  .office__plate .plate__effect {
+    max-width: 70ch;
+  }
+}
+.preview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  margin: 0;
+  border: 1px solid rgba(35, 41, 42, 0.25);
+  border-radius: 2px;
+  background: rgba(35, 41, 42, 0.2);
+}
+.preview div {
+  padding: var(--space-2) var(--space-3);
+  background: #c9ccc4;
+}
+.preview dt {
+  font-family: var(--font);
+  font-size: var(--fs-12);
+  color: #4a5250;
+}
+.preview dd {
+  margin: 0;
+  font-size: var(--fs-20);
+  font-weight: 600;
+}
+.btn--dark {
+  border-color: var(--engrave);
+  color: var(--engrave);
+  white-space: normal;
+  text-align: left;
+  min-height: 44px;
+  padding-block: var(--space-2);
+}
+.btn--dark:hover {
+  background: rgba(35, 41, 42, 0.08);
+}
+.office__status {
+  margin-top: var(--space-2);
+  min-height: 1.45em;
+  font-size: var(--fs-14);
+  color: #4a5250;
+}
+
+/* the sandbox header gets a way back to the hall */
+.cell__menu {
+  text-decoration: none;
+}
+
+@media (max-width: 700px) {
+  .office__top {
+    padding: var(--space-2) var(--space-4);
+  }
+  .office__body {
+    padding: var(--space-4) var(--space-4) var(--space-6);
+    gap: var(--space-4);
+  }
+  .office__plate {
+    padding: var(--space-4) var(--space-3) var(--space-3);
+  }
+  .preset {
+    grid-template-columns: 28px minmax(0, 1fr);
+  }
+  .preset__hint {
+    grid-column: 2;
+    text-align: left;
+  }
+  .quantity .seg {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
+
+/* speedometer scale of the cockpit (settings → Ansicht) */
+.office__speedo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  margin-top: var(--space-4);
+}
+.office__opt {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--fs-14);
+}
+.office__opt select,
+.office__opt input {
+  font: inherit;
+  min-height: 36px;
+  padding: 0 var(--space-2);
+}
+.office__opt input {
+  width: 8em;
+}
+
+/* maker's plate on the hall floor: link to the author (GitHub) */
+.hall__floor .hall__credit {
+  margin-top: var(--space-2);
+}
+.hall__credit a {
+  color: var(--alu);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.hall__credit a:hover,
+.hall__credit a:focus-visible {
+  color: #fff;
+}
+
+/* "Wähle eine Strecke" (route picker before the sandbox) */
+.routepick {
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+  padding: 0;
+  border: 1px solid var(--alu-shade);
+  border-radius: 8px;
+  background: var(--hammer-deep);
+  color: var(--alu);
+}
+.routepick::backdrop {
+  background: rgba(10, 14, 12, 0.72);
+}
+.routepick__form {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+.routepick__title {
+  margin: 0;
+  font-size: var(--fs-25);
+}
+.routepick__lead {
+  margin: 0;
+  font-size: var(--fs-14);
+  color: var(--alu-shade);
+}
+.routepick__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-2);
+}
+.routepick__card {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  gap: var(--space-1);
+  align-content: start;
+  padding: var(--space-3);
+  border: 1px solid #56655e;
+  border-radius: 6px;
+  background: var(--hammer);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.routepick__card:hover,
+.routepick__card:focus-visible {
+  border-color: var(--signal);
+  outline: none;
+  box-shadow: 0 0 0 2px var(--signal);
+}
+.routepick__name {
+  font-weight: 700;
+  font-size: var(--fs-16);
+}
+.routepick__card svg {
+  width: 100%;
+  height: 28px;
+}
+.routepick__card svg path {
+  fill: none;
+  stroke: var(--signal);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.routepick__text {
+  font-size: var(--fs-12);
+  color: var(--alu-shade);
+}
+.routepick__foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+
+/* settings → Bedienung: radio choice with a sentence per option */
+.office__choice {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.office__choice legend {
+  margin-bottom: var(--space-2);
+  font-weight: 600;
+}
+.office__choice label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  min-height: 36px;
+  font-size: var(--fs-14);
+  cursor: pointer;
+}
+.office__choice input {
+  margin-top: 3px;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--signal);
+}
+
+/* settings (#66): more choices per plate, reset with an in-page confirm step */
+.office__plate > .office__choice + .office__choice,
+.office__plate > .office__choice + .office__note {
+  margin-top: var(--space-4);
+}
+.office__note {
+  font-size: var(--fs-12);
+  color: #4a5250;
+}
+.office__note:empty {
+  display: none;
+}
+.office__prices input {
+  width: 7em;
+}
+.office__resets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.office__confirm {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: 2px solid #b3261e;
+  border-radius: 4px;
+  font-size: var(--fs-14);
+}
+.office__confirm p {
+  margin: 0 0 var(--space-2);
+}
+.office__danger {
+  border-color: #b3261e;
+  color: #8c1d18;
+  font-weight: 700;
+}
+
+/* "Fehler melden" (#55): button in the hall footer and the sandbox header, dialog based on .routepick */
+.bug-btn {
+  gap: var(--space-2);
+}
+.bug-btn svg {
+  flex: none;
+}
+.bug-btn--icon {
+  min-width: 40px;
+  justify-content: center;
+  padding: 0 var(--space-2);
+}
+.hall__floor .hall__bug {
+  margin-top: var(--space-3);
+}
+.bugreport {
+  width: min(640px, calc(100vw - 32px));
+}
+.bugreport__field {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--fs-14);
+  font-weight: 600;
+}
+.bugreport__field em {
+  font-style: normal;
+  font-weight: 400;
+  color: var(--alu-shade);
+}
+.bugreport input[type="text"],
+.bugreport textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--space-2);
+  border: 1px solid #56655e;
+  border-radius: 6px;
+  background: var(--hammer);
+  color: var(--alu);
+  font: 400 var(--fs-14) var(--font);
+  resize: vertical;
+}
+.bugreport input[type="text"]:focus-visible,
+.bugreport textarea:focus-visible {
+  outline: none;
+  border-color: var(--signal);
+  box-shadow: 0 0 0 2px var(--signal);
+}
+.bugreport__diag {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-3);
+  border: 1px solid #56655e;
+  border-radius: 6px;
+  min-width: 0;
+}
+.bugreport__diag legend {
+  padding: 0 var(--space-1);
+  font-weight: 600;
+}
+.bugreport__checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  font-size: var(--fs-14);
+}
+.bugreport__checks label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 32px;
+  cursor: pointer;
+}
+.bugreport__checks input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--signal);
+}
+textarea.bugreport__text {
+  font: 400 var(--fs-12) ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre;
+  overflow-x: auto;
+}
+.bugreport__hint,
+.bugreport__note,
+.bugreport__privacy {
+  margin: 0;
+  font-size: var(--fs-12);
+  color: var(--alu-shade);
+}
+.bugreport__send {
+  border-color: var(--signal);
+  text-decoration: none;
+}
+/* 390 px phones: Menü, Ansicht, the bug icon and "Werkbank öffnen" must fit in one row */
+@media (max-width: 420px) {
+  .cell .cell__top {
+    gap: var(--space-1);
+  }
+  .cell__top .cell__bug {
+    min-height: 32px;
+    min-width: 32px;
+    padding: 0 var(--space-1);
+  }
+}
+
+/* "Was ist neu" (#50): button beside "Fehler melden" in the hall footer, dialog based on .routepick */
+.hall__floor .hall__whatsnew {
+  margin: var(--space-3) var(--space-2) 0 0;
+  gap: var(--space-2);
+}
+.whatsnew__badge,
+.whatsnew__new {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--signal);
+  color: #111;
+  font-size: var(--fs-12);
+  font-weight: 700;
+  line-height: 1.4;
+}
+.whatsnew {
+  width: min(640px, calc(100vw - 32px));
+}
+.whatsnew__list {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.whatsnew__day {
+  border: 1px solid #56655e;
+  border-radius: 6px;
+  background: var(--hammer);
+}
+.whatsnew__day summary {
+  min-height: 44px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  font-size: var(--fs-14);
+  color: var(--alu-shade);
+}
+.whatsnew__day summary::-webkit-details-marker {
+  display: none;
+}
+.whatsnew__day summary {
+  list-style: none;
+  position: relative;
+  padding-right: calc(var(--space-3) + 1.2em);
+}
+.whatsnew__day summary::after {
+  content: "▸";
+  position: absolute;
+  right: var(--space-3);
+  top: var(--space-2);
+  color: var(--signal);
+}
+.whatsnew__day[open] summary::after {
+  content: "▾";
+}
+.whatsnew__day summary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--signal);
+  border-radius: 6px;
+}
+.whatsnew__daytitle {
+  font-weight: 700;
+  font-size: var(--fs-16);
+  color: var(--alu);
+}
+.whatsnew__items {
+  list-style: none;
+  margin: 0;
+  padding: 0 var(--space-3) var(--space-3);
+  display: grid;
+  gap: var(--space-2);
+}
+.whatsnew__item {
+  display: grid;
+  grid-template-columns: 5.5em minmax(0, 1fr);
+  gap: var(--space-2);
+  font-size: var(--fs-14);
+  overflow-wrap: anywhere;
+}
+.whatsnew__kind {
+  font-size: var(--fs-12);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding-top: 2px;
+  color: var(--signal);
+}
+.whatsnew__item--changed .whatsnew__kind {
+  color: var(--alu);
+}
+.whatsnew__item--fixed .whatsnew__kind {
+  color: #8fd19e;
+}
+.whatsnew__item a {
+  color: var(--alu-shade);
+  font-size: var(--fs-12);
+}
+.whatsnew .routepick__foot .btn {
+  white-space: normal;
+}

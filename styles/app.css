@@ -1,0 +1,2304 @@
+/* Prüfzelle – global layout and components. Tokens in tokens.css, concept in docs/process/design.md. */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  background: var(--hammer);
+  color: var(--alu);
+  font-family: var(--font);
+  font-size: 16px;
+  line-height: 1.45;
+}
+body {
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+h1, h2, h3, p {
+  margin: 0;
+}
+button, input, select {
+  font: inherit;
+  color: inherit;
+}
+kbd {
+  font-family: var(--font-num);
+  font-size: var(--fs-12);
+  font-weight: 600;
+  padding: 0 5px;
+  border-radius: 2px;
+  border: 1px solid currentColor;
+  opacity: 0.85;
+}
+/* input mode (#44, device.ts): html.is-touch is set by touch detection and switches live (tablet + keyboard).
+   On touch every keyboard hint goes; .touch-only texts replace them. */
+.touch-only {
+  display: none;
+}
+:root.is-touch .touch-only {
+  display: inline;
+}
+:root.is-touch kbd,
+:root.is-touch .kbd-only,
+:root.is-touch .cruise__keys,
+:root.is-touch .gearbox__keys {
+  display: none !important;
+}
+:root.is-touch .brakepedal {
+  display: inline-flex;
+}
+:root.is-touch .shiftpad.is-auto:not([hidden]) {
+  display: grid;
+}
+.num {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+[hidden] {
+  display: none !important;
+}
+
+/* ── Cell grid ─────────────────────────────────────────────────────────── */
+.cell {
+  display: grid;
+  grid-template-columns: minmax(320px, 360px) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-areas:
+    "top top"
+    "bench stage"
+    "deck deck";
+  height: 100vh;
+  height: 100dvh;
+}
+.cell__top {
+  grid-area: top;
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-2) var(--space-5);
+  background: var(--hammer-deep);
+  border-bottom: 1px solid #1f2925;
+}
+.cell__title {
+  font-size: var(--fs-20);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+.cell__top .bench-toggle {
+  display: none;
+}
+
+/* ── Buttons ───────────────────────────────────────────────────────────── */
+.btn {
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-plate);
+  border: 1px solid var(--alu-shade);
+  background: transparent;
+  color: var(--alu);
+  font-weight: 500;
+  cursor: pointer;
+}
+.btn:hover {
+  background: rgba(211, 214, 207, 0.08);
+}
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.btn--primary {
+  background: var(--alu);
+  color: var(--engrave);
+  border-color: var(--alu);
+  font-weight: 600;
+}
+.btn--primary:hover {
+  background: #e3e5df;
+}
+.btn--small {
+  min-height: 32px;
+  font-size: var(--fs-14);
+  padding: 0 var(--space-3);
+}
+
+/* ── Werkbank ─────────────────────────────────────────────────────────── */
+.bench {
+  grid-area: bench;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--hammer-deep);
+  border-right: 1px solid #1f2925;
+  padding: var(--space-4) var(--space-4) var(--space-6);
+  scrollbar-color: var(--hammer-light) transparent;
+}
+.bench__head {
+  display: grid;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+.bench__title {
+  font-size: var(--fs-25);
+  font-weight: 600;
+}
+.bench__hint {
+  font-size: var(--fs-14);
+  color: var(--alu-shade);
+}
+.bench__tools {
+  display: flex;
+  gap: var(--space-2);
+}
+.bench__notes {
+  display: grid;
+  gap: var(--space-1);
+}
+.bench__lock {
+  font-size: var(--fs-14);
+  font-weight: 600;
+  color: var(--alu);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-plate);
+  border: 1px solid var(--alu-shade);
+  background: rgba(211, 214, 207, 0.06);
+}
+/* Locked while the engine turns: plates stay readable, controls are visibly inactive. */
+.bench.is-locked .plate {
+  opacity: 0.72;
+}
+.bench.is-locked .fuel-switch,
+.bench.is-locked .bench__tools,
+.bench.is-locked .bench__hint {
+  opacity: 0.5;
+}
+.bench.is-locked input,
+.bench.is-locked select,
+.bench.is-locked label {
+  cursor: not-allowed;
+}
+.fuel-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin: 0;
+  padding: 3px;
+  border: 0;
+  border-radius: var(--radius-plate);
+  background: #1f2925;
+}
+.fuel-switch label {
+  position: relative;
+  cursor: pointer;
+}
+.fuel-switch input {
+  position: absolute;
+  opacity: 0;
+  inset: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.fuel-switch span {
+  display: block;
+  text-align: center;
+  padding: var(--space-2) 0;
+  border-radius: 2px;
+  font-weight: 600;
+  color: var(--alu-shade);
+}
+.fuel-switch input:checked + span {
+  background: var(--alu);
+  color: var(--engrave);
+}
+.fuel-switch input:focus-visible + span {
+  box-shadow: var(--focus);
+}
+
+.bench__plates {
+  display: grid;
+  gap: var(--space-4);
+}
+.plate {
+  position: relative;
+  background: var(--alu);
+  color: var(--engrave);
+  border-radius: var(--radius-plate);
+  padding: var(--space-4) var(--space-4) var(--space-3);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5), inset 0 -1px 0 rgba(0, 0, 0, 0.15), 0 1px 0 #1a2420;
+}
+.screw {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, #eef0eb 0 25%, #9da299 60%, #7d8279 100%);
+  box-shadow: inset 0 0 0 1px rgba(35, 41, 42, 0.35);
+}
+.screw::after {
+  content: "";
+  position: absolute;
+  left: 1px;
+  right: 1px;
+  top: 3.5px;
+  height: 1px;
+  background: rgba(35, 41, 42, 0.55);
+  transform: rotate(35deg);
+}
+.screw--tl { top: 6px; left: 6px; }
+.screw--tr { top: 6px; right: 6px; }
+.screw--bl { bottom: 6px; left: 6px; }
+.screw--br { bottom: 6px; right: 6px; }
+.plate__title {
+  font-size: var(--fs-20);
+  font-weight: 700;
+  padding-left: var(--space-2);
+}
+.plate__effect {
+  font-size: var(--fs-14);
+  color: #4a5250;
+  padding-left: var(--space-2);
+  margin-bottom: var(--space-2);
+  max-width: 60ch;
+}
+
+.field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: var(--space-3);
+  row-gap: 2px;
+  padding: var(--space-2) var(--space-2);
+  border-top: 1px solid rgba(35, 41, 42, 0.14);
+}
+.field__label {
+  font-weight: 600;
+  font-size: var(--fs-16);
+}
+.field__effect {
+  grid-column: 1 / -1;
+  font-size: var(--fs-12);
+  color: #4a5250;
+  line-height: 1.35;
+}
+.field__warn {
+  grid-column: 1 / -1;
+  font-size: var(--fs-14);
+  font-weight: 600;
+  color: var(--engrave);
+  background: var(--signal);
+  padding: 2px var(--space-2);
+  border-radius: 2px;
+}
+.field.is-limit {
+  box-shadow: inset 4px 0 0 var(--signal);
+}
+.field__value {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  justify-self: end;
+}
+.field__num {
+  width: 5.2em;
+  text-align: right;
+  font-size: var(--fs-16);
+  font-weight: 600;
+  background: #e6e8e2;
+  border: 1px solid #9ea39a;
+  border-radius: 2px;
+  padding: 2px 6px;
+  color: var(--engrave);
+}
+.field__unit {
+  font-size: var(--fs-14);
+  color: #4a5250;
+  min-width: 2.6em;
+}
+.field__range {
+  grid-column: 1 / -1;
+  font-size: var(--fs-12);
+  color: #5f6764;
+  display: flex;
+  justify-content: space-between;
+  margin-top: -2px;
+}
+.field select,
+.field--text input {
+  grid-column: 1 / -1;
+  width: 100%;
+  min-height: 36px;
+  padding: 4px 8px;
+  border-radius: 2px;
+  border: 1px solid #9ea39a;
+  background: #e6e8e2;
+  color: var(--engrave);
+}
+.field--select .field__label,
+.field--text .field__label,
+.field--choice-number .field__label {
+  grid-column: 1 / -1;
+}
+
+/* slider: engraved slot with a machined knob */
+.field input[type="range"] {
+  grid-column: 1 / -1;
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  height: 28px;
+  background: transparent;
+  margin: 0;
+  cursor: pointer;
+}
+.field input[type="range"]::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(to right, var(--engrave) calc(var(--p, 0) * 100%), #a7aca3 calc(var(--p, 0) * 100%));
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.3);
+}
+.field input[type="range"]::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: #a7aca3;
+}
+.field input[type="range"]::-moz-range-progress {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--engrave);
+}
+.field input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 22px;
+  margin-top: -8px;
+  border-radius: 3px;
+  background: linear-gradient(#f4f5f2, #b6bab1);
+  border: 1px solid var(--engrave);
+}
+.field input[type="range"]::-moz-range-thumb {
+  width: 16px;
+  height: 20px;
+  border-radius: 3px;
+  background: linear-gradient(#f4f5f2, #b6bab1);
+  border: 1px solid var(--engrave);
+}
+.field input[type="range"]:focus-visible {
+  box-shadow: none;
+}
+.field input[type="range"]:focus-visible::-webkit-slider-thumb {
+  box-shadow: var(--focus);
+}
+.field input[type="range"]:focus-visible::-moz-range-thumb {
+  box-shadow: var(--focus);
+}
+
+/* segmented number choice (cylinders, valves) */
+.seg {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.seg__opt {
+  position: relative;
+}
+.seg__opt input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  margin: 0;
+  cursor: pointer;
+}
+.seg__opt span {
+  display: block;
+  min-width: 36px;
+  text-align: center;
+  padding: 5px 8px;
+  border: 1px solid #9ea39a;
+  border-radius: 2px;
+  background: #e6e8e2;
+  font-weight: 600;
+}
+.seg__opt input:checked + span {
+  background: var(--engrave);
+  color: var(--alu);
+  border-color: var(--engrave);
+}
+.seg__opt input:focus-visible + span {
+  box-shadow: var(--focus);
+}
+
+/* toggle switch on the plate */
+.field--toggle {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+.field--toggle .field__effect,
+.field--toggle .field__warn {
+  grid-column: 1 / -1;
+}
+.field__state {
+  font-size: var(--fs-14);
+  color: #4a5250;
+  min-width: 2em;
+}
+.switch {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 44px;
+  height: 24px;
+  margin: 0;
+  border-radius: 12px;
+  background: #a7aca3;
+  position: relative;
+  cursor: pointer;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: linear-gradient(#f4f5f2, #b6bab1);
+  border: 1px solid #6b716b;
+}
+.switch:checked {
+  background: var(--engrave);
+}
+.switch:checked::after {
+  left: 22px;
+}
+
+/* ── Stage ─────────────────────────────────────────────────────────────── */
+.stage {
+  grid-area: stage;
+  overflow-y: auto;
+  padding: var(--space-3) var(--space-5) var(--space-4);
+  display: grid;
+  /* one column that may shrink below its content's min-content (no horizontal scroll on phones) */
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-3);
+  align-content: start;
+}
+.stage__engine {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: var(--space-4);
+  align-items: stretch;
+}
+
+/* schematic */
+.schematic {
+  margin: 0;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  align-items: center;
+  background: var(--hammer-deep);
+  border-radius: var(--radius-plate);
+  padding: var(--space-3);
+}
+.schematic__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-height: 196px;
+}
+.schematic__cap {
+  font-size: var(--fs-12);
+  color: var(--alu-shade);
+  padding: var(--space-1) var(--space-1) 0;
+}
+.sx-case { fill: #26312d; stroke: var(--hammer-light); stroke-width: 1.5; }
+.sx-liner { fill: #5b6b63; }
+.sx-bore { fill: #1d2622; }
+.sx-head { fill: #6f7d76; stroke: #2a3531; }
+.sx-valve { stroke: #aab0a8; stroke-width: 2.5; stroke-linecap: round; }
+.sx-behind { opacity: 0.45; }
+.sx-piston { fill: var(--alu); stroke: #8c9289; }
+.sx-ring { stroke: #8c9289; stroke-width: 1; }
+.sx-rod { stroke: #a9aea6; stroke-width: 6; stroke-linecap: round; }
+.sx-rows .sx-rod { stroke-width: 4; }
+.sx-pin { fill: #8c9289; }
+.sx-web { stroke: #8f958c; stroke-width: 12; stroke-linecap: round; }
+.sx-main { fill: #c2c6be; stroke: #2a3531; stroke-width: 2; }
+.sx-shaft { stroke: #8f958c; stroke-width: 4; }
+.sx-label, .sx-num, .sx-tag { fill: var(--alu-shade); font-family: var(--font); font-size: 16px; }
+.sx-num { font-family: var(--font-num); font-size: 15px; }
+.sx-charger { fill: #56655e; stroke: #aab0a8; stroke-width: 1.5; }
+.sx-volute { fill: #6f7d76; }
+.sx-blade { stroke: var(--alu); stroke-width: 2.5; stroke-linecap: round; }
+.sx-lobe { fill: none; stroke: var(--alu); stroke-width: 3; stroke-linecap: round; }
+.sx-motor { fill: var(--cold); }
+.sx-cooler { fill: none; stroke: #aab0a8; stroke-width: 1.5; }
+.sx-fin { stroke: #7f8a84; }
+/* gas in the cylinder: data colouring, cold intake → hot combustion */
+.sx-charge { fill: transparent; }
+.sx-charge.is-intake { fill: #31556b; }
+.sx-charge.is-compression { fill: #3d6f8f; }
+.sx-charge.is-burn { fill: #c98a2e; }
+.sx-charge.is-power { fill: #7a5a35; }
+.sx-charge.is-exhaust { fill: #4d4a40; }
+
+/* nameplate: the only capitals in the UI */
+.nameplate {
+  position: relative;
+  background: linear-gradient(180deg, #dcdfd8, var(--alu) 40%, #c7cbc3);
+  color: var(--engrave);
+  border-radius: var(--radius-plate);
+  padding: var(--space-3) var(--space-5) var(--space-3);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6), inset 0 -1px 0 rgba(0, 0, 0, 0.2), 0 2px 0 #1a2420;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.nameplate__maker {
+  font-size: var(--fs-12);
+  font-weight: 600;
+  border-bottom: 1px solid rgba(35, 41, 42, 0.45);
+  padding-bottom: var(--space-1);
+  margin-bottom: var(--space-2);
+}
+.nameplate__title {
+  font-size: var(--fs-16);
+  font-weight: 700;
+  line-height: 1.2;
+}
+.nameplate__type {
+  font-size: var(--fs-14);
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+}
+.nameplate__grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  line-height: 1.3;
+  gap: 0 var(--space-3);
+  margin: 0;
+  font-size: var(--fs-12);
+}
+.nameplate__grid dt {
+  font-weight: 600;
+  color: #3c4443;
+}
+.nameplate__grid dd {
+  margin: 0;
+  text-align: right;
+  font-size: var(--fs-14);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.nameplate__grid dd.is-limit {
+  background: var(--signal);
+  padding: 0 4px;
+  border-radius: 2px;
+}
+
+/* ── Instruments ───────────────────────────────────────────────────────── */
+.instruments {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: var(--space-4);
+  background: var(--hammer-deep);
+  border-radius: var(--radius-plate);
+  padding: var(--space-3) var(--space-4);
+}
+.instruments__dials {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+  align-items: end;
+}
+.gauge {
+  margin: 0;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+}
+.gauge--big {
+  align-self: center;
+}
+.gauge__face {
+  width: 100%;
+  max-width: 100px;
+  aspect-ratio: 1;
+}
+.gauge--big .gauge__face {
+  max-width: 140px;
+}
+
+.gauge__cap {
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: center;
+  align-items: baseline;
+  column-gap: 4px;
+}
+
+.gauge__label {
+  grid-column: 1 / -1;
+  text-align: center;
+  font-size: var(--fs-14);
+  color: var(--alu-shade);
+}
+.gauge__value {
+  font-size: var(--fs-20);
+  font-weight: 600;
+  text-align: right;
+  min-width: 3.4ch;
+}
+.gauge--big .gauge__value {
+  font-size: var(--fs-25);
+  min-width: 4.4ch;
+}
+.gauge__unit {
+  font-size: var(--fs-14);
+  color: var(--alu-shade);
+}
+.gauge.is-limit .gauge__value {
+  color: var(--signal);
+}
+
+.instruments__meters {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2) var(--space-5);
+  align-content: center;
+}
+.meter {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 3.2em;
+  grid-template-rows: auto 8px;
+  column-gap: var(--space-2);
+  align-items: baseline;
+}
+.meter__label {
+  font-size: var(--fs-14);
+  color: var(--alu-shade);
+}
+.meter__value {
+  font-size: var(--fs-16);
+  font-weight: 600;
+  text-align: right;
+}
+.meter__unit {
+  font-size: var(--fs-12);
+  color: var(--alu-shade);
+}
+.meter__track {
+  grid-column: 1 / -1;
+  position: relative;
+  height: 6px;
+  margin-top: 2px;
+  background: #1d2622;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.meter__fill {
+  position: absolute;
+  inset: 0;
+  background: var(--alu-shade);
+  transform-origin: left center;
+  transform: scaleX(0);
+}
+.meter__mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--signal);
+}
+.meter.is-limit .meter__value,
+.meter.is-limit .meter__label {
+  color: var(--signal);
+}
+.meter.is-limit .meter__fill {
+  background: var(--signal);
+}
+
+/* ── Recorder: the one bold element ────────────────────────────────────── */
+.recorder {
+  background: var(--hammer-deep);
+  border-radius: var(--radius-plate);
+  padding: var(--space-3) var(--space-4);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-2);
+}
+.recorder__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3) var(--space-5);
+}
+.recorder__title {
+  font-size: var(--fs-20);
+  font-weight: 600;
+}
+.recorder__inks {
+  display: flex;
+  gap: var(--space-4);
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: var(--fs-14);
+  color: var(--alu-shade);
+}
+.ink::before {
+  content: "";
+  display: inline-block;
+  width: 18px;
+  height: 3px;
+  margin-right: 6px;
+  vertical-align: middle;
+  border-radius: 2px;
+  background: var(--ink-rpm);
+  box-shadow: 0 0 0 1px var(--alu-shade);
+}
+.ink--torque::before { background: var(--ink-torque); }
+.ink--power::before { background: var(--ink-power); }
+.recorder__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+.recorder__paper {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: var(--space-3);
+}
+.recorder__strip,
+.recorder__sheet {
+  display: block;
+  width: 100%;
+  height: 172px;
+  border-radius: 2px;
+  background: var(--paper);
+  box-shadow: 0 0 0 1px #1a2420, 0 3px 0 -1px #c9c8b9;
+}
+.recorder__sheetwrap {
+  margin: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.recorder__runs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+  font-size: var(--fs-14);
+}
+.recorder__empty {
+  color: var(--alu-shade);
+  max-width: 60ch;
+}
+.run {
+  color: var(--alu-shade);
+}
+.run--current {
+  color: var(--alu);
+  font-weight: 600;
+}
+
+/* ── Deck: console + pedal ─────────────────────────────────────────────── */
+.deck {
+  grid-area: deck;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-4);
+  align-items: stretch;
+  padding: var(--space-2) var(--space-5);
+  background: #3a4842;
+  border-top: 2px solid #1f2925;
+}
+.console {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  grid-template-areas: "main dyno aux" "msg msg msg";
+  gap: var(--space-1) var(--space-6);
+  align-items: center;
+  align-content: center;
+}
+.console__group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+.console__group--main { grid-area: main; }
+.console__group--dyno { grid-area: dyno; }
+.console__group--aux { grid-area: aux; justify-content: flex-end; flex-wrap: wrap; row-gap: var(--space-2); }
+/* status and messages: exactly one row of fixed height, whatever the text (the deck must never grow or jump) */
+.console__status {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: var(--fs-14);
+  color: var(--alu-shade);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.console__foot {
+  grid-area: msg;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--space-4);
+  height: 28px;
+  min-width: 0;
+  overflow: hidden;
+}
+.console__field {
+  display: grid;
+  gap: 2px;
+  font-size: var(--fs-12);
+  color: var(--alu-shade);
+}
+.console__field select {
+  min-height: 36px;
+  padding: 0 8px;
+  background: var(--hammer-deep);
+  border: 1px solid var(--hammer-light);
+  border-radius: var(--radius-plate);
+  color: var(--alu);
+  font-size: var(--fs-14);
+}
+.console__target {
+  grid-template-columns: auto 5.5em;
+  column-gap: var(--space-2);
+}
+.console__target span {
+  grid-column: 1 / -1;
+}
+.console__target output {
+  font-size: var(--fs-14);
+  color: var(--alu);
+  text-align: right;
+}
+.console__field input[type="range"] {
+  width: 160px;
+  accent-color: var(--alu);
+}
+.console__vol input[type="range"] {
+  width: 110px;
+}
+.console__messages {
+  display: flex;
+  flex: 1 1 0;
+  min-width: 0;
+  flex-wrap: nowrap;
+  gap: var(--space-2);
+  overflow: hidden;
+}
+.console__messages .note {
+  flex: 0 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.note {
+  font-size: var(--fs-14);
+  padding: 3px var(--space-2);
+  border-radius: 2px;
+  border-left: 4px solid var(--alu-shade);
+  background: rgba(211, 214, 207, 0.08);
+}
+.note--warning,
+.note--critical {
+  border-left-color: var(--signal);
+  background: var(--signal);
+  color: var(--engrave);
+  font-weight: 600;
+}
+.bench .note--info {
+  color: var(--alu);
+}
+
+/* ignition: key in a lock cylinder, turns 0 → I (Zündschloss) */
+.ignkey,
+.starter {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 56px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: var(--fs-12);
+  font-weight: 600;
+  line-height: 1.2;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.ignkey__lock {
+  width: 52px;
+  height: 52px;
+  overflow: visible;
+}
+.ignkey__bezel {
+  fill: #2a3330;
+  stroke: var(--alu-shade);
+  stroke-width: 2.5;
+}
+.ignkey__core {
+  fill: #151b19;
+  stroke: #0d1110;
+  stroke-width: 2;
+}
+.ignkey__mark {
+  font-family: var(--font-num);
+  font-size: 10px;
+  font-weight: 700;
+  fill: var(--alu-shade);
+}
+.ignkey__key {
+  transform-box: view-box;
+  transform-origin: 32px 32px;
+  transition: transform 220ms cubic-bezier(0.3, 1.4, 0.5, 1);
+}
+.ignkey__bow {
+  fill: var(--alu);
+  stroke: #7d827a;
+  stroke-width: 1;
+}
+.ignkey__grip {
+  fill: #b6bab1;
+}
+.ignkey__hole {
+  fill: #151b19;
+}
+.ignkey[aria-checked="true"] .ignkey__key {
+  transform: rotate(35deg);
+}
+.ignkey[aria-checked="true"] .ignkey__mark--on {
+  fill: var(--ok);
+}
+.ignkey[aria-checked="true"] .ignkey__bezel {
+  stroke: var(--alu);
+}
+.ignkey:focus-visible,
+.starter:focus-visible {
+  outline: none;
+}
+.ignkey:focus-visible .ignkey__lock {
+  border-radius: 50%;
+  box-shadow: var(--focus);
+}
+
+/* starter: round start/stop push button with a light ring (green = ready/running, never yellow: yellow means limit) */
+.starter {
+  touch-action: none;
+}
+.starter__ring {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: #1a211f;
+  box-shadow: inset 0 0 0 3px #3b4843, 0 2px 0 #111a17;
+  transition: box-shadow 200ms ease;
+}
+.starter__cap {
+  display: grid;
+  place-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 30%, #3d4744, #1d2422 70%);
+  box-shadow: 0 2px 0 #0b0f0e, inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  color: #8d948c;
+  font-family: var(--font-num);
+  line-height: 1;
+  text-align: center;
+  transition: transform 60ms linear, color 200ms ease;
+}
+.starter__cap b {
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+.starter__cap small {
+  font-size: 7px;
+  letter-spacing: 0.04em;
+}
+/* ignition on, engine off: ready, the ring breathes */
+.console.is-ign .starter__ring {
+  animation: starter-ready 1.6s ease-in-out infinite;
+}
+.console.is-ign .starter__cap {
+  color: var(--alu);
+}
+/* engine running: ring lit steadily */
+.console.is-running .starter__ring {
+  animation: none;
+  box-shadow: inset 0 0 0 3px var(--ok), 0 0 12px 1px rgba(111, 154, 98, 0.75), 0 2px 0 #111a17;
+}
+.console.is-running .starter__cap {
+  color: #e9f4e4;
+}
+@keyframes starter-ready {
+  0%, 100% { box-shadow: inset 0 0 0 3px #4f6a49, 0 0 0 0 rgba(111, 154, 98, 0), 0 2px 0 #111a17; }
+  50% { box-shadow: inset 0 0 0 3px var(--ok), 0 0 10px 1px rgba(111, 154, 98, 0.6), 0 2px 0 #111a17; }
+}
+.starter.is-pressed .starter__cap {
+  transform: translateY(2px) scale(0.97);
+  box-shadow: 0 0 0 #0b0f0e, inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+.starter__text {
+  text-align: center;
+  white-space: nowrap;
+}
+.ignkey__text {
+  white-space: nowrap;
+}
+.starter:focus-visible .starter__ring {
+  box-shadow: var(--focus);
+}
+@media (prefers-reduced-motion: reduce) {
+  .ignkey__key,
+  .starter__ring,
+  .starter__cap {
+    transition: none;
+  }
+  .console.is-ign .starter__ring {
+    animation: none;
+    box-shadow: inset 0 0 0 3px var(--ok), 0 2px 0 #111a17;
+  }
+}
+
+/* toasts: thin translucent strip below the header, floating over the stage (never part of the deck) */
+.cell__top {
+  position: relative;
+}
+.toasts {
+  position: absolute;
+  z-index: 6;
+  top: calc(100% + var(--space-2));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(560px, calc(100% - 2 * var(--space-4)));
+  display: grid;
+  gap: var(--space-1);
+  pointer-events: none;
+}
+.toast {
+  margin: 0;
+  padding: 5px var(--space-3) 5px 10px;
+  border-left: 3px solid var(--signal);
+  border-radius: 2px;
+  background: rgba(35, 41, 42, 0.78);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  color: var(--alu);
+  font-size: var(--fs-12);
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  animation: toast-in 200ms ease-out;
+  transition: opacity 200ms ease, transform 200ms ease;
+}
+.toast--critical {
+  border-left-color: var(--ink-torque);
+  background: rgba(60, 20, 18, 0.86);
+  color: #fff;
+  font-weight: 600;
+}
+.toast.is-leaving {
+  opacity: 0;
+  transform: translateY(-6px);
+}
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(-10px); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toast {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* pedal lever (vertical, large) */
+.pedal {
+  display: grid;
+  grid-template-columns: auto auto;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas: "label track" "value track" "hint track";
+  column-gap: var(--space-3);
+  align-items: end;
+  justify-items: end;
+}
+.pedal__label { grid-area: label; font-weight: 600; align-self: start; }
+.pedal__value { grid-area: value; font-size: var(--fs-20); font-weight: 600; min-width: 3.4em; text-align: right; }
+.pedal__hint { grid-area: hint; font-size: var(--fs-12); color: var(--alu-shade); text-align: right; max-width: 9em; }
+.pedal__track {
+  grid-area: track;
+  position: relative;
+  width: 64px;
+  height: 80px;
+  border-radius: 6px;
+  background: #1f2925;
+  box-shadow: inset 0 0 0 2px #56655e;
+  cursor: ns-resize;
+  touch-action: none;
+  overflow: hidden;
+}
+.pedal__fill {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 6px;
+  top: 6px;
+  border-radius: 3px;
+  background: repeating-linear-gradient(0deg, #6f7d76 0 3px, #56655e 3px 6px);
+  transform-origin: bottom;
+  transform: scaleY(0);
+}
+.pedal__knob {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  height: 18px;
+  bottom: calc(3px + var(--p, 0) * (100% - 24px));
+  border-radius: 3px;
+  background: linear-gradient(#f4f5f2, #b6bab1);
+  box-shadow: 0 2px 0 #111a17;
+}
+.pedal.is-held .pedal__track {
+  box-shadow: inset 0 0 0 2px var(--alu);
+}
+
+/* gas lever and brake pedal side by side; the brake pedal only on touch screens (keyboard: S) */
+.pedals {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-3);
+}
+.brakepedal {
+  display: none;
+  align-self: flex-end;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: var(--fs-12);
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+@media (pointer: coarse), (hover: none) {
+  .brakepedal {
+    display: inline-flex;
+  }
+}
+.brakepedal__plate {
+  /* a wide rubber pad with ribs, like the brake pedal of a car (wider than the gas lever) */
+  width: 76px;
+  height: 64px;
+  border-radius: 8px;
+  background: repeating-linear-gradient(0deg, #2b3632 0 5px, #1f2925 5px 10px);
+  box-shadow: inset 0 0 0 2px #56655e, 0 4px 0 #111a17;
+  transition: transform 60ms linear, box-shadow 60ms linear;
+}
+.brakepedal.is-held .brakepedal__plate {
+  transform: translateY(4px);
+  box-shadow: inset 0 0 0 2px var(--alu), 0 0 0 #111a17;
+}
+.brakepedal:focus-visible {
+  outline: none;
+}
+.brakepedal:focus-visible .brakepedal__plate {
+  box-shadow: inset 0 0 0 2px #56655e, 0 0 0 3px var(--alu);
+}
+
+/* ── Medium: stack the stage blocks ─────────────────────────────────────── */
+@media (max-width: 1360px) {
+  .instruments {
+    grid-template-columns: 1fr;
+  }
+  .instruments__meters {
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  }
+}
+@media (max-width: 1240px) {
+  .stage__engine {
+    grid-template-columns: minmax(0, 1fr) 320px;
+  }
+  .nameplate {
+    padding: var(--space-3) var(--space-4);
+    letter-spacing: 0.03em;
+  }
+}
+/* The aux group (sound, gas ramp, warm start, reset) needs ~730 px: below ~1500 px the console takes two rows,
+   switches and starter on top, test-bench mode and aux below; aux wraps instead of overlapping the mode select. */
+@media (max-width: 1500px) {
+  .console {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: "main main" "dyno aux" "msg msg";
+  }
+}
+
+/* ── Narrow: the bench becomes a drawer, pedal sits in the thumb zone ──── */
+@media (max-width: 1099px) {
+  .cell {
+    display: block;
+    height: auto;
+  }
+  .cell__top {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    justify-content: space-between;
+    padding: var(--space-2) var(--space-4);
+  }
+  .cell__top .bench-toggle {
+    display: inline-flex;
+  }
+  .bench {
+    position: fixed;
+    z-index: 20;
+    top: 57px;
+    left: 0;
+    bottom: 0;
+    width: min(420px, 100vw);
+    transform: translateX(-100%);
+    visibility: hidden;
+    border-right: 2px solid #1f2925;
+    box-shadow: 8px 0 24px rgba(0, 0, 0, 0.35);
+  }
+  .bench-open .bench {
+    transform: none;
+    visibility: visible;
+  }
+  .stage {
+    overflow: visible;
+    padding: var(--space-3) var(--space-4) var(--space-4);
+  }
+  .stage__engine {
+    grid-template-columns: 1fr;
+  }
+  .nameplate {
+    max-width: 460px;
+  }
+  .console__group--aux {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+  .console {
+    grid-template-columns: auto minmax(0, 1fr);
+    grid-template-areas: "main main" "dyno aux" "msg msg";
+    column-gap: var(--space-4);
+  }
+  .console__group--aux {
+    gap: var(--space-2) var(--space-3);
+  }
+  .deck {
+    position: sticky;
+    bottom: 0;
+    z-index: 4;
+    padding: var(--space-2) var(--space-4);
+  }
+}
+@media (max-width: 700px) {
+  .instruments {
+    padding: var(--space-3);
+  }
+  .instruments__dials {
+    grid-template-columns: 1fr 1fr 1fr;
+    grid-template-rows: auto auto;
+  }
+  .gauge--big {
+    grid-row: auto;
+    grid-column: 1 / -1;
+  }
+  .gauge--big .gauge__face {
+    max-width: 210px;
+  }
+  .gauge__value {
+    font-size: var(--fs-16);
+  }
+  .instruments__meters {
+    grid-template-columns: 1fr;
+  }
+
+  .recorder {
+    padding: var(--space-3);
+  }
+  .recorder__paper {
+    grid-template-columns: 1fr;
+  }
+  .recorder__strip {
+    height: 190px;
+  }
+  .recorder__sheet {
+    height: 210px;
+  }
+  .recorder__actions {
+    margin-left: 0;
+  }
+  .nameplate {
+    padding: var(--space-4);
+  }
+  .deck {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-2);
+  }
+  .console {
+    grid-template-columns: 1fr;
+    grid-template-areas: "main" "msg";
+    gap: var(--space-2);
+  }
+  .console__group--dyno,
+  .console__group--aux {
+    display: none;
+  }
+  .deck.show-more .console {
+    grid-template-areas: "main" "dyno" "aux" "msg";
+  }
+  .deck.show-more .console__group--dyno,
+  .deck.show-more .console__group--aux {
+    display: flex;
+    justify-content: flex-start;
+  }
+  .console__group--main {
+    gap: var(--space-3);
+  }
+
+  .console__status {
+    font-size: var(--fs-12);
+  }
+  .console__group--main {
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-4);
+  }
+  .console kbd,
+  .starter__text .kbd-hint {
+    display: none;
+  }
+  /* phones: only the status line; the warning list would push the controls (limit hints come as toasts) */
+  .console__messages {
+    display: none;
+  }
+  .pedal__label {
+    display: none;
+  }
+  .ignkey__lock,
+  .starter__ring { width: 48px; height: 48px; }
+  .starter__cap { width: 37px; height: 37px; }
+  .pedal {
+    grid-template-columns: auto auto;
+  }
+  .pedal__track {
+    width: 60px;
+    height: 92px;
+  }
+  .pedal {
+    grid-template-areas: "value track" "value track" "value track";
+    align-items: center;
+  }
+  .pedal__value {
+    font-size: var(--fs-20);
+  }
+  .pedal__hint {
+    display: none;
+  }
+  /* phones: gas value above its lever, brake pedal next to it; together narrow enough for the console */
+  .pedals {
+    gap: var(--space-2);
+  }
+  .pedal {
+    grid-template-areas: "value" "track";
+    grid-template-columns: auto;
+    row-gap: var(--space-1);
+    justify-items: center;
+  }
+  .pedal__value {
+    font-size: var(--fs-14);
+    min-width: 0;
+    text-align: center;
+  }
+  .brakepedal__plate {
+    width: 64px;
+    height: 72px;
+  }
+}
+.console__more {
+  display: none;
+}
+@media (max-width: 700px) {
+  .console__more {
+    display: inline-flex;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Short desktop windows (e.g. 1440 × 900): keep the recorder above the fold */
+@media (min-width: 1100px) and (max-height: 960px) {
+  .recorder__strip,
+  .recorder__sheet {
+    height: 150px;
+  }
+  .schematic__svg {
+    max-height: 236px;
+  }
+  .pedal__track {
+    height: 68px;
+  }
+  .pedal__hint {
+    display: none;
+  }
+  .nameplate__maker {
+    margin-bottom: var(--space-1);
+  }
+}
+
+/* Phones: ignition and starter side by side, sub-panel toggle underneath */
+@media (max-width: 700px) {
+  .console__group--main {
+    display: grid;
+    grid-template-columns: auto auto;
+    justify-content: start;
+    gap: var(--space-2) var(--space-3);
+  }
+  .console__foot {
+    height: 18px;
+  }
+  .console__more {
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}
+
+/* ── Getriebe-Pult (Rollenprüfstand) ───────────────────────────────────── */
+.gearbox {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) auto minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: center;
+  background: var(--hammer-deep);
+  border-radius: var(--radius-plate);
+  padding: var(--space-3) var(--space-4);
+}
+.gearbox__title {
+  font-size: var(--fs-20);
+  font-weight: 600;
+  margin-bottom: var(--space-2);
+}
+.gearbox__setup {
+  display: grid;
+  gap: var(--space-2);
+}
+.gearbox__field {
+  display: grid;
+  grid-template-columns: 9.5em minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--fs-14);
+}
+.gearbox__field select {
+  grid-column: 2 / -1;
+  min-height: 36px;
+  padding: 4px 8px;
+  border-radius: 2px;
+  border: 1px solid var(--alu-shade);
+  background: var(--hammer);
+}
+.gearbox__field output {
+  min-width: 3.2em;
+  text-align: right;
+}
+.gearbox__hint,
+.gearbox__calc {
+  font-size: var(--fs-12);
+  color: var(--alu-shade);
+  max-width: 62ch;
+}
+.gearbox__calc {
+  color: var(--alu);
+  font-size: var(--fs-14);
+}
+.gearbox__drive {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-2);
+}
+/* The gear indicator is a lit gate plate: big engraved numeral on alu. */
+.gearbox__gear {
+  min-width: 2.4em;
+  padding: 0 var(--space-3);
+  text-align: center;
+  font-size: var(--fs-39);
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--engrave);
+  background: var(--alu);
+  border-radius: var(--radius-plate);
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.18);
+}
+.gearbox__shift {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
+}
+.gearbox__readouts {
+  margin: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.gearbox__readouts div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-3);
+  border-bottom: 1px solid rgba(211, 214, 207, 0.12);
+  padding-bottom: 2px;
+}
+.gearbox__readouts dt {
+  font-size: var(--fs-14);
+  color: var(--alu-shade);
+}
+.gearbox__readouts dd {
+  margin: 0;
+  font-size: var(--fs-20);
+  font-weight: 600;
+}
+.gearbox__vmax-note {
+  font-size: var(--fs-14);
+  font-weight: 400;
+  color: var(--alu-shade);
+}
+.gearbox__out {
+  display: grid;
+  gap: var(--space-2);
+}
+.gearbox__notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.gearbox__notes:not(:has(> :not([hidden]))) {
+  display: none;
+}
+.gearbox__notes .note {
+  margin: 0;
+}
+@media (max-width: 1100px) {
+  .gearbox {
+    grid-template-columns: 1fr;
+  }
+}
+.gearbox__keys {
+  font-size: var(--fs-12);
+  color: var(--alu-shade);
+}
+/* motorcycle: anti-wheelie is cutting (issue #25) – signal yellow like a limit note */
+.gearbox__wheelie {
+  margin: 0;
+  padding: 3px var(--space-2);
+  border-radius: 2px;
+  background: var(--signal);
+  color: var(--engrave);
+  font-size: var(--fs-14);
+  font-weight: 600;
+}
+.gearbox__wheelie[hidden] {
+  display: none;
+}
+/* Gänge & Zugkraft (issue #14): ratio editor and traction diagram, full row under the Getriebe-Pult */
+.gears {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: var(--space-2) var(--space-5);
+  border-top: 1px solid rgba(211, 214, 207, 0.12);
+  padding-top: var(--space-3);
+}
+.gears > .vehicle__title {
+  grid-column: 1 / -1;
+}
+.gears__editor {
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+}
+.gears__editor[hidden] {
+  display: none;
+}
+.gears__row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(7rem, 10rem)) auto;
+  gap: var(--space-2) var(--space-3);
+  align-items: end;
+}
+.gears__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr));
+  gap: var(--space-2) var(--space-3);
+}
+.gears__traction {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+.gears__traction canvas {
+  width: 100%;
+  height: 240px;
+  border-radius: 2px;
+}
+/* touch and phone width: 44 px targets (review PR #90), also after a key press on a touch device switched the hints back */
+.is-touch .gears.gears input,
+.is-touch .gears.gears select,
+.is-touch .gears.gears button {
+  min-height: 44px;
+}
+@media (pointer: coarse), (max-width: 760px) {
+  .gears.gears input,
+  .gears.gears select,
+  .gears.gears button {
+    min-height: 44px;
+  }
+}
+@media (max-width: 760px) {
+  .gears {
+    grid-template-columns: 1fr;
+  }
+  .gears__row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+/* Fahrzeug-Platte (issue #22): full row under the Getriebe-Pult */
+.vehicle {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: var(--space-2);
+  border-top: 1px solid rgba(211, 214, 207, 0.12);
+  padding-top: var(--space-3);
+}
+.vehicle__title {
+  font-size: var(--fs-16, 1rem);
+  font-weight: 600;
+}
+.vehicle__car {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--space-3);
+  align-items: center;
+  max-width: 44rem;
+}
+.vehicle__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: var(--space-2) var(--space-3);
+}
+.vehicle__num {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "label label" "input unit";
+  gap: 2px var(--space-2);
+  align-items: center;
+  font-size: var(--fs-12);
+  color: var(--alu-shade);
+}
+.vehicle__num > span {
+  grid-area: label;
+}
+.vehicle__num input,
+.vehicle__num select {
+  grid-area: input;
+  min-height: 32px;
+  min-width: 0;
+  padding: 2px 6px;
+  border-radius: 2px;
+  border: 1px solid var(--alu-shade);
+  background: var(--hammer);
+  color: var(--alu);
+  font-size: var(--fs-14);
+  font-variant-numeric: tabular-nums;
+}
+.vehicle__num--wide select {
+  grid-column: 1 / -1;
+}
+.vehicle__num small {
+  grid-area: unit;
+  min-width: 1.6em;
+}
+.vehicle__num input:disabled,
+.vehicle__num select:disabled {
+  opacity: 0.55;
+}
+.vehicle__num input[aria-invalid="true"] {
+  border-color: var(--signal);
+}
+.vehicle__tyre,
+.vehicle__note {
+  font-size: var(--fs-14);
+  color: var(--alu);
+}
+.vehicle__note:empty {
+  display: none;
+}
+.vehicle__hint {
+  font-size: var(--fs-12);
+  color: var(--alu-shade);
+  max-width: 80ch;
+}
+/* braking: the gear plate gets a red rim like a brake light – red is the brake, not a limit (yellow) */
+.gearbox__gear.is-braking {
+  box-shadow: inset 0 -2px 0 rgba(0, 0, 0, 0.18), 0 0 0 3px var(--ink-torque);
+}
+
+/* instruments with switchable units: click / Enter cycles kW → PS → hp etc. */
+.is-switchable {
+  cursor: pointer;
+  border-radius: var(--radius-plate);
+}
+.is-switchable:hover .gauge__unit,
+.is-switchable:hover .meter__unit {
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+.bench__library {
+  display: grid;
+  gap: var(--space-1);
+  font-size: var(--fs-14);
+  color: var(--alu-shade);
+}
+.bench__library {
+  min-width: 0;
+}
+.bench__library select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  min-height: 36px;
+  padding: 4px 8px;
+  border-radius: 2px;
+  border: 1px solid var(--alu-shade);
+  background: var(--hammer);
+  color: var(--alu);
+}
+.bench__libinfo {
+  font-size: var(--fs-12);
+  color: var(--alu);
+  max-width: 60ch;
+}
+.recorder__auto {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-14);
+  color: var(--alu-shade);
+  cursor: pointer;
+}
+.console__warm {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--fs-14);
+  cursor: pointer;
+}
+
+/* optional number (ECU torque limit, #18): switch row, slider + value below when on */
+.field--optional-number {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+.field--optional-number .field__value {
+  grid-column: 1 / -1;
+  justify-self: end;
+}
+.field--optional-number input[type="range"],
+.field--optional-number .field__effect,
+.field--optional-number .field__warn {
+  grid-column: 1 / -1;
+}
+.field--optional-number [hidden] {
+  display: none;
+}
+
+/* field that is shown but not applicable (pops on a diesel, #16) */
+.field.is-disabled .field__label,
+.field.is-disabled select {
+  opacity: 0.55;
+}
+.field.is-disabled .field__effect {
+  font-style: italic;
+}
+
+/* tuning plate (#16) */
+.tuning__changes {
+  margin: 8px 0 0;
+  padding-left: 1.2em;
+  font-size: var(--fs-14);
+  line-height: 1.4;
+}
+.tuning__changes li + li {
+  margin-top: 2px;
+}
+.tuning__warn:empty {
+  display: none;
+}
+.tuning__warn .note {
+  margin-top: 6px;
+}
+.plate--tuning {
+  margin-bottom: var(--space-4);
+}
+.tuning__status {
+  margin: 8px 0 0;
+  font-size: var(--fs-14);
+  font-style: italic;
+}
+
+/* Issue #23: Umwelt & Assistenten plate (shares the vehicle plate layout) */
+.environment__range {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px var(--space-2);
+  align-items: center;
+  font-size: var(--fs-12);
+  color: var(--alu-shade);
+}
+.environment__range > span {
+  grid-column: 1 / -1;
+}
+.environment__range input {
+  min-width: 0;
+  min-height: 32px;
+  accent-color: var(--alu);
+}
+.environment__range output {
+  min-width: 4.5em;
+  text-align: right;
+  font-size: var(--fs-14);
+  color: var(--alu);
+}
+.environment__assists {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: 0;
+  padding: var(--space-2) 0 0;
+  border: 0;
+}
+.environment__assists legend {
+  padding: 0;
+  font-size: var(--fs-12);
+  color: var(--alu-shade);
+}
+.environment__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 32px;
+  font-size: var(--fs-14);
+  color: var(--alu);
+}
+.environment__toggle input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--alu);
+}
+
+/* Kontrollleuchten (issue #23, cockpit #26): vehicle lamp colours are allowed here – amber for ABS/ESP is what the
+   driver knows from the instrument cluster (design.md: "Gelb heißt Grenze" – an intervention is the grip limit). */
+.lamps {
+  --lamp-amber: #ffad1f;
+  --lamp-ice: #e8f1f6;
+  --lamp-green: #5fd068;
+  --lamp-dark: #232b28;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-1);
+  padding: 4px;
+  border-radius: var(--radius-plate);
+  background: #141a18;
+}
+.lamp {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  height: 26px;
+  padding: 0 4px;
+  border-radius: 2px;
+  color: var(--lamp-dark);
+}
+.lamp svg {
+  width: 30px;
+  height: 21px;
+}
+.lamp b {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+.lamp[hidden] {
+  display: none;
+}
+.lamp--amber[data-state="on"],
+.lamp--amber[data-state="blink"] {
+  color: var(--lamp-amber);
+  filter: drop-shadow(0 0 3px rgba(255, 173, 31, 0.55));
+}
+.lamp--ice[data-state="on"] {
+  color: var(--lamp-ice);
+  filter: drop-shadow(0 0 3px rgba(232, 241, 246, 0.5));
+}
+.lamp--green[data-state="on"] {
+  color: var(--lamp-green);
+}
+/* ≈ 3 Hz like the ESP lamp in the cluster */
+.lamp[data-state="blink"] {
+  animation: lamp-blink 0.32s steps(1, end) infinite;
+}
+@keyframes lamp-blink {
+  50% {
+    color: var(--lamp-dark);
+    filter: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lamp[data-state="blink"] {
+    animation: none;
+  }
+}
+
+/* ── Bordcomputer (#40, #41): quiet, like the odometer line in a real cluster ───────────── */
+.trip {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid rgba(211, 214, 207, 0.12);
+}
+.trip__grid {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+.trip__col dt {
+  font-size: var(--fs-12);
+  color: var(--alu-shade);
+}
+.trip__col dd {
+  margin: 0;
+  font-size: var(--fs-16);
+  font-weight: 600;
+}
+.trip__col dd.trip__sub {
+  font-size: var(--fs-12);
+  font-weight: 500;
+  color: var(--alu-shade);
+}
+.trip__reset {
+  justify-self: start;
+}
+@media (max-width: 480px) {
+  .trip__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Tempomat-Leiste (issue #30): stalk functions as small buttons, status lamps from the cluster ───────── */
+.cruise {
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  border-radius: var(--radius-plate);
+  background: var(--hammer-deep);
+}
+/* one row per function: symbol button (the lamp) · − · value · + (· resume) */
+.cruise__unit {
+  display: grid;
+  /* same first column in both rows, so Tempomat and Limiter line up */
+  grid-template-columns: 9.5rem 44px minmax(0, 1fr) 44px 44px;
+  align-items: center;
+  gap: var(--space-1);
+}
+.cruise__sym {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  padding: 0 var(--space-2);
+  border: 1px solid #56655e;
+  border-radius: 6px;
+  background: #141a18;
+  color: #8b948f;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+/* narrow (phone, cockpit centre display): symbol only, the name stays for screen readers */
+@media (max-width: 560px) {
+  .cruise__name {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .cruise__sym {
+    justify-content: center;
+    min-width: 56px;
+  }
+  .cruise__unit {
+    grid-template-columns: 56px 44px minmax(0, 1fr) 44px 44px;
+  }
+}
+.cruise__sym svg {
+  width: 30px;
+  height: 21px;
+  flex: none;
+}
+/* green = active, like the cruise lamp in the cluster */
+.cruise__sym[data-state="on"],
+.cruise__sym[data-state="override"] {
+  color: #5fd068;
+  border-color: #5fd068;
+  box-shadow: inset 0 0 0 1px #5fd068;
+}
+.cruise__sym[data-state="override"] {
+  color: #b6e8ba;
+}
+.cruise__unit[data-unit="limit"] .cruise__sym[data-state="on"] {
+  color: #f08a24;
+  border-color: #f08a24;
+  box-shadow: inset 0 0 0 1px #f08a24;
+}
+.cruise__step,
+.cruise__resume {
+  min-height: 44px;
+  border: 1px solid var(--alu-shade);
+  border-radius: 6px;
+  background: var(--hammer);
+  color: inherit;
+  font: inherit;
+  font-size: var(--fs-20);
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.cruise__resume[aria-disabled="true"] {
+  opacity: 0.35;
+  cursor: default;
+}
+.cruise__sym:focus-visible,
+.cruise__step:focus-visible,
+.cruise__resume:focus-visible {
+  outline: 2px solid var(--alu);
+  outline-offset: 2px;
+}
+.cruise__val {
+  font-family: var(--font-num);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-20);
+  font-weight: 600;
+  text-align: center;
+}
+.cruise__val.is-off {
+  color: var(--alu-shade);
+  font-weight: 400;
+}
+.cruise__help {
+  margin: 0;
+  font-size: var(--fs-12);
+  color: var(--alu-shade);
+}
+/* touch screens have no keyboard: the key hints go */
+@media (pointer: coarse), (hover: none) {
+  .cruise__keys {
+    display: none;
+  }
+}
+.cruise__notes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+.cruise__notes:not(:has(> :not([hidden]))) {
+  display: none;
+}
+.cruise__notes .note {
+  margin: 0;
+}
+.cruise__notes .note[hidden] {
+  display: none;
+}
+.cruise__keys {
+  margin: 0;
+  font-size: var(--fs-12);
+  color: var(--alu-shade);
+}
+
+/* elevation map of the route (#48): profile with the car's position, altitude and gradient below */
+.environment__profile {
+  grid-column: 1 / -1;
+  margin: 0;
+  display: grid;
+  gap: var(--space-1);
+}
+.environment__profile canvas {
+  display: block;
+  width: 100%;
+  height: 72px;
+  background: var(--hammer-deep);
+  border-radius: 4px;
+}
+.environment__profile figcaption {
+  font-size: var(--fs-14);
+  color: var(--alu);
+}
+[data-range][hidden],
+.environment__profile[hidden] {
+  display: none;
+}
+
+/* Schaltknöpfe in der Bedienleiste: ▲ gear ▼ beside brake and gas */
+.shiftpad {
+  display: grid;
+  grid-template-rows: auto auto auto;
+  justify-items: center;
+  gap: 2px;
+  align-self: flex-end;
+}
+.shiftpad[hidden],
+.shiftpad.is-auto {
+  display: none;
+}
+@media (pointer: coarse), (hover: none) {
+  .shiftpad.is-auto:not([hidden]) {
+    display: grid;
+  }
+}
+.shiftpad__btn {
+  width: 56px;
+  min-height: 44px;
+  border: 1px solid var(--signal);
+  border-radius: 6px;
+  background: var(--hammer);
+  color: var(--signal);
+  font: inherit;
+  font-size: var(--fs-20);
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.shiftpad__btn:active {
+  background: var(--hammer-light);
+}
+.shiftpad__btn:focus-visible {
+  outline: 2px solid var(--alu);
+  outline-offset: 2px;
+}
+.shiftpad__gear {
+  font-family: var(--font-num);
+  font-size: var(--fs-25);
+  font-weight: 700;
+  line-height: 1.1;
+  min-width: 2ch;
+  text-align: center;
+}
+
+/* settings: example picture of the control bar with shift buttons */
+.office__example {
+  margin: 0 0 var(--space-2);
+  display: grid;
+  gap: var(--space-1);
+  max-width: 320px;
+}
+.office__example svg {
+  width: 100%;
+  height: auto;
+}
+.office__example figcaption {
+  font-size: var(--fs-12);
+  color: var(--alu-shade);
+}
+
+/* phones with shift buttons: pedals a little narrower, so key, starter, shift pad, brake and gas fit in 390 px */
+@media (max-width: 700px) {
+  .shiftpad__btn {
+    width: 48px;
+  }
+  .deck:has(.shiftpad:not([hidden]):not(.is-auto)) .brakepedal__plate {
+    width: 56px;
+  }
+}
+/* "automatisch" shows the buttons only on touch screens, so it compacts the bar only there */
+@media (max-width: 700px) and (pointer: coarse), (max-width: 700px) and (hover: none) {
+  .deck:has(.shiftpad.is-auto:not([hidden])) .brakepedal__plate {
+    width: 56px;
+  }
+}
+
+/* phones: shift buttons and brake pedal start at the same height as the gas lever (below its % value) */
+@media (max-width: 700px) {
+  .pedals {
+    align-items: flex-start;
+  }
+  .pedals > .shiftpad,
+  .pedals > .brakepedal {
+    align-self: flex-start;
+    /* the gas value row: --fs-14 at the body line height 1.45, then the pedal row gap */
+    margin-top: calc(var(--fs-14) * 1.45 + var(--space-1));
+  }
+}
+
+/* tank readout on the Getriebe-Pult; amber in reserve ("Gelb heißt Grenze") */
+.gearbox__tank dd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.gearbox__tank .is-low {
+  color: var(--signal);
+}
