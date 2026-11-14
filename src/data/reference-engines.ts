@@ -258,8 +258,12 @@ const GM_LS3: ReferenceEngine = {
       boreMm: 103.25, strokeMm: 92, conrodLengthMm: 154.9, compressionRatio: 10.7,
       blockMaterial: "aluminium", crankshaft: "cast", pistons: "cast-aluminium", conrods: "forged-steel",
     },
-    head: { valvetrain: "ohv", valvesPerCylinder: 2, camProfile: 0.35, variableTiming: "none" },
-    induction: { ...NA_INDUCTION, intakeRunnerLengthMm: 300 },
+    // Issue #38: stock LS3 cam 204°/211°, 0.551"/0.525" lift, LSA 117° (LSX Magazine „LS3 x 3 – Comparing Three
+    // Performance Cams on the Engine Dyno“, see petrol.md §7a) is lively for an OEM pushrod engine →
+    // camProfile 0.55 [S] (petrol.md §3.2b: VE peak by mean piston speed, the old 0.35 put it at 4400 rpm and the
+    // power peak at 5150); runner length fitted to the 4600 rpm torque peak [S]. Before: 289 kW @ 5150, 580 Nm @ 4350.
+    head: { valvetrain: "ohv", valvesPerCylinder: 2, camProfile: 0.55, variableTiming: "none" },
+    induction: { ...NA_INDUCTION, intakeRunnerLengthMm: 280 },
     // US 91 AKI ≈ 95–96 RON → ron95 (petrol.md §7)
     fuelSystem: { kind: "petrol", mixture: "port-injection", fuel: "ron95", fullLoadLambda: 0.88, ignitionAdvanceOffsetDeg: 0 },
     exhaust: { manifold: "cast-log", egr: false, catalyst: true, particulateFilter: false, scr: false },

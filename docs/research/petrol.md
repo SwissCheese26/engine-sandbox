@@ -317,6 +317,17 @@ Hinweise:
 - Optionaler Turbo-Referenzmotor: Honda K20C1 (Civic Type R FK8): ε 9,8, 235 kW @ 6500, 400 Nm @ 2500–4500, DI, Monoscroll-Turbo [B Wikipedia].
 - Massen-Richtwerte für `mass.ts` [S]: R4 Alu 2 l ≈ 110–130 kg, R4 Turbo Grauguss ≈ 140 kg, R6 3 l ≈ 180–210 kg, V8 Alu OHV ≈ 185 kg, V8 Alu DOHC ≈ 200 kg.
 
+### 7a. Kalibrierung RB26DETT und LS3 (Issue #38)
+
+**RB26DETT** (Bibliotheksmotor, Skyline GT-R)
+- Quelle: Wikipedia „Nissan RB engine“ (https://en.wikipedia.org/wiki/Nissan_RB_engine): zwei parallele Keramiklader der T25-Bauart (R34: kugelgelagerte T28), die Wastegate begrenzt auf 0,69 bar (10 psi). Nocken 240°/236°, Hub 8,58/8,28 mm. Die Angabe von 280 PS folgt dem „Gentlemen's Agreement“. Späte Motoren werden auf etwa 320 PS (235 kW) geschätzt.
+- Modell: Bei `twin-turbo-parallel` ist `compressorInducerMm` der Ersatz-Inducer beider Lader (turbo.ts, zwei Lader mit D/√2). Ein Lader mit etwa 44 mm (T25/T28-Familie 43 … 46 mm [S]) ergibt 62 mm. Die alten 40 mm entsprachen zwei Ladern mit je 28 mm, die bei etwa 0,17 kg/s stopften (178 kW @ 4600).
+- Ergebnis mit Serienhardware und 0,69 bar: 244 kW @ 7000, 395 Nm @ 5200. Das sind +19 % gegenüber 206 kW und etwa +4 % gegenüber den geschätzten 235 kW. Unterhalb von etwa 3500 1/min fehlt Ladedruck. **Offene Modelllücke:** Das Drehmomentmaximum liegt zu spät, weil die Lage des VE-Maximums über die mittlere Kolbengeschwindigkeit bestimmt wird (§3.2b) und der Kurzhuber dadurch spät landet. Außerdem fehlt Low-End-Drehmoment und der bmep pro bar Ladedruck ist zu hoch. Deshalb steht der Motor in `KNOWN` der Bibliothekstests, und der R34 bleibt ein 0–100-Ausreißer (5,80 s gegenüber 5,0 s).
+
+**LS3** (Referenzmotor)
+- Quelle: LSX Magazine, „LS3 x 3 – Comparing Three Performance Cams on the Engine Dyno“ (https://www.lsxmag.com/tech-stories/ls3-x-3-comparing-three-performance-cams-on-the-engine-dyno/). Serien-Nocke 204°/211°, Hub 0,551"/0,525", LSA 117°. Für einen Serien-Stoßstangen-V8 ist das scharf, daher camProfile 0,55 [S]. Das Saugrohr ist mit 280 mm auf das Drehmomentmaximum bei 4600 1/min abgestimmt [S].
+- Ergebnis: 316 kW @ 5850, 583 Nm @ 4750 (vorher 289 kW @ 5150, 580 Nm @ 4350). Ziel laut Datenblatt: 321 kW @ 5900, 575 Nm @ 4600.
+
 ## 6. Akustik (Benzin und Diesel, für prozedurale Synthese)
 
 ### 6.1 Grundfrequenz
