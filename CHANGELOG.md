@@ -16,7 +16,7 @@ _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `
 ### Geändert
 
 - Ruhigere Bedienleiste: Hinweise zu Grenzwerten erscheinen als kurze Einblendungen. ([#85](https://github.com/SwissCheese26/engine-sandbox/issues/85))
-- Handy und Tablet: Touch wird erkannt, der Bildschirm bleibt an, Vibration beim Schalten; neue Einstellungen dazu. ([#44](https://github.com/SwissCheese26/engine-sandbox/issues/44), [#66](https://github.com/SwissCheese26/engine-sandbox/issues/66), [#80](https://github.com/SwissCheese26/engine-sandbox/issues/80))
+- Handy und Tablet: Touch wird erkannt, der Bildschirm bleibt an, kurze Vibration als Rückmeldung; neue Einstellungen dazu. ([#44](https://github.com/SwissCheese26/engine-sandbox/issues/44), [#66](https://github.com/SwissCheese26/engine-sandbox/issues/66), [#80](https://github.com/SwissCheese26/engine-sandbox/issues/80))
 
 ## 2026-11-08 – Strecken, Tank und Schaltknöpfe
 

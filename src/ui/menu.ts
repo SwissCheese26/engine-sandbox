@@ -3,6 +3,7 @@
 // closed with "kommt bald". No engine sound here (planned later).
 import { RoutePicker } from "./route-picker.ts";
 import { bugButton } from "./bug-dialog.ts";
+import { ChangelogDialog } from "./changelog-dialog.ts";
 
 interface Door {
   no: string;
@@ -53,6 +54,10 @@ export class MainMenu {
     this.heading = el.querySelector(".hall__name")!;
     // "Fehler melden" (#55) next to the credit line
     el.querySelector(".hall__credit")!.after(bugButton(false, "hall__bug"));
+    // "Was ist neu" (#50) beside it, with a "Neu" badge for unseen entries
+    const news = new ChangelogDialog();
+    el.querySelector(".hall__credit")!.after(news.button);
+    el.append(news.el);
     // the Sandbox door asks for the route first (Wähle eine Strecke)
     const picker = new RoutePicker();
     el.append(picker.el);

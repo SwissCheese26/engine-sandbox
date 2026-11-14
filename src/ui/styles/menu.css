@@ -858,3 +858,107 @@ textarea.bugreport__text {
     padding: 0 var(--space-1);
   }
 }
+
+/* "Was ist neu" (#50): button beside "Fehler melden" in the hall footer, dialog based on .routepick */
+.hall__floor .hall__whatsnew {
+  margin: var(--space-3) var(--space-2) 0 0;
+  gap: var(--space-2);
+}
+.whatsnew__badge,
+.whatsnew__new {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--signal);
+  color: #111;
+  font-size: var(--fs-12);
+  font-weight: 700;
+  line-height: 1.4;
+}
+.whatsnew {
+  width: min(640px, calc(100vw - 32px));
+}
+.whatsnew__list {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.whatsnew__day {
+  border: 1px solid #56655e;
+  border-radius: 6px;
+  background: var(--hammer);
+}
+.whatsnew__day summary {
+  min-height: 44px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  font-size: var(--fs-14);
+  color: var(--alu-shade);
+}
+.whatsnew__day summary::-webkit-details-marker {
+  display: none;
+}
+.whatsnew__day summary {
+  list-style: none;
+  position: relative;
+  padding-right: calc(var(--space-3) + 1.2em);
+}
+.whatsnew__day summary::after {
+  content: "▸";
+  position: absolute;
+  right: var(--space-3);
+  top: var(--space-2);
+  color: var(--signal);
+}
+.whatsnew__day[open] summary::after {
+  content: "▾";
+}
+.whatsnew__day summary:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--signal);
+  border-radius: 6px;
+}
+.whatsnew__daytitle {
+  font-weight: 700;
+  font-size: var(--fs-16);
+  color: var(--alu);
+}
+.whatsnew__items {
+  list-style: none;
+  margin: 0;
+  padding: 0 var(--space-3) var(--space-3);
+  display: grid;
+  gap: var(--space-2);
+}
+.whatsnew__item {
+  display: grid;
+  grid-template-columns: 5.5em minmax(0, 1fr);
+  gap: var(--space-2);
+  font-size: var(--fs-14);
+  overflow-wrap: anywhere;
+}
+.whatsnew__kind {
+  font-size: var(--fs-12);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding-top: 2px;
+  color: var(--signal);
+}
+.whatsnew__item--changed .whatsnew__kind {
+  color: var(--alu);
+}
+.whatsnew__item--fixed .whatsnew__kind {
+  color: #8fd19e;
+}
+.whatsnew__item a {
+  color: var(--alu-shade);
+  font-size: var(--fs-12);
+}
+.whatsnew .routepick__foot .btn {
+  white-space: normal;
+}

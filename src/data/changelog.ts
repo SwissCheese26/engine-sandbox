@@ -28,7 +28,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       { kind: "neu", text: "„Fehler melden“ direkt im Spiel, mit Diagnose, die du vor dem Absenden prüfen kannst.", refs: [55, 79] },
       { kind: "neu", text: "Zündschlüssel und Startknopf; der Ton ist von Anfang an an.", refs: [85] },
       { kind: "geändert", text: "Ruhigere Bedienleiste: Hinweise zu Grenzwerten erscheinen als kurze Einblendungen.", refs: [85] },
-      { kind: "geändert", text: "Handy und Tablet: Touch wird erkannt, der Bildschirm bleibt an, Vibration beim Schalten; neue Einstellungen dazu.", refs: [44, 66, 80] },
+      { kind: "geändert", text: "Handy und Tablet: Touch wird erkannt, der Bildschirm bleibt an, kurze Vibration als Rückmeldung; neue Einstellungen dazu.", refs: [44, 66, 80] },
     ],
   },
   {
