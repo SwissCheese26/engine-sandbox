@@ -41,6 +41,7 @@ Vor jedem PR müssen alle vier grün sein: Typecheck, Unit-Tests, Build und, sob
   - PR: `gh api repos/SwissCheese26/engine-sandbox/pulls -f title=… -f head=<branch> -f base=main -f body=…`
   - Kommentar: `gh api repos/SwissCheese26/engine-sandbox/issues/<n>/comments -f body=…`
 - PR-Beschreibung: was, warum, wie getestet und `Closes #<n>`. Gemergt wird erst nach dem Review.
+- **Changelog:** Jeder PR, den Spieler merken, ergänzt seine Zeile in `src/data/changelog.ts` (Merge-Datum in Europe/Berlin; `neu`/`geändert`/`behoben`, Spielersprache, `refs` mit Issue und PR) und erzeugt `CHANGELOG.md` neu: `bun scripts/changelog.ts`. Ein Unit-Test prüft, dass beide übereinstimmen.
 
 ## Vorgehen (Phasenmodell)
 1. Anforderungen (Recherche): `docs/research/*.md`
