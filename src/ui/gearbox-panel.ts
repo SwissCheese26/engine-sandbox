@@ -15,6 +15,7 @@ import { toUnit } from "./units.ts";
 const TYPE_LABEL: Record<GearboxType, string> = {
   manual: "Handschalter, 6 Gänge",
   dsg: "Doppelkupplung (DSG), 7 Gänge",
+  automatic: "Wandlerautomatik, 8 Gänge",
   cvt: "Stufenlos (CVT)",
   sequential: "Sequenziell, 6 Gänge, Quickshifter",
 };

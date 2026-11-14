@@ -110,7 +110,8 @@ describe("trucks and buses on the chassis dyno (issue #31)", () => {
     expect(VEHICLES.truck.gearboxSpec!.ratios).toHaveLength(12);
     expect(VEHICLES.truck.speedLimitKmh).toBe(85);
     expect(VEHICLES.bus.speedLimitKmh).toBe(100);
-    expect(VEHICLES.bus.gearboxSpec!.converterLockRpm).toBeGreaterThan(0);
+    expect(VEHICLES.bus.gearboxes[0]).toBe("automatic");
+    expect(VEHICLES.bus.gearboxSpec!.converter!.lockUpRpm).toBeGreaterThan(0);
     expect(parseTyreSize("315/70 R22.5")).toEqual({ widthMm: 315, aspectPct: 70, rimInch: 22.5 });
     for (const c of VEHICLE_LIBRARY.filter((x) => x.setup.kind === "truck" || x.setup.kind === "bus")) {
       expect(c.setup.tyre.type).toBe("truck");

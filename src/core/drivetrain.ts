@@ -5,6 +5,8 @@
  *  - "dsg":    7-speed dual clutch. Drive mode shifts by itself; tapping up/down switches to manual mode (M).
  *              Shifts take ≈ 0.1 s without tractive interruption.
  *  - "cvt":    continuously variable ratio, holds an engine speed chosen by the pedal. No shifting.
+ *  - "automatic": converter automatic ("Wandlerautomatik", issue #14), 8 gears, hydrodynamic torque converter
+ *              (converter.ts) with lock-up clutch; shift schedule and tip mode like the DSG.
  *  - "sequential": motorcycle 6-speed (issue #25). The rider shifts like the manual, but with quickshifter: upshift
  *              without closing the throttle (ignition cut ≈ 50 ms), downshift with auto-blipper (≈ 80 ms).
  * Vehicles (issue #25): compact car (default), superbike and tourer motorcycle (VEHICLES). Motorcycles carry CG
@@ -27,9 +29,16 @@ import type { Environment } from "./environment.ts";
 import { DEFAULT_TYRE, TYRE_TYPES, aquaplaningFactor, compoundFactor, speedRatingKmh, stepTyreTemp, tyreGrip, tyreRadii } from "./tyres.ts";
 import type { RoadSurface, TyreSetup } from "./tyres.ts";
 import { drivenAxleLoadN, wheelieLimitN } from "./vehicle.ts";
-import type { EngineConfig, EngineState, EngineSummary, VehicleCoupling, VehicleParams } from "./types.ts";
+import { converterK } from "./converter.ts";
+import type { ConverterSpec } from "./converter.ts";
+import type { ConverterCoupling, EngineConfig, EngineState, EngineSummary, VehicleCoupling, VehicleParams } from "./types.ts";
 
-export type GearboxType = "manual" | "dsg" | "cvt" | "sequential";
+export type GearboxType = "manual" | "dsg" | "cvt" | "sequential" | "automatic";
+
+/** Gearboxes with an automatic shift schedule and tip mode (D / M): dual clutch and converter automatic. */
+export function isAutomaticType(type: GearboxType): boolean {
+  return type === "dsg" || type === "automatic";
+}
 
 /** Vehicle params with wheel radius and rolling resistance taken from the tyre (issue #22). */
 export function withTyre(v: VehicleParams, tyre: TyreSetup): VehicleParams {
@@ -62,6 +71,8 @@ export interface GearboxSpec {
    * lock-up clutch closes, rpm. Torque multiplication of the converter is not modelled. Unset = clutch launch.
    */
   converterLockRpm?: number;
+  /** Hydrodynamic torque converter of the "automatic" gearbox type (issue #14, converter.ts). */
+  converter?: ConverterSpec;
 }
 
 /** Typical ratios [S]: VW MQ350 6-speed manual, DQ381 7-speed DSG, generic chain CVT. */
@@ -73,7 +84,60 @@ export const GEARBOXES: Record<GearboxType, GearboxSpec> = {
   // chain 42/16 = 2.625 → "final drive" 4.51 (primary and secondary combined). Primary gear + gearbox + chain ≈ 0.92.
   // shiftTimeS = quickshifter upshift (ignition cut); downshift with blipper see SEQ_DOWNSHIFT_S.
   sequential: { ratios: [2.286, 1.778, 1.5, 1.333, 1.214, 1.138], finalDrive: 4.51, efficiency: 0.92, shiftTimeS: 0.05 },
+  // ZF 8HP (8HP45/50, ZF data sheet): 4.714/3.143/2.106/1.667/1.285/1.000/0.839/0.667; final drive for a compact car;
+  // converter with stall ≈ 2300 rpm, μ₀ 2.0, coupling point 0.87, lock-up from ≈ 1300 rpm turbine speed
+  // (docs/research/vehicle.md §4) [S]
+  automatic: {
+    ratios: [4.714, 3.143, 2.106, 1.667, 1.285, 1.0, 0.839, 0.667], finalDrive: 3.2, efficiency: 0.91, shiftTimeS: 0.25,
+    converter: { stallRpm: 2300, stallTorqueRatio: 2.0, couplingPoint: 0.87, lockUpRpm: 1300 },
+  },
 };
+
+/** Gear count range of an editable gearbox (issue #14). The 12-speed truck AMT is the longest preset. */
+export const GEAR_COUNT_MIN = 4;
+export const GEAR_COUNT_MAX = 12;
+/** Plausible range of a single gear ratio. */
+export const GEAR_RATIO_MIN = 0.3;
+export const GEAR_RATIO_MAX = 20;
+
+/**
+ * Checks a set of gear ratios (issue #14): count GEAR_COUNT_MIN … GEAR_COUNT_MAX, every ratio finite and within
+ * GEAR_RATIO_MIN … GEAR_RATIO_MAX, strictly descending (1st gear the shortest). Returns a German message for the
+ * UI, or null when the set is valid.
+ */
+export function validateRatios(ratios: readonly number[]): string | null {
+  if (ratios.length < GEAR_COUNT_MIN || ratios.length > GEAR_COUNT_MAX) return `${GEAR_COUNT_MIN} bis ${GEAR_COUNT_MAX} Gänge`;
+  for (let k = 0; k < ratios.length; k++) {
+    const r = ratios[k]!;
+    if (!Number.isFinite(r) || r < GEAR_RATIO_MIN || r > GEAR_RATIO_MAX) return `Gang ${k + 1}: Übersetzung zwischen ${GEAR_RATIO_MIN} und ${GEAR_RATIO_MAX}`.replace(/\./g, ",");
+    if (k > 0 && r >= ratios[k - 1]!) return `Gang ${k + 1} muss länger übersetzt sein als Gang ${k}`;
+  }
+  return null;
+}
+
+/**
+ * Gear ratios from 1st and top gear (issue #14, "Abstufung"), docs/research/vehicle.md §5 (Naunheimer et al.,
+ * Fahrzeuggetriebe, "Gangabstufung"; Jante): i_j = i_n · φ₁^(n−j) · φ₂^((n−j)(n−j−1)/2).
+ * progression φ₂ = 1 gives the geometric series (constant step φ₁); φ₂ ≈ 1.05–1.15 the progressive one (wide steps
+ * low, close steps high). φ₁ follows from i₁ / i_n. A φ₂ too large for the spread is reduced until φ₁ ≥ 1.02.
+ */
+export function gradedRatios(first: number, top: number, count: number, progression = 1): number[] {
+  const n = Math.round(Math.min(GEAR_COUNT_MAX, Math.max(2, count)));
+  const spread = first / top;
+  if (!(spread > 1) || !Number.isFinite(spread)) return Array.from({ length: n }, (_, k) => first - (k * (first - top)) / (n - 1));
+  let p2 = Math.max(1, progression);
+  let p1 = 1;
+  for (let it = 0; it < 50; it++) {
+    p1 = (spread / p2 ** (0.5 * (n - 1) * (n - 2))) ** (1 / (n - 1));
+    if (p1 >= 1.02 || p2 <= 1) break;
+    p2 = 1 + (p2 - 1) * 0.8;
+    if (p2 < 1.001) p2 = 1;
+  }
+  return Array.from({ length: n }, (_, k) => {
+    const m = n - 1 - k; // = n − j for gear j = k + 1
+    return Math.round(top * p1 ** m * p2 ** (0.5 * m * (m - 1)) * 1000) / 1000;
+  });
+}
 
 /** Auto-blipper downshift time, s [S]. */
 const SEQ_DOWNSHIFT_S = 0.08;
@@ -150,13 +214,17 @@ const BUS_PARAMS: VehicleParams = {
 export const TRUCK_AMT: GearboxSpec = {
   ratios: [14.93, 11.64, 9.02, 7.04, 5.4, 4.21, 3.54, 2.76, 2.14, 1.67, 1.28, 1.0], finalDrive: 2.533, efficiency: 0.95, shiftTimeS: 0.5,
 };
-/** ZF EcoLife 6 AP (6-speed converter automatic of city buses, ZF data sheet) with i = 4.78 [S]. */
+/**
+ * ZF EcoLife 6 AP (6-speed converter automatic of city buses, ZF data sheet) with i = 4.78 [S]. Converter type
+ * "automatic" since issue #14: stall ≈ 1600 rpm, μ₀ ≈ 1.8, lock-up from ≈ 1100 rpm (vehicle.md §4) [S].
+ */
 export const BUS_AUTOMATIC: GearboxSpec = {
-  ratios: [3.36, 1.91, 1.42, 1.0, 0.72, 0.62], finalDrive: 4.78, efficiency: 0.9, shiftTimeS: 0.3, converterLockRpm: 1100,
+  ratios: [3.36, 1.91, 1.42, 1.0, 0.72, 0.62], finalDrive: 4.78, efficiency: 0.9, shiftTimeS: 0.3,
+  converter: { stallRpm: 1600, stallTorqueRatio: 1.8, couplingPoint: 0.85, lockUpRpm: 1100 },
 };
 
 export const VEHICLES: Record<VehicleKind, VehiclePreset> = {
-  car: { label: "Auto (Kompaktklasse)", hint: "Kompaktwagen mit Fahrer.", params: DEFAULT_VEHICLE, tyre: DEFAULT_TYRE, gearboxes: ["manual", "dsg", "cvt"], finalDrive: GEARBOXES.manual.finalDrive },
+  car: { label: "Auto (Kompaktklasse)", hint: "Kompaktwagen mit Fahrer.", params: DEFAULT_VEHICLE, tyre: DEFAULT_TYRE, gearboxes: ["manual", "dsg", "automatic", "cvt"], finalDrive: GEARBOXES.manual.finalDrive },
   superbike: {
     label: "Motorrad (Superbike)", hint: "Superbike: 270 kg mit Fahrer, cW·A 0,30 m², Quickshifter. Wheelie-Grenze ≈ 1,2 g.",
     params: withTyre({ massKg: 270, dragCoefficient: 0.6, frontalAreaM2: 0.5, rollingResistance: 0.015, wheelRadiusM: 0.31, cgHeightM: 0.6, cgToRearAxleM: 0.7, wheelbaseM: 1.4, driveLayout: "rwd", drivenWheelInertiaKgM2: 0.6 }, SUPERBIKE_TYRE),
@@ -177,7 +245,7 @@ export const VEHICLES: Record<VehicleKind, VehiclePreset> = {
   bus: {
     label: "Bus (Stadtbus 12 m)", hint: "Solo-Stadtbus: 12–19 t, cW·A 4,9 m², Wandlerautomatik, Begrenzer 100 km/h.",
     params: withTyre(BUS_PARAMS, BUS_TYRE), tyre: BUS_TYRE,
-    gearboxes: ["dsg"], finalDrive: BUS_AUTOMATIC.finalDrive, gearboxSpec: BUS_AUTOMATIC, fullMassKg: 19000, speedLimitKmh: 100,
+    gearboxes: ["automatic"], finalDrive: BUS_AUTOMATIC.finalDrive, gearboxSpec: BUS_AUTOMATIC, fullMassKg: 19000, speedLimitKmh: 100,
   },
 };
 
@@ -329,6 +397,10 @@ export class Drivetrain {
   /** Cruise control and driver speed limiter (issue #30). */
   private cc = new CruiseControl();
   private ccDownT = 0;
+  /** Lock-up clutch of the converter automatic 0 … 1 (issue #14). */
+  private lockup = 0;
+  /** Engine speed of the last frame (manual downshift blip, issue #14). */
+  private lastRpm = 0;
 
   constructor(
     private cfg: EngineConfig,
@@ -344,7 +416,7 @@ export class Drivetrain {
   private fresh(type: GearboxType, finalDrive: number, speedLimitKmh: number | null): DrivetrainState {
     const g = this.spec;
     return {
-      type, gear: type === "cvt" ? 1 : 1, gearCount: type === "cvt" ? 1 : g.ratios.length,
+      type, gear: 1, gearCount: type === "cvt" ? 1 : g.ratios.length,
       ratio: g.ratios[0]!, finalDrive, manualMode: type === "manual", shifting: false, clutch: 0,
       speedKmh: 0, maxSpeedKmh: 0, t0to100S: null, t0to100Running: null,
       speedLimitKmh, limiting: false, maxSpeedLimited: false, wheelie: false,
@@ -373,6 +445,22 @@ export class Drivetrain {
   /** Gear ratios in use (generic per type or the loaded car's own). */
   get gearbox(): Readonly<GearboxSpec> {
     return this.spec;
+  }
+
+  /**
+   * Own gear ratios (issue #14): count and single ratios, checked by validateRatios(). Only at standstill; the vehicle
+   * starts again in 1st gear. Not for the CVT (its two values are the ratio range). Returns null when applied, else
+   * the reason (German, for the UI).
+   */
+  setRatios(ratios: readonly number[]): string | null {
+    if (this.st.type === "cvt") return "Das CVT hat keine Gänge";
+    if (this.st.speedKmh > 0.5) return "Nur im Stand";
+    const err = validateRatios(ratios);
+    if (err) return err;
+    this.clearTransient();
+    this.spec = { ...this.spec, ratios: [...ratios] };
+    Object.assign(this.st, { gear: 1, gearCount: ratios.length, ratio: ratios[0]!, shifting: false });
+    return null;
   }
 
   get tyre(): TyreSetup {
@@ -571,6 +659,7 @@ export class Drivetrain {
     this.shiftT = 0;
     this.pendingGear = 0;
     this.holdLaunch = 0;
+    this.lockup = 0;
     this.tc.reset();
     this.tcOut = { pedalCap: 1, torqueCut: 0, pedalFloor: 0 };
     this.resetGovernor();
@@ -645,17 +734,17 @@ export class Drivetrain {
   shift(dir: 1 | -1) {
     const s = this.st;
     if (s.type === "cvt") return;
-    if (s.type === "dsg") s.manualMode = true;
+    if (isAutomaticType(s.type)) s.manualMode = true;
     const target = Math.max(0, Math.min(s.gearCount, (s.shifting ? this.pendingGear : s.gear) + dir));
     // DSG refuses a downshift that would over-rev the engine (ECU protection); the manual gearbox lets you
     // do it – the limits model then reports the over-rev (review #19)
-    if (s.type === "dsg" && dir < 0 && target > 0 && this.rpmInGear(target, this.lastSpeedMs) > this.cfg.revLimitRpm * 0.97) return;
+    if (isAutomaticType(s.type) && dir < 0 && target > 0 && this.rpmInGear(target, this.lastSpeedMs) > this.cfg.revLimitRpm * 0.97) return;
     this.beginShift(target);
   }
 
   /** DSG: back to D (automatic). */
   setAutomatic() {
-    if (this.st.type === "dsg") this.st.manualMode = false;
+    if (isAutomaticType(this.st.type)) this.st.manualMode = false;
   }
 
   private beginShift(target: number) {
@@ -713,6 +802,7 @@ export class Drivetrain {
       this.updateRoad(dt);
     }
     const rpm = engine.rpm;
+    this.lastRpm = rpm;
     const idle = this.cfg.idleRpm;
     const limit = this.cfg.revLimitRpm;
 
@@ -735,7 +825,12 @@ export class Drivetrain {
     const req = this.govActive ? Math.min(pedal, this.govCap) : pedal;
 
     // --- DSG automatic shift schedule (Drive mode) [S]: upshift point rises with pedal, downshift keeps torque
-    if (s.type === "dsg" && !s.shifting && s.gear > 0) {
+    // converter automatic (issue #14): the schedule works on the turbine speed (output speed × gear, like a TCU), the
+    // engine runs ahead of it while the converter slips (upshift also on the engine speed, so a slipping converter
+    // does not hold the engine in the limiter)
+    const conv = s.type === "automatic";
+    const schedRpm = conv ? this.rpmInGear(s.gear, v) : rpm;
+    if (isAutomaticType(s.type) && !s.shifting && s.gear > 0) {
       // low-revving truck engines (limit < 3000 rpm, issue #31): top of the schedule 150 rpm below the limit, i.e.
       // ahead of the diesel governor ramp (starts ≈ 200 rpm under the limit, diesel.md §3.2d), so they still upshift
       // at full load; all other engines keep 0.97 × limit unchanged
@@ -751,8 +846,8 @@ export class Drivetrain {
         const ebHold = !!this.cfg.engineBrake && pedal < 0.01 && engine.engineBrakeActive === true && rpm < 0.95 * limit;
         if (ebDown) {
           if (this.gearDwell <= 0) this.beginShift(s.gear - 1);
-        } else if (!ebHold && this.gearDwell <= 0 && rpm > upRpm && s.gear < s.gearCount && this.rpmInGear(s.gear + 1, v) > idle * 1.25) this.beginShift(s.gear + 1);
-        else if (rpm < downRpm && s.gear > 1 && this.rpmInGear(s.gear - 1, v) < limit * 0.9) this.beginShift(s.gear - 1);
+        } else if (!ebHold && this.gearDwell <= 0 && Math.max(schedRpm, rpm) > upRpm && s.gear < s.gearCount && this.rpmInGear(s.gear + 1, v) > idle * 1.25) this.beginShift(s.gear + 1);
+        else if (schedRpm < downRpm && s.gear > 1 && this.rpmInGear(s.gear - 1, v) < limit * 0.9) this.beginShift(s.gear - 1);
         // cruise control (issue #30): speed not holdable at full pedal → one gear down if the engine then runs closer
         // to its power peak (like a kickdown), at most every 3 s so it cannot hunt
         else if (this.cc.state.notHoldable && this.ccDownT <= 0 && s.gear > 1 && rpm < this.summary.peakPowerRpm
@@ -760,7 +855,7 @@ export class Drivetrain {
           this.beginShift(s.gear - 1);
           this.ccDownT = 3;
         }
-      } else if (rpm < idle * 1.1 && s.gear > 1) {
+      } else if (schedRpm < idle * 1.1 && s.gear > 1) {
         // M mode still protects against stalling
         this.beginShift(s.gear - 1);
       }
@@ -806,6 +901,17 @@ export class Drivetrain {
       clutch = 1;
     } else if (s.gear === 0 || !engine.running) {
       clutch = 0;
+      this.lockup = 0;
+    } else if (conv) {
+      // converter automatic (issue #14): the converter always couples (creep in D, also against the brake); the
+      // lock-up clutch closes above the lock-up turbine speed (later with more pedal, from 2nd gear at full load)
+      // and opens when the turbine speed falls back or the car brakes to a stop (vehicle.md §4) [S]
+      const lu = g.converter?.lockUpRpm ?? 1300;
+      const on = lu * (1 + 0.5 * pedal);
+      const want = (s.gear >= 2 || pedal < 0.5) && inputRpm > (this.lockup > 0 ? 0.85 * on : on) && !(brake > 0.05 && pedal < 0.02 && inputRpm < idle * 1.4);
+      this.lockup = want ? Math.min(1, this.lockup + 2 * dt) : Math.max(0, this.lockup - 10 * dt);
+      // during a shift a closed lock-up clutch slips (controlled slip), the converter takes the speed step
+      clutch = s.shifting ? Math.min(this.lockup, 0.6) : this.lockup;
     } else if (s.shifting) {
       // manual: open; DSG: second clutch takes over, slip syncs within the shift; sequential: dog rings
       // disengaged (no torque) while the quickshifter cuts the ignition
@@ -945,6 +1051,7 @@ export class Drivetrain {
       }
     }
 
+    const converter = conv && s.gear > 0 && engine.running ? this.converterCoupling() : undefined;
     return {
       vehicle: this.vehicle,
       totalRatio: ratio * s.finalDrive,
@@ -959,7 +1066,18 @@ export class Drivetrain {
       airDensityKgM3: airDensity(altitudeToKpa(this.airAltM), this.env.ambientC),
       ...(cut > 0 ? { torqueCut: cut } : {}),
       ...(s.shifting ? { shifting: true } : {}),
+      ...(converter ? { converter } : {}),
     };
+  }
+
+  /**
+   * Converter characteristic for the simulator (issue #14): K from the stall speed and the engine's peak torque – the
+   * converter is matched to the engine, so a stronger engine gets a stiffer converter (vehicle.md §4) [S].
+   */
+  private converterCoupling(): ConverterCoupling | undefined {
+    const c = this.spec.converter;
+    if (!c) return undefined;
+    return { kFactor: converterK(c.stallRpm, this.summary.peakTorqueNm), stallTorqueRatio: c.stallTorqueRatio, couplingPoint: c.couplingPoint };
   }
 
   /**
@@ -973,7 +1091,13 @@ export class Drivetrain {
       // quickshifter: ignition cut on the upshift (rider keeps the throttle open); blipper opens on the downshift
       return this.shiftDir > 0 ? 0 : Math.max(Math.min(pedal, this.govActive ? this.govCap : 1), 0.35);
     }
-    if (this.st.type === "manual" && this.st.shifting) return 0;
+    if (this.st.type === "manual" && this.st.shifting) {
+      // downshift with double-declutch blip ("Zwischengas", issue #14): the driver blips the throttle while the
+      // clutch is open until the engine reaches the new gear's speed, so the clutch closes without a jolt [S]
+      if (this.shiftDir > 0 || this.pendingGear <= 0) return 0;
+      const target = this.rpmInGear(this.pendingGear, this.lastSpeedMs);
+      return this.lastRpm < target - 100 ? Math.min(0.6, 0.15 + (target - this.lastRpm) / 3000) : 0;
+    }
     // ASR pedal cap and MSR pedal floor (issue #23)
     const p = Math.max(Math.min(pedal, this.launchCap, this.tcOut.pedalCap), this.tcOut.pedalFloor);
     this.lastEffPedal = this.govActive ? Math.min(p, this.govCap) : p;
@@ -985,7 +1109,7 @@ export class Drivetrain {
     const s = this.st;
     if (s.type === "cvt") return s.gear === 0 ? "N" : "D";
     if (s.gear === 0) return "N";
-    if (s.type === "dsg") return `${s.manualMode ? "M" : "D"}${s.gear}`;
+    if (isAutomaticType(s.type)) return `${s.manualMode ? "M" : "D"}${s.gear}`;
     return String(s.gear);
   }
 }
