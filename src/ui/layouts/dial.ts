@@ -173,7 +173,7 @@ export class Dial {
     const t = this.theme;
     // bezel: a thin alu ring, then the face
     ctx.beginPath();
-    ctx.arc(cx, cy, r - 1, 0, Math.PI * 2);
+    ctx.arc(cx, cy, Math.max(0, r - 1), 0, Math.PI * 2);
     ctx.fillStyle = p.face;
     ctx.fill();
     const rr = r * (small ? 0.86 : 0.9);
@@ -191,7 +191,7 @@ export class Dial {
       g.addColorStop(0.75, "#5b5f5e");
       g.addColorStop(1, "#c9ccc7");
       ctx.beginPath();
-      ctx.arc(cx, cy, r - w / 2 - 0.5, 0, Math.PI * 2);
+      ctx.arc(cx, cy, Math.max(0, r - w / 2 - 0.5), 0, Math.PI * 2);
       ctx.lineWidth = w;
       ctx.strokeStyle = g;
       ctx.stroke();
@@ -200,7 +200,7 @@ export class Dial {
       sh.addColorStop(0, "rgba(60,40,10,0)");
       sh.addColorStop(1, "rgba(60,40,10,0.28)");
       ctx.beginPath();
-      ctx.arc(cx, cy, r - w, 0, Math.PI * 2);
+      ctx.arc(cx, cy, Math.max(0, r - w), 0, Math.PI * 2);
       ctx.fillStyle = sh;
       ctx.fill();
     } else if (t.ring === "tunnel") {
@@ -212,7 +212,7 @@ export class Dial {
       ctx.fillStyle = g;
       ctx.fill();
       ctx.beginPath();
-      ctx.arc(cx, cy, rr + (small ? 2 : 4), 0, Math.PI * 2);
+      ctx.arc(cx, cy, Math.max(0, rr + (small ? 2 : 4)), 0, Math.PI * 2);
       ctx.lineWidth = 1;
       ctx.strokeStyle = p.ring;
       ctx.stroke();
@@ -221,7 +221,7 @@ export class Dial {
     for (const [z, col] of [[s.zone, p.zone], [s.red, p.red]] as const) {
       if (!z || !(z.to > z.from)) continue;
       ctx.beginPath();
-      ctx.arc(cx, cy, rr - (small ? 3 : 5), this.angle(z.from), this.angle(z.to));
+      ctx.arc(cx, cy, Math.max(0, rr - (small ? 3 : 5)), this.angle(z.from), this.angle(z.to));
       ctx.lineWidth = small ? 5 : 9;
       ctx.strokeStyle = col;
       ctx.globalAlpha = 0.9;
@@ -262,7 +262,7 @@ export class Dial {
       // reflection on the cover glass: a soft crescent from the upper left
       ctx.save();
       ctx.beginPath();
-      ctx.arc(cx, cy, r * 0.9, 0, Math.PI * 2);
+      ctx.arc(cx, cy, Math.max(0, r * 0.9), 0, Math.PI * 2);
       ctx.clip();
       const g = ctx.createLinearGradient(cx - r, cy - r, cx + r * 0.2, cy + r * 0.2);
       g.addColorStop(0, "rgba(255,255,255,0.22)");
@@ -328,7 +328,7 @@ export class Dial {
       const a1 = this.angle(clampV(cruise));
       if (Math.abs(a1 - a0) > 0.004) {
         ctx.beginPath();
-        ctx.arc(cx, cy, rr - 5, Math.min(a0, a1), Math.max(a0, a1));
+        ctx.arc(cx, cy, Math.max(0, rr - 5), Math.min(a0, a1), Math.max(a0, a1));
         ctx.lineWidth = 9;
         ctx.strokeStyle = MARK_CRUISE;
         ctx.globalAlpha = 0.75;
@@ -381,7 +381,7 @@ export class Dial {
     ctx.restore();
     // hub cap
     ctx.beginPath();
-    ctx.arc(cx, cy, small ? r * 0.13 : r * 0.085, 0, Math.PI * 2);
+    ctx.arc(cx, cy, Math.max(0, small ? r * 0.13 : r * 0.085), 0, Math.PI * 2);
     ctx.fillStyle = p.hub;
     ctx.fill();
     ctx.lineWidth = 1;
