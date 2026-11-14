@@ -116,6 +116,7 @@ async function run(label, viewport) {
   await page.click('.hall [data-action="bug-report"]');
   if (!(await page.isVisible("dialog.bugreport[open]"))) failures.push(`${label}: Fehler-melden-Dialog öffnet im Menü nicht`);
   await page.click('dialog.bugreport [data-action="cancel"]');
+  await whatsNew(page, label);
   await page.click('a[href="#settings"]:visible');
   await page.waitForSelector('[data-screen="settings"]:not([hidden]) input[name="preset"]');
   await page.screenshot({ path: join(outDir, `smoke-${label}-settings.png`), fullPage: true });
@@ -424,6 +425,37 @@ async function cockpitDesigns(page, label) {
 
 // "Fehler melden" in the sandbox header (#55): dialog opens, the link targets the issue form with the diagnosis,
 // typing in it does not drive the engine, Esc closes only the dialog. GitHub itself is never opened.
+// "Was ist neu" (#50): badge before the first visit, dialog opens, no horizontal scroll, opening marks it seen
+async function whatsNew(page, label) {
+  const btn = '.hall [data-action="whats-new"]';
+  if (!(await page.isVisible(`${btn} .whatsnew__badge`))) failures.push(`${label}: Was-ist-neu ohne Neu-Hinweis beim ersten Besuch`);
+  // desktop by keyboard; the phone by touch (a key press would switch it to keyboard hints)
+  const touch = label === "mobile";
+  if (touch) await page.tap(btn);
+  else {
+    await page.focus(btn);
+    await page.keyboard.press("Enter");
+  }
+  await page.waitForSelector("dialog.whatsnew[open]");
+  const r = await page.evaluate(() => {
+    const d = document.querySelector("dialog.whatsnew");
+    return {
+      days: d.querySelectorAll(".whatsnew__day").length,
+      open: d.querySelectorAll(".whatsnew__day[open]").length,
+      overflow: d.scrollWidth > d.clientWidth + 1 || document.documentElement.scrollWidth > innerWidth,
+      seen: localStorage.getItem("pruefzelle.changelogSeen"),
+    };
+  });
+  await page.screenshot({ path: join(outDir, `smoke-${label}-whats-new.png`) });
+  if (!r.days || !r.open || r.open === r.days) failures.push(`${label}: Was-ist-neu ohne offene/eingeklappte Tage (${JSON.stringify(r)})`);
+  if (r.overflow) failures.push(`${label}: Was-ist-neu scrollt seitlich`);
+  if (!r.seen) failures.push(`${label}: Was-ist-neu merkt sich den Besuch nicht`);
+  if (touch) await page.tap('dialog.whatsnew [data-action="close"]');
+  else await page.keyboard.press("Escape");
+  if (await page.isVisible("dialog.whatsnew[open]")) failures.push(`${label}: Was-ist-neu schließt nicht`);
+  if (await page.isVisible(`${btn} .whatsnew__badge`)) failures.push(`${label}: Neu-Hinweis bleibt nach dem Öffnen`);
+}
+
 async function bugReport(page, label) {
   await page.click('.cell__top [data-action="bug-report"]');
   await page.waitForSelector("dialog.bugreport[open]");
