@@ -94,8 +94,14 @@ const EXTRA: LibraryEngine[] = [
     config: {
       id: "lib-nissan-rb26dett", name: "Nissan RB26DETT (2.6 Biturbo, 206 kW)", fuel: "petrol",
       block: blk("inline", 6, 86, 73.7, 121.5, 8.5, "cast-iron"),
-      head: { valvetrain: "dohc", valvesPerCylinder: 4, camProfile: 0.5, variableTiming: "none" },
-      induction: { aspiration: "twin-turbo-parallel", compressorInducerMm: 40, turbineAR: 1.0, variableGeometry: false, boostTargetBar: 0.8, intercooler: "air-to-air", intakeRunnerLengthMm: 250, individualThrottleBodies: true },
+      // Issue #38: mild stock cams (no VVT on the RB26) → camProfile 0.3 [S]. Twin parallel: compressorInducerMm is the
+      // equivalent single inducer of BOTH chargers (turbo.ts chargerUnit: two of D/√2), so two T25-class compressors of
+      // ≈ 35 mm give 50 mm [S]; the former 40 mm (2 × 28 mm) choked at ≈ 0.17 kg/s and capped the engine at 4600 rpm.
+      // Turbine A/R 0.64 (T25/T28 class) [S]; boost target fitted (header note). The model then makes ≈ 230 kW @ 6900,
+      // above the JAMA-limited 280 PS rating, like real engines on the dyno (CarAdvice "every GT-R on the same dyno":
+      // near-stock R33 213 kW at the wheels).
+      head: { valvetrain: "dohc", valvesPerCylinder: 4, camProfile: 0.3, variableTiming: "none" },
+      induction: { aspiration: "twin-turbo-parallel", compressorInducerMm: 50, turbineAR: 0.64, variableGeometry: false, boostTargetBar: 0.62, intercooler: "air-to-air", intakeRunnerLengthMm: 250, individualThrottleBodies: true },
       fuelSystem: { kind: "petrol", mixture: "port-injection", fuel: "ron98", fullLoadLambda: 0.82, ignitionAdvanceOffsetDeg: 0 },
       exhaust: { manifold: "cast-log", egr: false, catalyst: true, particulateFilter: false, scr: false },
       cooling: { radiatorCapacityKw: 190, thermostatOpenC: 82, oilCooler: true }, revLimitRpm: 8000, idleRpm: 900,
