@@ -4,6 +4,16 @@ Alle sichtbaren Änderungen an der Prüfzelle, neueste zuerst. Aufbau nach [Keep
 
 _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `bun scripts/changelog.ts` ausführen._
 
+## 2026-11-14 – Was ist neu
+
+### Neu
+
+- „Was ist neu“ im Hauptmenü: alle Änderungen auf einen Blick, mit Hinweis auf Neues seit deinem letzten Besuch. ([#50](https://github.com/SwissCheese26/engine-sandbox/issues/50))
+
+### Behoben
+
+- Das Fenster „Fehler melden“ ist wieder richtig gestaltet. ([#50](https://github.com/SwissCheese26/engine-sandbox/issues/50))
+
 ## 2026-11-12 – Lkw, Busse und neue Cockpits
 
 ### Neu

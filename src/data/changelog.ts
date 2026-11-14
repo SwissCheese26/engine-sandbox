@@ -20,6 +20,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    date: "2026-11-14",
+    title: "Was ist neu",
+    items: [
+      { kind: "neu", text: "„Was ist neu“ im Hauptmenü: alle Änderungen auf einen Blick, mit Hinweis auf Neues seit deinem letzten Besuch.", refs: [50] },
+      { kind: "behoben", text: "Das Fenster „Fehler melden“ ist wieder richtig gestaltet.", refs: [50] },
+    ],
+  },
+  {
     date: "2026-11-12",
     title: "Lkw, Busse und neue Cockpits",
     items: [
