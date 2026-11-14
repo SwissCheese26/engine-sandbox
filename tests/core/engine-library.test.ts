@@ -5,9 +5,12 @@ import { ENGINE_LIBRARY } from "../../src/data/engine-library.ts";
 /**
  * Library engines (#15). Reference engines are held to ±10 % by calibration.test.ts. The further library
  * engines have more estimated construction details, so they get ±15 %. Known larger deviations of the model
- * would be listed in KNOWN (not hidden); currently all fit.
+ * are listed in KNOWN (not hidden) as test.failing, so a fix shows up.
  */
-const KNOWN: Record<string, string> = {};
+const KNOWN: Record<string, string> = {
+  // issue #38: stock turbos + stock 0.69 bar give ≈ 244 kW (+19 % vs the JAMA-limited 206 kW), docs/research/petrol.md §7a
+  "lib-nissan-rb26dett": "RB26DETT with stock hardware above the 280 PS rating, torque peak too late",
+};
 
 describe("engine library", () => {
   test("ids are unique and every entry has maker, cars and source", () => {
