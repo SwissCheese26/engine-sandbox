@@ -3,7 +3,7 @@
 // sandbox through its door, and at the end checks Esc (back to the menu) and reload (#sandbox stays).
 // Serves dist/ with a tiny built-in node:http server, loads the app, fails on console/page errors,
 // starts the engine with the keyboard (I = ignition, hold S = starter, hold Space = throttle),
-// checks that the rpm readout rises, and writes screenshots (1440×900, 390×844) to
+// checks that the rpm readout rises, and writes screenshots (1440×900, 390×844, 360×740) to
 // tests/e2e/screenshots/.
 //
 // The rpm is read from the visible readout ([data-gauge="rpm"] .gauge__value), not from a debug hook.
@@ -86,7 +86,7 @@ async function readRpm(page) {
 
 async function run(label, viewport) {
   // the phone run is a touch device, so the brake pedal (shown on touch screens only) is tested there
-  const touch = label === "mobile";
+  const touch = label !== "desktop";
   const page = await browser.newPage({ viewport, deviceScaleFactor: 1, hasTouch: touch, isMobile: touch });
   page.on("console", (m) => {
     if (m.type() !== "error") return;
@@ -216,6 +216,13 @@ async function gearsChecks(page, label) {
   await page.waitForTimeout(150);
   const n = await page.locator('[data-out="gear-inputs"] input').count();
   if (n !== 8) failures.push(`${label}: Gangzahl 8 nicht übernommen (${n} Felder)`);
+  // touch: 44 px targets; the plate fits the phone width
+  const sizes = await page.evaluate(() => ({
+    minH: Math.min(...[...document.querySelectorAll(".gears input, .gears select, .gears button")].map((e) => e.getBoundingClientRect().height)),
+    overflow: document.documentElement.scrollWidth - window.innerWidth,
+  }));
+  if (label !== "desktop" && sizes.minH < 44) failures.push(`${label}: Gänge-Bedienelemente unter 44 px (${sizes.minH})`);
+  if (sizes.overflow > 0) failures.push(`${label}: Gänge-Platte scrollt horizontal (${sizes.overflow} px)`);
   await page.locator(".gears").screenshot({ path: join(outDir, `smoke-${label}-traction.png`) });
   console.log(`${label}: Zugkraftdiagramm ${ink} Pixel, ${verdict}`);
   // back to the free-revving bench and the generic 6-speed for the later steps
@@ -289,10 +296,11 @@ async function deckStaysStill(page, label, h0) {
   const live = await page.evaluate(() => ({ toasts: document.querySelector(".toasts").getAttribute("aria-live"), phone: matchMedia("(max-width: 700px)").matches }));
   if ((live.toasts === "polite") !== live.phone) failures.push(`${label}: Live-Region doppelt oder fehlt (${JSON.stringify(live)})`);
   const sel = await page.evaluate(() => { const s = document.querySelector('select[data-control="layout"]'); return { w: s.clientWidth, need: s.scrollWidth }; });
-  if (label === "mobile" && sel.w < 110) failures.push(`${label}: Ansichtsauswahl zu schmal (${sel.w} px)`);
+  if (label !== "desktop" && sel.w < 110) failures.push(`${label}: Ansichtsauswahl zu schmal (${sel.w} px)`);
   // a wider page makes phones zoom out (innerWidth grows with it), so compare with the device width
   const pageW = await page.evaluate(() => document.documentElement.scrollWidth);
-  if (label === "mobile" && pageW > 390) failures.push(`${label}: Seite breiter als das Handy (${pageW} px)`);
+  const devW = await page.evaluate(() => window.screen.width || 390);
+  if (label !== "desktop" && pageW > Math.max(devW, 360)) failures.push(`${label}: Seite breiter als das Handy (${pageW} px)`);
   if (crit !== 1) failures.push(`${label}: Motorschaden erscheint nicht als Hinweis (${crit})`);
   await page.evaluate(() => {
     const app = window.__pruefzelle;
@@ -378,7 +386,7 @@ async function layouts(page, label) {
   // brake: S on the keyboard, the brake pedal on touch screens
   await page.keyboard.up("w");
   const brakeShown = await page.isVisible(".brakepedal");
-  const touch = label === "mobile";
+  const touch = label !== "desktop";
   if (touch !== brakeShown) failures.push(`${label}: Bremspedal ${brakeShown ? "sichtbar ohne" : "fehlt bei"} Touch`);
   const b0 = await readNum(page, '[data-ck="speed-big"]');
   if (brakeShown) {
@@ -497,6 +505,8 @@ const fmt = (n) => (Number.isFinite(n) ? Math.round(n).toString() : String(n));
 try {
   await run("desktop", { width: 1440, height: 900 });
   if (!skipped) await run("mobile", { width: 390, height: 844 });
+  // smallest common phone width (review PR #90)
+  if (!skipped) await run("small", { width: 360, height: 740 });
 } catch (e) {
   failures.push(`Ausnahme: ${e?.stack ?? e}`);
 } finally {
