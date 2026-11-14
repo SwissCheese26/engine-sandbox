@@ -215,6 +215,12 @@ export class VehiclePanel {
     }
   }
 
+  /** Own changes elsewhere (gear ratios, issue #14): the loaded library car becomes "eigenes Fahrzeug". */
+  markOwn() {
+    this.carSel.value = "";
+    this.carNote.textContent = "";
+  }
+
   private edit(p: Partial<VehicleParams>) {
     if (this.moving) return this.sync();
     this.drivetrain.setVehicleParams(p);

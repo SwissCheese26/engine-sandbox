@@ -1643,6 +1643,55 @@ kbd {
 .gearbox__wheelie[hidden] {
   display: none;
 }
+/* Gänge & Zugkraft (issue #14): ratio editor and traction diagram, full row under the Getriebe-Pult */
+.gears {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: var(--space-2) var(--space-5);
+  border-top: 1px solid rgba(211, 214, 207, 0.12);
+  padding-top: var(--space-3);
+}
+.gears > .vehicle__title {
+  grid-column: 1 / -1;
+}
+.gears__editor {
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+}
+.gears__editor[hidden] {
+  display: none;
+}
+.gears__row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(7rem, 10rem)) auto;
+  gap: var(--space-2) var(--space-3);
+  align-items: end;
+}
+.gears__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(6.5rem, 1fr));
+  gap: var(--space-2) var(--space-3);
+}
+.gears__traction {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+.gears__traction canvas {
+  width: 100%;
+  height: 240px;
+  border-radius: 2px;
+}
+@media (max-width: 760px) {
+  .gears {
+    grid-template-columns: 1fr;
+  }
+  .gears__row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
 /* Fahrzeug-Platte (issue #22): full row under the Getriebe-Pult */
 .vehicle {
   grid-column: 1 / -1;
