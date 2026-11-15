@@ -95,6 +95,7 @@ export class App {
     this.console = new ControlPanel(this.inputs, SOUND_AVAILABLE);
     this.gearbox = new GearboxPanel(this.cfg, this.summary);
     this.info = new DriveInfo(this.cfg, this.gearbox.drivetrain);
+    this.gearbox.drivetrain.setAutoHold(getSettings().autoHold);
     this.announcer = document.createElement("p");
     this.announcer.className = "sr-only";
     this.announcer.setAttribute("aria-live", "polite");
@@ -107,6 +108,7 @@ export class App {
     this.unsubscribeSettings = onSettingsChange((st) => {
       if (st.layout !== this.layoutId) this.setLayout(st.layout);
       this.inputs.damage = st.realism;
+      this.gearbox.drivetrain.setAutoHold(st.autoHold);
       this.console.syncSettings(st);
       this.recorder.syncSettings(st);
       this.syncUnits();
@@ -254,6 +256,11 @@ export class App {
       if (car) this.announce(`Fahrzeug passend zum Motor: ${car.name}.`);
     };
     this.console.onModeChange = (mode) => this.gearbox.setVisible(mode === "vehicle");
+    // parking brake by hand (issue #91): P button or key
+    this.console.onPark = () => {
+      const held = this.gearbox.drivetrain.toggleParkingBrake();
+      this.announce(held ? "Feststellbremse angezogen." : "Feststellbremse gelöst.");
+    };
     this.console.onIgnition = (on) => {
       if (on) void this.ensureSound();
     };
@@ -501,6 +508,10 @@ export class App {
       this.wasRunning = s.running;
       this.toasts.update({ state: s, outOfFuel: this.fuelStall }, now, getSettings().limitHints === "toast");
       if (this.inputs.dynoMode === "vehicle") this.gearbox.update(this.console.brakeHeld);
+      {
+        const ds = this.gearbox.drivetrain.state;
+        this.console.renderPark(this.inputs.dynoMode === "vehicle" && !!ds.parkingBrake, ds.autoHold !== false, this.inputs.dynoMode === "vehicle");
+      }
       this.shiftPad.update(this.inputs.dynoMode === "vehicle");
       // board computer counts only while the car drives on the chassis dyno (#40, #41)
       this.gearbox.trip.step(dt, s, this.inputs.dynoMode === "vehicle");

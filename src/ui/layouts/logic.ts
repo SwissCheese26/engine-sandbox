@@ -184,6 +184,8 @@ export interface LampInput {
   ice?: boolean;
   /** Tank in reserve (chassis dyno); undefined = no tank (engine dyno): the lamp stays dark, also in the bulb check. */
   fuelReserve?: boolean;
+  /** Parking brake applied (issue #91, chassis dyno); undefined = engine dyno: the lamp stays dark. */
+  parkingBrake?: boolean;
 }
 
 export interface LampSet {
@@ -198,6 +200,8 @@ export interface LampSet {
   glow: Lamp;
   /** Fuel reserve (amber), on the chassis dyno only. */
   fuel: Lamp;
+  /** Parking brake / Auto-Hold (red, ISO 2575 "(P)"), on the chassis dyno only (issue #91). */
+  park: Lamp;
 }
 
 /** Bulb check after ignition on, s (typical cluster: 2 … 4 s). */
@@ -217,13 +221,14 @@ export function glowTimeS(coolantC: number): number {
  * - first BULB_CHECK_S after ignition on: every lamp lights (bulb check);
  * - ABS on when switched off, blinking while it regulates; ESP blinks while ASR/ESP intervene; ESP OFF when off;
  * - MIL on after damage, coolant lamp above the coolant limit, oil lamp below the switch pressure or on the warning;
- * - diesel: glow lamp during pre-glow.
+ * - diesel: glow lamp during pre-glow;
+ * - parking brake (red "(P)", issue #91) while it is applied, by Auto-Hold or by hand.
  */
 export function clusterLamps(x: LampInput): LampSet {
-  const off: LampSet = { abs: "off", esp: "off", espOff: "off", ice: "off", oil: "off", battery: "off", engine: "off", coolant: "off", glow: "off", fuel: "off" };
+  const off: LampSet = { abs: "off", esp: "off", espOff: "off", ice: "off", oil: "off", battery: "off", engine: "off", coolant: "off", glow: "off", fuel: "off", park: "off" };
   if (!x.ignition) return off;
   if (x.sinceIgnitionS < BULB_CHECK_S && !x.running) {
-    return { abs: "on", esp: "on", espOff: "off", ice: x.ice ? "on" : "off", oil: "on", battery: "on", engine: "on", coolant: "on", glow: x.diesel ? "on" : "off", fuel: x.fuelReserve === undefined ? "off" : "on" };
+    return { abs: "on", esp: "on", espOff: "off", ice: x.ice ? "on" : "off", oil: "on", battery: "on", engine: "on", coolant: "on", glow: x.diesel ? "on" : "off", fuel: x.fuelReserve === undefined ? "off" : "on", park: x.parkingBrake === undefined ? "off" : "on" };
   }
   const l = { ...off };
   l.battery = x.running ? "off" : "on";
@@ -238,6 +243,7 @@ export function clusterLamps(x: LampInput): LampSet {
   }
   l.ice = x.ice ? "on" : "off";
   l.fuel = x.fuelReserve ? "on" : "off";
+  l.park = x.parkingBrake ? "on" : "off";
   return l;
 }
 

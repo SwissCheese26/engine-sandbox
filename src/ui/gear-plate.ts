@@ -12,6 +12,14 @@ import { prefs } from "./settings.ts";
 import { toUnit } from "./units.ts";
 
 export const RATIOS_KEY = "pruefzelle.gearRatios";
+/** Hints of the gear plate (issue #91): locked while rolling in gear; open with the parking brake applied. */
+export const GEAR_LOCKED_HINT = "Anhalten (Handbremse) oder N";
+export const GEAR_HELD_HINT = "Handbremse aktiv – Übersetzungen änderbar";
+
+/** Lock hint under the ratio fields: "" = none. Pure, unit-tested. */
+export function gearLockHint(editable: boolean, held: boolean): string {
+  return !editable ? GEAR_LOCKED_HINT : held ? GEAR_HELD_HINT : "";
+}
 /** Progression factor φ₂ of the "progressiv" Abstufung (docs/research/vehicle.md §5). */
 const PROGRESSIVE = 1.1;
 const UI_MAX_GEARS = 10;
@@ -94,7 +102,7 @@ export class GearPlate {
           <button type="button" class="btn btn--small" data-control="gear-grade" title="Gänge zwischen 1. und höchstem Gang neu verteilen">Abstufen</button>
         </div>
         <div class="gears__grid" data-out="gear-inputs"></div>
-        <p class="vehicle__hint" data-out="gear-lock" hidden>Bremse treten oder N einlegen, dann lassen sich die Gänge ändern.</p>
+        <p class="vehicle__hint" data-out="gear-lock" role="status" hidden></p>
         <p class="vehicle__hint" data-out="gear-msg" role="status"></p>
       </div>
       <figure class="gears__traction">
@@ -179,7 +187,7 @@ export class GearPlate {
 
   private apply(ratios: number[]) {
     if (this.locked) {
-      this.msg.textContent = "Nicht übernommen: Bremse treten oder N einlegen.";
+      this.msg.textContent = `Nicht übernommen: ${GEAR_LOCKED_HINT}.`;
       return this.syncInputs();
     }
     const err = this.drivetrain.setRatios(ratios);
@@ -364,7 +372,6 @@ export class GearPlate {
 
   private setLocked(locked: boolean) {
     for (const c of this.editor.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>("input, select, button")) c.disabled = locked;
-    this.lockEl.hidden = !locked;
   }
 
   /** Per frame: lock while rolling in gear (hint: brake or N); redraw when the environment changed. */
@@ -378,6 +385,12 @@ export class GearPlate {
         this.sync();
         this.onEdit();
       }
+    }
+    const hint = gearLockHint(!locked, !!d.state.parkingBrake);
+    if (hint !== this.lockEl.textContent || this.lockEl.hidden !== !hint) {
+      this.lockEl.textContent = hint;
+      this.lockEl.hidden = !hint;
+      this.lockEl.classList.toggle("is-held", hint === GEAR_HELD_HINT);
     }
     const env = d.environment;
     if (`${env.gradePct}|${env.altitudeM}|${env.ambientC}` !== this.envKey) {

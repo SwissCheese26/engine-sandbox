@@ -6,6 +6,7 @@ import { prefs } from "../settings.ts";
 import { toUnit } from "../units.ts";
 import { limitZoneRpm, tachoMax } from "./logic.ts";
 import type { DriveInfo, Frame, LayoutView } from "./view.ts";
+import { parkLampHtml, updateParkLamp } from "./park-lamp.ts";
 
 export class CompactView implements LayoutView {
   readonly el: HTMLElement;
@@ -23,7 +24,7 @@ export class CompactView implements LayoutView {
       <div class="kp__val kp__val--rpm"><span>Drehzahl</span><b class="num" data-kp="rpm">0</b><small>1/min</small></div>
       <div class="kp__bar" aria-hidden="true"><i></i></div>
       <div class="kp__val"><span>Tempo</span><b class="num" data-kp="speed">–</b><small data-kp="speed-unit">km/h</small></div>
-      <div class="kp__val"><span>Gang</span><b class="num" data-kp="gear">–</b></div>
+      <div class="kp__val kp__val--gear"><span>Gang</span><b class="num" data-kp="gear">–</b>${parkLampHtml("kp")}</div>
       <div class="kp__val"><span>Leistung</span><b class="num" data-kp="power">0</b><small data-kp="power-unit">kW</small></div>`;
     this.el = el;
     this.bar = el.querySelector(".kp__bar")!;
@@ -60,6 +61,7 @@ export class CompactView implements LayoutView {
     this.put("speed", vehicle ? fmt(toUnit("speed", ds.speedKmh)) : "–");
     this.put("gear", vehicle ? f.drivetrain.gearLabel() : "–");
     this.put("power", fmt(toUnit("power", Math.max(0, s.powerKw))));
+    updateParkLamp(this.out.park!, vehicle && !!ds.parkingBrake, ds.autoHold !== false);
     this.bar.style.setProperty("--rpm", `${Math.min(100, (s.rpm / this.rpmMax) * 100).toFixed(1)}%`);
     const limit = String(s.rpm >= this.zone);
     if (this.last.limit !== limit) {

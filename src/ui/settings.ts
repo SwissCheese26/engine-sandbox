@@ -89,6 +89,8 @@ export interface Settings {
   sound: boolean;
   /** Sound volume 0 … 1. */
   volume: number;
+  /** Auto-Hold (issue #91): the parking brake holds the car at standstill by itself. Default on. */
+  autoHold: boolean;
 }
 
 export type GasRamp = 0 | 1 | 3;
@@ -109,7 +111,7 @@ export const FUEL_PRICE_MAX = 10;
 export const DEFAULT_SETTINGS: Settings = {
   preset: "metric-kw", custom: { ...METRIC }, layout: "pruefzelle", speedo: "standard", speedoCustomKmh: 240, cockpitDesign: "classic", ckFields: [...DEFAULT_FIELDS], throttle: "spring", shiftPad: "auto",
   gasRamp: 0, startWarm: false, autoMeasure: true, pedalSide: "right", wakeLock: true, vibration: "auto", realism: "real",
-  fuelPrice: { diesel: 1.65, petrol: 1.75 }, limitHints: "off", sound: true, volume: 0.6,
+  fuelPrice: { diesel: 1.65, petrol: 1.75 }, limitHints: "off", sound: true, volume: 0.6, autoHold: true,
 };
 
 /** A stored volume, clamped to 0 … 1 in 5 % steps; anything else gives the default. */
@@ -162,6 +164,7 @@ export function validateSettings(raw: unknown): Settings {
     limitHints: oneOf(r.limitHints, ["off", "toast"] as const, d.limitHints),
     sound: typeof r.sound === "boolean" ? r.sound : d.sound,
     volume: clampVolume(r.volume),
+    autoHold: typeof r.autoHold === "boolean" ? r.autoHold : d.autoHold,
   };
 }
 

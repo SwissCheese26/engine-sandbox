@@ -82,15 +82,22 @@ const ASSISTS: { key: keyof AssistSettings; label: string; hint: string }[] = [
 export const ICON = {
   abs: `<svg viewBox="0 0 40 28" aria-hidden="true"><path d="M7 4a14 14 0 0 0 0 20M33 4a14 14 0 0 1 0 20" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="20" cy="14" r="10" fill="none" stroke="currentColor" stroke-width="2.2"/><text x="20" y="17.6" text-anchor="middle" font-size="9.5" font-weight="700" fill="currentColor">ABS</text></svg>`,
   esp: `<svg viewBox="0 0 40 28" aria-hidden="true"><path d="M9 14l3-6h16l3 6v5H9z" fill="currentColor"/><circle cx="13.5" cy="19.5" r="2.4" fill="currentColor"/><circle cx="26.5" cy="19.5" r="2.4" fill="currentColor"/><path d="M11 27c2-2-2-3 0-5M29 27c2-2-2-3 0-5" fill="none" stroke="currentColor" stroke-width="1.8"/></svg>`,
+  /** Parking brake (ISO 2575 / ISO 7000-0238): P in a circle between two brackets, red (issue #91). */
+  park: `<svg viewBox="0 0 40 28" aria-hidden="true"><path d="M7 4a14 14 0 0 0 0 20M33 4a14 14 0 0 1 0 20" fill="none" stroke="currentColor" stroke-width="2.2"/><circle cx="20" cy="14" r="10" fill="none" stroke="currentColor" stroke-width="2.2"/><path d="M17 20V8h4.2a3.6 3.6 0 0 1 0 7.2H17" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linejoin="round"/></svg>`,
   ice: `<svg viewBox="0 0 40 28" aria-hidden="true"><g stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M20 3v22M10.5 8.5l19 11M10.5 19.5l19-11"/><path d="M17 5l3 3 3-3M17 23l3-3 3 3" fill="none"/></g></svg>`,
 } as const;
 
 type LampState = "off" | "on" | "blink";
 
+/** Label of the parking-brake lamp and P button (issue #91). */
+export function parkLampLabel(held: boolean, autoHold: boolean): string {
+  return held ? "Feststellbremse angezogen" : autoHold ? "Feststellbremse gelöst, Auto-Hold bereit" : "Feststellbremse gelöst, Auto-Hold aus";
+}
+
 /** Kontrollleuchten-Leiste: ABS, ESP (blinks while ASR/ESP intervene), ESP OFF / ASR OFF, black ice, launch control. */
 export class WarningLamps {
   readonly el: HTMLElement;
-  private lamps: Record<"abs" | "esp" | "off" | "ice" | "launch", HTMLElement>;
+  private lamps: Record<"park" | "abs" | "esp" | "off" | "ice" | "launch", HTMLElement>;
   private offText: HTMLElement;
   private last = "";
 
@@ -100,13 +107,14 @@ export class WarningLamps {
     el.setAttribute("role", "group");
     el.setAttribute("aria-label", "Kontrollleuchten");
     el.innerHTML = `
+      <span class="lamp lamp--red" data-lamp="park" data-state="off">${ICON.park}</span>
       <span class="lamp lamp--amber" data-lamp="abs" data-state="off">${ICON.abs}</span>
       <span class="lamp lamp--amber" data-lamp="esp" data-state="off">${ICON.esp}</span>
       <span class="lamp lamp--amber lamp--text" data-lamp="off" data-state="off">${ICON.esp}<b>ESP OFF</b></span>
       <span class="lamp lamp--ice" data-lamp="ice" data-state="off">${ICON.ice}</span>
       <span class="lamp lamp--green lamp--text" data-lamp="launch" data-state="off" hidden><b>LAUNCH</b></span>`;
     const q = (k: string) => el.querySelector<HTMLElement>(`[data-lamp=${k}]`)!;
-    this.lamps = { abs: q("abs"), esp: q("esp"), off: q("off"), ice: q("ice"), launch: q("launch") };
+    this.lamps = { park: q("park"), abs: q("abs"), esp: q("esp"), off: q("off"), ice: q("ice"), launch: q("launch") };
     this.offText = this.lamps.off.querySelector("b")!;
     this.el = el;
   }
@@ -120,9 +128,11 @@ export class WarningLamps {
     const offLabel = !a.esp ? "ESP OFF" : !a.asr ? "ASR OFF" : "";
     const ice: LampState = s.iceWarning ? "on" : "off";
     const launch: LampState = s.launchArmed ? "on" : "off";
-    const key = `${abs}|${esp}|${offLabel}|${ice}|${launch}|${a.launchControl}`;
+    const park: LampState = s.parkingBrake ? "on" : "off";
+    const key = `${park}|${abs}|${esp}|${offLabel}|${ice}|${launch}|${a.launchControl}`;
     if (key === this.last) return;
     this.last = key;
+    this.set("park", park, parkLampLabel(!!s.parkingBrake, s.autoHold !== false));
     this.set("abs", abs, abs === "on" ? "ABS ausgeschaltet" : abs === "blink" ? "ABS regelt" : "ABS bereit");
     this.set("esp", esp, esp === "blink" ? "ESP/ASR greift ein" : "ESP/ASR bereit");
     this.offText.textContent = offLabel || "ESP OFF";

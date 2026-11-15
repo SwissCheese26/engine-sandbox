@@ -471,7 +471,7 @@ export class Drivetrain {
    */
   setRatios(ratios: readonly number[]): string | null {
     if (this.st.type === "cvt") return "Das CVT hat keine Gänge";
-    if (!this.ratiosEditable) return "Nur im Stand (Bremse treten) oder in N";
+    if (!this.ratiosEditable) return "Nur im Stand (Handbremse) oder in N";
     const err = validateRatios(ratios);
     if (err) return err;
     const neutral = this.st.gear === 0;
@@ -494,6 +494,7 @@ export class Drivetrain {
 
   /** Auto-Hold on/off (issue #91). Switching it off does not release a brake that is applied. */
   setAutoHold(on: boolean) {
+    if (on === this.autoHoldOn) return;
     this.autoHoldOn = on;
     this.st.autoHold = on;
     this.holdSuppressed = false;
