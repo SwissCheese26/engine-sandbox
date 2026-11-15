@@ -8,11 +8,11 @@ _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `
 
 ### Neu
 
-- Handbremse mit Auto-Hold: Im Stand hält sie das Auto von selbst, auch am Berg, Gas geben löst sie. Rote (P)-Leuchte in jedem Cockpit und eine P-Taste neben der Bremse; Auto-Hold lässt sich in den Einstellungen abschalten. ([#91](https://github.com/SwissCheese26/engine-sandbox/issues/91))
+- Handbremse mit Auto-Hold: Im Stand hält sie das Auto von selbst, auch am Berg, Gas geben löst sie. Rote (P)-Leuchte in jedem Cockpit und eine P-Taste neben der Bremse; Auto-Hold lässt sich in den Einstellungen abschalten. ([#91](https://github.com/SwissCheese26/engine-sandbox/issues/91), [#92](https://github.com/SwissCheese26/engine-sandbox/issues/92))
 
 ### Behoben
 
-- Das Auto rollt im Stand nicht mehr von selbst los, und mit angezogener Handbremse lassen sich die Übersetzungen ändern. ([#91](https://github.com/SwissCheese26/engine-sandbox/issues/91))
+- Das Auto rollt im Stand nicht mehr von selbst los, und mit angezogener Handbremse lassen sich die Übersetzungen ändern. ([#91](https://github.com/SwissCheese26/engine-sandbox/issues/91), [#92](https://github.com/SwissCheese26/engine-sandbox/issues/92))
 
 ## 2026-11-14 – Was ist neu
 
