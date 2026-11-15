@@ -24,6 +24,11 @@ export const PARK_BRAKE_HOLD_PCT = 30;
  * holding pressure in g of the vehicle weight, ≈ a firm stop pedal [S]. The sum is limited by μ·m·g (tyres).
  */
 export const AUTO_HOLD_HYDRAULIC_G = 0.5;
+/**
+ * Deceleration of the applied parking brake while the car still rolls, in g (issue #91 review): a firm but comfortable
+ * stop like an EPB's dynamic braking through the ESP hydraulics, no wheel lock (Bosch [B2]) [S].
+ */
+export const HOLD_ROLL_G = 0.25;
 /** Pedal above which drive-away releases the brake (the automated clutch starts to bite at 0.02). */
 export const HOLD_RELEASE_PEDAL = 0.02;
 /** Pedal below which the throttle counts as closed for Auto-Hold. */

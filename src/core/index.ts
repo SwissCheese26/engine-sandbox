@@ -72,6 +72,6 @@ export type { Terrain } from "./terrain.ts";
 export { DEFAULT_TANK_L, FuelTank, RESERVE_SHARE } from "./fuel-tank.ts";
 // issue #91: parking brake and Auto-Hold
 export {
-  AUTO_HOLD_MAX_KMH, AUTO_HOLD_STOP_KMH, HOLD_ENGAGE_PEDAL, HOLD_RELEASE_PEDAL, PARK_BRAKE_HOLD_PCT, AUTO_HOLD_HYDRAULIC_G, autoHoldEngages, holdCapN, parkBrakeCapN,
+  AUTO_HOLD_MAX_KMH, AUTO_HOLD_STOP_KMH, HOLD_ENGAGE_PEDAL, HOLD_RELEASE_PEDAL, PARK_BRAKE_HOLD_PCT, AUTO_HOLD_HYDRAULIC_G, HOLD_ROLL_G, autoHoldEngages, holdCapN, parkBrakeCapN,
 } from "./parking-brake.ts";
 export type { AutoHoldInput } from "./parking-brake.ts";

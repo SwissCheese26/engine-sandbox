@@ -528,7 +528,10 @@ export class Drivetrain {
     const s = this.st;
     const kmh = vRoadMs * 3.6;
     const geared = s.gear > 0 && engine.running;
-    if (s.parkingBrake && geared && (pedal > HOLD_RELEASE_PEDAL || (s.clutch > 0.1 && s.type !== "automatic"))) s.parkingBrake = false;
+    // drive-away only from (near) standstill: P pressed while rolling keeps braking, even with the gear in, the clutch
+    // closed or the throttle open (review PR #92); the clutch counts only once the held car stands
+    const away = kmh <= AUTO_HOLD_MAX_KMH && (pedal > HOLD_RELEASE_PEDAL || (vRoadMs < 0.1 && s.clutch > 0.1 && s.type !== "automatic"));
+    if (s.parkingBrake && geared && away) s.parkingBrake = false;
     if (this.holdSuppressed && ((brake > 0.05 && this.lastBrake <= 0.05) || kmh > AUTO_HOLD_MAX_KMH || (geared && pedal > HOLD_RELEASE_PEDAL))) this.holdSuppressed = false;
     this.lastBrake = brake;
     if (!s.parkingBrake && this.autoHoldOn && !this.holdSuppressed && autoHoldEngages({ speedKmh: kmh, pedal, brake, running: engine.running, gear: s.gear })) s.parkingBrake = true;
