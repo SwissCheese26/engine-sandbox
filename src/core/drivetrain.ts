@@ -31,6 +31,7 @@ import type { RoadSurface, TyreSetup } from "./tyres.ts";
 import { drivenAxleLoadN, wheelieLimitN } from "./vehicle.ts";
 import { converterK } from "./converter.ts";
 import { dynoSweep } from "./dyno.ts";
+import { AUTO_HOLD_MAX_KMH, HOLD_RELEASE_PEDAL, autoHoldEngages } from "./parking-brake.ts";
 import type { ConverterSpec } from "./converter.ts";
 import type { ConverterCoupling, EngineConfig, EngineState, EngineSummary, VehicleCoupling, VehicleParams } from "./types.ts";
 
@@ -302,6 +303,12 @@ export interface DrivetrainState {
   positionM?: number;
   roadGradePct?: number;
   roadAltitudeM?: number;
+  /**
+   * Issue #91: parking brake applied (by Auto-Hold or by hand) and the Auto-Hold function switched on. Optional for
+   * older consumers; the Drivetrain always sets both.
+   */
+  parkingBrake?: boolean;
+  autoHold?: boolean;
 }
 
 /** A complete vehicle setup (issue #22, src/data/vehicle-library.ts): kind, body, tyre, gearbox, governor. */
@@ -404,6 +411,11 @@ export class Drivetrain {
   private lockup = 0;
   /** Engine speed of the last frame (manual downshift blip, issue #14). */
   private lastRpm = 0;
+  /** Auto-Hold function on (issue #91, setting "Auto-Hold", default on). */
+  private autoHoldOn = true;
+  /** Released by hand: Auto-Hold waits for a fresh brake press, drive-away or > AUTO_HOLD_MAX_KMH. */
+  private holdSuppressed = false;
+  private lastBrake = 0;
 
   constructor(
     private cfg: EngineConfig,
@@ -427,6 +439,7 @@ export class Drivetrain {
       tyreRatingKmh: speedRatingKmh(this.tyreSetup.speedIndex),
       assists: { ...this.assistSet }, absActive: false, asrActive: false, espActive: false, launchArmed: false,
       iceWarning: iceWarning(this.env.ambientC), aquaplaning: false, cruise: this.cc.state,
+      parkingBrake: false, autoHold: this.autoHoldOn,
     };
   }
 
@@ -458,7 +471,7 @@ export class Drivetrain {
    */
   setRatios(ratios: readonly number[]): string | null {
     if (this.st.type === "cvt") return "Das CVT hat keine Gänge";
-    if (!this.ratiosEditable) return "Nur im Stand (Bremse treten) oder in N";
+    if (!this.ratiosEditable) return "Nur im Stand (Handbremse) oder in N";
     const err = validateRatios(ratios);
     if (err) return err;
     const neutral = this.st.gear === 0;
@@ -471,10 +484,57 @@ export class Drivetrain {
 
   /**
    * Gear ratios can be changed (issue #14, review PR #90): not on the CVT; at standstill (≤ 0.5 km/h – a converter
-   * automatic creeping in D stops when the brake is held) or in N, also while rolling.
+   * automatic creeping in D stops when the brake is held), with the parking brake applied (issue #91) or in N, also
+   * while rolling.
    */
   get ratiosEditable(): boolean {
-    return this.st.type !== "cvt" && (this.st.speedKmh <= 0.5 || (this.st.gear === 0 && !this.st.shifting));
+    const s = this.st;
+    return s.type !== "cvt" && (s.speedKmh <= 0.5 || !!s.parkingBrake || (s.gear === 0 && !s.shifting));
+  }
+
+  /** Auto-Hold on/off (issue #91). Switching it off does not release a brake that is applied. */
+  setAutoHold(on: boolean) {
+    if (on === this.autoHoldOn) return;
+    this.autoHoldOn = on;
+    this.st.autoHold = on;
+    this.holdSuppressed = false;
+  }
+
+  get autoHoldEnabled(): boolean {
+    return this.autoHoldOn;
+  }
+
+  /**
+   * Parking brake by hand (issue #91, P button): applied at any speed (a rolling car is braked); released, Auto-Hold
+   * does not grab again until the brake is pressed anew, the car drives off or exceeds AUTO_HOLD_MAX_KMH.
+   */
+  setParkingBrake(on: boolean) {
+    this.st.parkingBrake = on;
+    this.holdSuppressed = !on;
+  }
+
+  /** Toggles the parking brake by hand; returns the new state. */
+  toggleParkingBrake(): boolean {
+    this.setParkingBrake(!this.st.parkingBrake);
+    return !!this.st.parkingBrake;
+  }
+
+  /**
+   * Auto-Hold / drive-away (issue #91, parking-brake.ts, docs/research/vehicle.md §7), from the last frame's speed:
+   * releases on throttle with a gear engaged and the engine running (or a biting clutch); engages at walking pace
+   * without throttle when braking, engine off, in N or stopped.
+   */
+  private updateHold(vRoadMs: number, pedal: number, brake: number, engine: EngineState) {
+    const s = this.st;
+    const kmh = vRoadMs * 3.6;
+    const geared = s.gear > 0 && engine.running;
+    // drive-away only from (near) standstill: P pressed while rolling keeps braking, even with the gear in, the clutch
+    // closed or the throttle open (review PR #92); the clutch counts only once the held car stands
+    const away = kmh <= AUTO_HOLD_MAX_KMH && (pedal > HOLD_RELEASE_PEDAL || (vRoadMs < 0.1 && s.clutch > 0.1 && s.type !== "automatic"));
+    if (s.parkingBrake && geared && away) s.parkingBrake = false;
+    if (this.holdSuppressed && ((brake > 0.05 && this.lastBrake <= 0.05) || kmh > AUTO_HOLD_MAX_KMH || (geared && pedal > HOLD_RELEASE_PEDAL))) this.holdSuppressed = false;
+    this.lastBrake = brake;
+    if (!s.parkingBrake && this.autoHoldOn && !this.holdSuppressed && autoHoldEngages({ speedKmh: kmh, pedal, brake, running: engine.running, gear: s.gear })) s.parkingBrake = true;
   }
 
   get tyre(): TyreSetup {
@@ -674,6 +734,8 @@ export class Drivetrain {
     this.pendingGear = 0;
     this.holdLaunch = 0;
     this.lockup = 0;
+    this.holdSuppressed = false;
+    this.lastBrake = 0;
     this.tc.reset();
     this.tcOut = { pedalCap: 1, torqueCut: 0, pedalFloor: 0 };
     this.resetGovernor();
@@ -815,6 +877,8 @@ export class Drivetrain {
       this.positionM += vRoad * dt;
       this.updateRoad(dt);
     }
+    this.updateHold(Number.isFinite(vRoad) ? vRoad : 0, pedal, brake, engine);
+    const held = !!s.parkingBrake;
     const rpm = engine.rpm;
     this.lastRpm = rpm;
     const idle = this.cfg.idleRpm;
@@ -912,7 +976,9 @@ export class Drivetrain {
       && !s.shifting && !engine.starterEngaged; // cranking: the driver holds the clutch pedal down
     if (dragged) {
       this.holdLaunch = 0;
-      clutch = 1;
+      // held at rest (issue #91): the driver lets the clutch in only once the engine has run down, so its inertia does
+      // not jerk the locked car
+      clutch = held && vRoad < 0.1 && rpm > 50 ? 0 : 1;
     } else if (s.gear === 0 || !engine.running) {
       clutch = 0;
       this.lockup = 0;
@@ -922,7 +988,7 @@ export class Drivetrain {
       // and opens when the turbine speed falls back or the car brakes to a stop (vehicle.md §4) [S]
       const lu = g.converter?.lockUpRpm ?? 1300;
       const on = lu * (1 + 0.5 * pedal);
-      const want = (s.gear >= 2 || pedal < 0.5) && inputRpm > (this.lockup > 0 ? 0.85 * on : on) && !(brake > 0.05 && pedal < 0.02 && inputRpm < idle * 1.4);
+      const want = (s.gear >= 2 || pedal < 0.5) && inputRpm > (this.lockup > 0 ? 0.85 * on : on) && !((brake > 0.05 || held) && pedal < 0.02 && inputRpm < idle * 1.4);
       this.lockup = want ? Math.min(1, this.lockup + 2 * dt) : Math.max(0, this.lockup - 10 * dt);
       // during a shift a closed lock-up clutch slips (controlled slip), the converter takes the speed step
       clutch = s.shifting ? Math.min(this.lockup, 0.6) : this.lockup;
@@ -937,8 +1003,8 @@ export class Drivetrain {
       clutch = 0;
       launchHoldRpm = this.launchRpm(pedal);
       s.launchArmed = true;
-    } else if (brake > 0.05 && pedal < 0.02 && inputRpm < idle * 1.4) {
-      // braking down to a stop: the automatic clutch opens before the engine is dragged below idle.
+    } else if ((brake > 0.05 || held) && pedal < 0.02 && inputRpm < idle * 1.4) {
+      // braking down to a stop (or held by the parking brake, issue #91): the automatic clutch opens before the engine is dragged below idle.
       // With pedal AND brake (left-foot braking) the clutch stays engaged on purpose: the engine works against
       // the brake and can stall, like a real car (review #20).
       this.holdLaunch = 0;
@@ -1081,6 +1147,7 @@ export class Drivetrain {
       ...(cut > 0 ? { torqueCut: cut } : {}),
       ...(s.shifting ? { shifting: true } : {}),
       ...(converter ? { converter } : {}),
+      ...(held ? { parkingBrake: true } : {}),
     };
   }
 

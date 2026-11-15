@@ -1245,6 +1245,65 @@ kbd {
   box-shadow: inset 0 0 0 2px #56655e, 0 0 0 3px var(--alu);
 }
 
+/* parking brake / Auto-Hold toggle (issue #91): next to the brake, as tall as the gas lever, ≥ 44 px wide; red "(P)"
+   lit while applied. Always in place (disabled on the engine dyno), so the bar never shifts. */
+.parkbtn {
+  --park-h: 80px;
+  display: inline-flex;
+  align-self: flex-end;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: var(--fs-12);
+  font-weight: 600;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.parkbtn__plate {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 2px;
+  width: 48px;
+  height: var(--park-h);
+  border-radius: 6px;
+  background: #1f2925;
+  box-shadow: inset 0 0 0 2px #56655e;
+  color: #56655e;
+}
+.parkbtn__plate svg {
+  width: 40px;
+  height: 28px;
+}
+/* the label sits inside the plate, so the button is exactly as tall as the gas lever (review PR #92) */
+.parkbtn__label {
+  font-size: 10px;
+  line-height: 1;
+}
+.parkbtn.is-held .parkbtn__plate {
+  color: #f0412f;
+  box-shadow: inset 0 0 0 2px #f0412f;
+  filter: drop-shadow(0 0 4px rgba(240, 65, 47, 0.45));
+}
+.parkbtn:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+.parkbtn:focus-visible {
+  outline: none;
+}
+.parkbtn:focus-visible .parkbtn__plate {
+  box-shadow: inset 0 0 0 2px #56655e, 0 0 0 3px var(--alu);
+}
+
 /* ── Medium: stack the stage blocks ─────────────────────────────────────── */
 @media (max-width: 1360px) {
   .instruments {
@@ -1426,6 +1485,9 @@ kbd {
     width: 60px;
     height: 92px;
   }
+  .parkbtn {
+    --park-h: 92px;
+  }
   .pedal {
     grid-template-areas: "value track" "value track" "value track";
     align-items: center;
@@ -1482,6 +1544,9 @@ kbd {
   }
   .pedal__track {
     height: 68px;
+  }
+  .parkbtn {
+    --park-h: 68px;
   }
   .pedal__hint {
     display: none;
@@ -1942,6 +2007,7 @@ kbd {
    driver knows from the instrument cluster (design.md: "Gelb heißt Grenze" – an intervention is the grip limit). */
 .lamps {
   --lamp-amber: #ffad1f;
+  --lamp-red: #f0412f;
   --lamp-ice: #e8f1f6;
   --lamp-green: #5fd068;
   --lamp-dark: #232b28;
@@ -1973,6 +2039,10 @@ kbd {
 }
 .lamp[hidden] {
   display: none;
+}
+.lamp--red[data-state="on"] {
+  color: var(--lamp-red);
+  filter: drop-shadow(0 0 3px rgba(240, 65, 47, 0.6));
 }
 .lamp--amber[data-state="on"],
 .lamp--amber[data-state="blink"] {
@@ -2268,6 +2338,12 @@ kbd {
   .shiftpad__btn {
     width: 48px;
   }
+  .parkbtn__plate {
+    width: 44px;
+  }
+  .parkbtn__plate svg {
+    width: 36px;
+  }
   .deck:has(.shiftpad:not([hidden]):not(.is-auto)) .brakepedal__plate {
     width: 56px;
   }
@@ -2285,6 +2361,7 @@ kbd {
     align-items: flex-start;
   }
   .pedals > .shiftpad,
+  .pedals > .parkbtn,
   .pedals > .brakepedal {
     align-self: flex-start;
     /* the gas value row: --fs-14 at the body line height 1.45, then the pedal row gap */

@@ -14,7 +14,8 @@ import { meanPistonSpeed } from "./geometry.ts";
 import { createLimitTracker, evaluateLimits, oilPressureBar, stepThermal, stepTurbo } from "./subsystems.ts";
 import type { LimitTracker, ThermalState, TurboState } from "./subsystems.ts";
 import { isAirCooled } from "./thermal.ts";
-import { PEAK_SLIP, tyreForceFactor } from "./tyres.ts";
+import { PEAK_SLIP, SLIDE_FACTOR, tyreForceFactor } from "./tyres.ts";
+import { HOLD_ROLL_G, holdCapN } from "./parking-brake.ts";
 import { drivenAxleLoadN, wheelieLimitN } from "./vehicle.ts";
 import type { EngineConfig, EngineState, SimInputs, VehicleCoupling, Warning } from "./types.ts";
 import { converterTorques } from "./converter.ts";
@@ -559,13 +560,25 @@ const LOCK_SLIP = -0.3;
  * negative (locked driven wheels). The service brake acts on the vehicle, limited to μ·m·g (above: locked,
  * 0.9·μ·m·g); at standstill it holds the car like before (tiedStep).
  */
-function stepVehicle(x: Internal, c: VehicleCoupling, engineTorqueNm: number, J: number, h: number) {
+function stepVehicle(x: Internal, cIn: VehicleCoupling, engineTorqueNm: number, J: number, h: number) {
+  let c = cIn;
+  if (c.parkingBrake) {
+    // issue #91 review: the wheels lock only at standstill. Still rolling, the hold brakes like a firm service brake –
+    // the driver's pedal, or at least HOLD_ROLL_G, never above 0.8·μ (no wheel lock, no jolt) – until v = 0.
+    // below HOLD_STOP_MS the car counts as stopped (the slip-based tyre force vanishes at crawling speed on a slope,
+    // the car would creep on forever at a few mm/s); the static hold takes over, ≤ 2 m/s² over one 60 Hz frame
+    if (x.vSpeed > HOLD_STOP_MS) c = { ...c, parkingBrake: false, brake: rollingHoldBrake(c) };
+    else {
+      heldStep(x, c, engineTorqueNm, J, h, c.grip !== undefined && Number.isFinite(c.grip) && c.vehicle.driveLayout !== undefined ? Math.max(0.01, c.grip) : undefined);
+      return;
+    }
+  }
   const veh = c.vehicle;
   const pedalB = clamp(c.brake ?? 0, 0, 1);
   const atRest = x.vSpeed <= 1e-3;
   const traction = c.grip !== undefined && Number.isFinite(c.grip) && veh.driveLayout !== undefined;
   x.absT = Math.min(9, x.absT + h);
-  if (!traction || (atRest && pedalB > 0.05 && x.vWheel <= 0.05)) {
+  if (!traction ||(atRest && pedalB > 0.05 && x.vWheel <= 0.05)) {
     tiedStep(x, c, engineTorqueNm, J, h, traction ? Math.max(0.01, c.grip!) : undefined);
     return;
   }
@@ -755,6 +768,76 @@ function solve3(A: number[][], b: number[]): [number, number, number] {
   const D = d(A);
   const col = (k: number) => A.map((row, j) => row.map((v, c) => (c === k ? b[j]! : v)));
   return [d(col(0)) / D, d(col(1)) / D, d(col(2)) / D];
+}
+
+/**
+ * Service-brake pedal equivalent while the parking brake is applied and the car still rolls (issue #91 review): the
+ * driver's pedal, at least HOLD_ROLL_G, capped at 0.8·μ so the wheels do not lock (EPB "dynamic braking" via the
+ * ESP hydraulics decelerates without locking, Bosch Kraftfahrtechnisches Taschenbuch [B2], vehicle.md §7).
+ */
+/** Speed below which the applied parking brake counts as standing (0.1 km/h), m/s (issue #91 review). */
+const HOLD_STOP_MS = 0.03;
+
+function rollingHoldBrake(c: VehicleCoupling): number {
+  const driver = clamp(c.brake ?? 0, 0, 1);
+  const mu = c.grip !== undefined && Number.isFinite(c.grip) ? Math.max(0.01, c.grip) : 1;
+  const hold = Math.min(HOLD_ROLL_G, 0.8 * mu) / BRAKE_MAX_G;
+  return Math.max(driver, hold);
+}
+
+/**
+ * Parking brake applied at standstill (issue #91, docs/research/vehicle.md §7): the braked wheels are locked, so the gearbox output
+ * stands still. The engine works against the input shaft at rest: a converter is loaded at stall (pump torque
+ * λ(0)·(n/K)², converter.ts) and the idle governor holds the speed; a clutch slips (it is opened by the drivetrain).
+ * Vehicle: the drive force through the turbine/clutch, the downhill force m·g·sin θ (Mitschke/Wallentowitz [B5]) and
+ * the static friction of parking brake, Auto-Hold hydraulics (engine running) and service brake, together at most
+ * μ·m·g·cos θ (tyre), see holdCapN. The car stays at v = 0 while F_drive − F_grade ≤ F_hold; above the limit it
+ * slides forward (no reverse, see §3). A rolling car is braked in stepVehicle (rollingHoldBrake) instead.
+ */
+function heldStep(x: Internal, c: VehicleCoupling, engineTorqueNm: number, J: number, h: number, mu?: number) {
+  const veh = c.vehicle;
+  const m = veh.massKg;
+  const r = veh.wheelRadiusM;
+  const i = c.totalRatio;
+  const eta = clamp(c.efficiency, 0.5, 1);
+  const wEng = x.rpm / RPM_PER_RADS;
+  const cap = clamp(c.clutch, 0, 1) * c.clutchCapacityNm;
+  const gr = gradeOf(c);
+  const muEff = mu ?? 1;
+  let pump = 0;
+  let tIn = 0;
+  if (i > 0 && c.converter) {
+    const t = converterTorques(c.converter, x.rpm, 0);
+    const l = cap * Math.tanh(wEng / 3);
+    pump = t.pumpNm + l;
+    tIn = t.turbineNm + l;
+  } else if (i > 0) {
+    pump = cap * Math.tanh(wEng / 3);
+    tIn = pump * (pump > 0 ? Math.max(1, c.torqueRatio ?? 1) : 1);
+  }
+  let wE = wEng + ((engineTorqueNm - pump) / J) * h;
+  if (wE < 0) wE = 0;
+  x.rpm = wE * RPM_PER_RADS;
+  const fWheelie = wheelieLimitN(veh);
+  const fDrive = i > 0 ? Math.min(fWheelie, (tIn * i * (tIn >= 0 ? eta : 1 / eta)) / r) : 0;
+  const fGrade = m * G * gr.sin;
+  const pedalB = clamp(c.brake ?? 0, 0, 1);
+  const tyreMax = muEff * m * G * gr.cos;
+  const fHold = Math.min(tyreMax, holdCapN(veh, muEff, gr.cos, x.running) + Math.min(pedalB * BRAKE_MAX_G, muEff) * m * G * gr.cos);
+  const v0 = x.vSpeed;
+  // (practically) at rest – stepVehicle calls this only below HOLD_STOP_MS: static friction holds it at v = 0, beyond
+  // the holding force it slides forward
+  const net = fDrive - fGrade;
+  x.vSpeed = net > fHold ? v0 + ((net - SLIDE_FACTOR * fHold) / m) * h : 0;
+  x.grip = muEff;
+  x.vWheel = 0;
+  x.vBrk = 0;
+  x.absF = 0;
+  x.absRelease = false;
+  x.spin = false;
+  x.locked = x.vSpeed > 0.5;
+  x.tyreF = x.vSpeed > 0 ? -SLIDE_FACTOR * fHold : 0;
+  x.aLong += ((x.vSpeed - v0) / h - x.aLong) * Math.min(1, h / 0.02);
 }
 
 /**

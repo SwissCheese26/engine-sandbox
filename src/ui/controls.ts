@@ -5,6 +5,7 @@
 import type { EngineState, SimInputs } from "../core/index.ts";
 import { clamp, fmt } from "./format.ts";
 import { isTouch } from "./device.ts";
+import { ICON as LAMP_ICON, parkLampLabel } from "./environment-panel.ts";
 import { GAS_RAMPS, clampVolume, getSettings, setSettings, type GasRamp, type Settings } from "./settings.ts";
 
 const PEDAL_STEP = 0.05;
@@ -47,6 +48,10 @@ export class ControlPanel {
   }
   /** Brake pedal next to the gas lever, shown on touch screens (phones have no S key). */
   readonly brakeEl: HTMLButtonElement;
+  /** Parking brake / Auto-Hold toggle (issue #91), next to the brake pedal; key P. */
+  readonly parkEl: HTMLButtonElement;
+  private parkKey = "";
+  private parkLabel: HTMLElement;
   /** Gas lever and brake pedal side by side, as placed in the deck. */
   readonly pedalsEl: HTMLElement;
   private starterPointer = false;
@@ -61,6 +66,8 @@ export class ControlPanel {
   onSound: (muted: boolean, volume: number) => void = () => {};
   onModeChange?: (mode: SimInputs["dynoMode"]) => void;
   onReset: () => void = () => {};
+  /** P button or key: toggle the parking brake (chassis dyno only, wired by the app). */
+  onPark: () => void = () => {};
   /** Warm/cold start toggled; the app resets a standing engine so the new temperatures apply. */
   onWarmChange: (warm: boolean) => void = () => {};
 
@@ -199,9 +206,25 @@ export class ControlPanel {
     // focus moving away (e.g. a finger on the gas lever) ends only the keyboard brake, not a finger on the pedal
     this.brakeEl.addEventListener("blur", () => this.brakeBtnKey && brakeKey(false));
     this.brakeEl.addEventListener("contextmenu", (e) => e.preventDefault());
+    // parking brake (issue #91): a toggle as tall as the gas lever, red "(P)" lit while applied. Always in the bar on
+    // the chassis dyno (also on desktop, key P); disabled but in place on the engine dyno, so the bar never moves.
+    this.parkEl = document.createElement("button");
+    this.parkEl.type = "button";
+    this.parkEl.className = "parkbtn";
+    this.parkEl.dataset.control = "park";
+    this.parkEl.setAttribute("aria-pressed", "false");
+    this.parkEl.setAttribute("aria-keyshortcuts", "P");
+    this.parkEl.innerHTML = `<span class="parkbtn__plate">${LAMP_ICON.park}<span class="parkbtn__label">Halten</span></span>`;
+    this.parkEl.addEventListener("click", () => this.onPark());
+    this.parkEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") e.stopPropagation(); // not the gas key
+    });
+    this.parkEl.addEventListener("contextmenu", (e) => e.preventDefault());
+    this.parkLabel = this.parkEl.querySelector(".parkbtn__label")!;
+    this.renderPark(false, true, false);
     this.pedalsEl = document.createElement("div");
     this.pedalsEl.className = "pedals";
-    this.pedalsEl.append(this.brakeEl, this.pedalEl);
+    this.pedalsEl.append(this.parkEl, this.brakeEl, this.pedalEl);
     this.pedalOut = this.pedalEl.querySelector(".pedal__value")!;
 
     this.wire();
@@ -354,6 +377,10 @@ export class ControlPanel {
       }
       return true;
     }
+    if (key === "p") {
+      if (down && !e.repeat && this.inputs.dynoMode === "vehicle") this.onPark();
+      return this.inputs.dynoMode === "vehicle";
+    }
     if (key === "w" || (key === " " && !activatable)) {
       if (e.repeat) return true;
       this.gasHeld = down;
@@ -381,6 +408,23 @@ export class ControlPanel {
     if (this.inputs.dynoMode !== "vehicle" || this.lever === 0 || getSettings().throttle === "hold") return;
     this.lever = 0;
     this.renderPedal();
+  }
+
+  /** Per frame from the app: parking brake applied, Auto-Hold on, button usable (chassis dyno). DOM only on change. */
+  renderPark(held: boolean, autoHold: boolean, enabled: boolean, moving = false) {
+    const key = `${held}|${autoHold}|${enabled}|${moving}`;
+    if (key === this.parkKey) return;
+    this.parkKey = key;
+    const b = this.parkEl;
+    b.classList.toggle("is-held", held);
+    b.setAttribute("aria-pressed", String(held));
+    b.disabled = !enabled;
+    // applied while rolling it brakes the car down: the button reads "Bremst" until the car stands (review PR #92)
+    this.parkLabel.textContent = held && moving ? "Bremst" : "Halten";
+    b.classList.toggle("is-braking", held && moving);
+    const label = enabled ? `${parkLampLabel(held, autoHold, moving)}. ${held ? "Lösen" : "Anziehen"} mit P` : "Feststellbremse: nur auf dem Rollenprüfstand";
+    b.setAttribute("aria-label", label);
+    b.title = label;
   }
 
   private renderBrake() {
@@ -548,8 +592,9 @@ export class ControlPanel {
   /** Gas on the right (brake left of it) or mirrored for left hands (#66). DOM order, so Tab follows the eye. */
   setPedalSide(side: Settings["pedalSide"]) {
     // other parts (the shift buttons) sit on the outside, away from the gas lever
-    const others = [...this.pedalsEl.children].filter((c) => c !== this.brakeEl && c !== this.pedalEl);
-    const order = side === "left" ? [this.pedalEl, this.brakeEl, ...others] : [...others, this.brakeEl, this.pedalEl];
+    // the P button sits right next to the brake, on its far side from the gas lever (issue #91)
+    const others = [...this.pedalsEl.children].filter((c) => c !== this.brakeEl && c !== this.pedalEl && c !== this.parkEl);
+    const order = side === "left" ? [this.pedalEl, this.brakeEl, this.parkEl, ...others] : [...others, this.parkEl, this.brakeEl, this.pedalEl];
     const kids = [...this.pedalsEl.children];
     if (order.every((c, i) => kids[i] === c)) return;
     // moving the focused element would drop the focus; restore it

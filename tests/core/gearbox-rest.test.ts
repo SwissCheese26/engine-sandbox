@@ -84,6 +84,8 @@ describe("ratios while rolling (review PR #90)", () => {
   test("rejected rolling in gear, allowed in N while rolling and after braking to a stop; creeping automatic", () => {
     const cfg = libraryConfig("lib-bmw-m57d30tu2");
     const { dt, step } = rig(cfg, "automatic");
+    dt.setAutoHold(false); // creeping needs Auto-Hold off (issue #91)
+    dt.setParkingBrake(false); // the start-up brake left it applied
     const r = gradedRatios(4.5, 0.65, 8, 1.1);
     for (let i = 0; i < 5 * 60; i++) step(0); // creeps in D
     expect(dt.state.speedKmh).toBeGreaterThan(3);
@@ -155,6 +157,8 @@ describe("converter automatic in the simulator (issue #14)", () => {
     expect(dt.state.speedKmh).toBeLessThan(0.5);
     // the converter loads the idling engine ((n/K)² ≈ 30–80 Nm)
     expect(sim.state.torqueNm).toBeGreaterThan(20);
+    dt.setAutoHold(false); // creeping needs Auto-Hold off (issue #91)
+    dt.setParkingBrake(false);
     for (let i = 0; i < 15 * 60; i++) step(0);
     expect(sim.state.running).toBe(true);
     expect(dt.state.speedKmh).toBeGreaterThan(3);

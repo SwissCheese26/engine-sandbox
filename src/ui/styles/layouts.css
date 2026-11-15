@@ -783,3 +783,24 @@
   background: transparent;
   padding: 0;
 }
+
+/* parking-brake lamp (issue #91) in Renn-Dash (speed tile) and Kompakt (gear tile): red "(P)" in the corner */
+.rd__cell--speed,
+.kp__val--gear {
+  position: relative;
+}
+.park-lamp {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  display: inline-flex;
+  color: #2a3230;
+}
+.park-lamp svg {
+  width: 36px;
+  height: 25px;
+}
+.park-lamp[data-state="on"] {
+  color: #f0412f;
+  filter: drop-shadow(0 0 4px rgba(240, 65, 47, 0.6));
+}

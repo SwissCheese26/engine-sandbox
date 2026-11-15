@@ -8,6 +8,7 @@ import { prefs } from "../settings.ts";
 import { fmtQ, toUnit } from "../units.ts";
 import { ledColors, limitZoneRpm, shiftLights, tachoMax } from "./logic.ts";
 import type { DriveInfo, Frame, LayoutView } from "./view.ts";
+import { parkLampHtml, updateParkLamp } from "./park-lamp.ts";
 
 const LEDS = 12;
 /** Flash rate of the blue shift light, Hz (typical motorsport dashes: 5 … 10 Hz). */
@@ -40,7 +41,7 @@ export class RaceView implements LayoutView {
       <div class="rd__leds" aria-hidden="true">${ledColors(LEDS).map((c) => `<span class="rd-led" data-color="${c}"></span>`).join("")}</div>
       <p class="sr-only" data-rd="shift" role="status"></p>
       <div class="rd__grid">
-        <div class="rd__cell rd__cell--speed"><span class="rd__lab" data-rd="speed-unit">km/h</span><b class="num rd__big" data-rd="speed">–</b></div>
+        <div class="rd__cell rd__cell--speed"><span class="rd__lab" data-rd="speed-unit">km/h</span><b class="num rd__big" data-rd="speed">–</b>${parkLampHtml("rd")}</div>
         <div class="rd__gear num"><span class="sr-only">Gang </span><b data-rd="gear">N</b></div>
         <div class="rd__cell rd__cell--rpm"><span class="rd__lab">1/min</span><b class="num rd__big" data-rd="rpm">0</b></div>
       </div>
@@ -97,6 +98,7 @@ export class RaceView implements LayoutView {
     this.put("rpm", fmt(Math.round(s.rpm / 10) * 10));
     this.put("gear", vehicle ? (ds.shifting && ds.type === "manual" ? "–" : d.gearLabel().replace(/^[DM](?=\d)/, "")) : "–");
     this.put("power", fmtQ("power", Math.max(0, s.powerKw)));
+    updateParkLamp(this.out.park!, vehicle && !!ds.parkingBrake, ds.autoHold !== false, ds.speedKmh > 0.5);
 
     // shift lights: on the chassis dyno at the gear's optimal shift point, on the engine dyno at peak power
     const shiftRpm = vehicle && ds.gear > 0 && ds.type !== "cvt" && ds.gear < ds.gearCount ? this.info.shiftRpm(ds.gear) : vehicle ? this.cfg.revLimitRpm : this.summary.peakPowerRpm;

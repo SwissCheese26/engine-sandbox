@@ -314,6 +314,12 @@ export interface VehicleCoupling {
    * lock-up clutch in parallel to it; torqueRatio is ignored.
    */
   converter?: ConverterCoupling;
+  /**
+   * Parking brake applied (issue #91, Auto-Hold, parking-brake.ts): the braked wheels are locked (no creep, a converter
+   * stays loaded against the brake). At rest it holds the car against the gradient up to the holding limit
+   * (PARK_BRAKE_HOLD_PCT, at most μ·N of the rear axle); a car still rolling is braked to a stop.
+   */
+  parkingBrake?: boolean;
 }
 
 /** Converter characteristic handed to the simulator (issue #14, docs/research/vehicle.md §4). */

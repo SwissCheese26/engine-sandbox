@@ -20,6 +20,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    date: "2026-11-15",
+    title: "Handbremse und Auto-Hold",
+    items: [
+      { kind: "neu", text: "Handbremse mit Auto-Hold: Im Stand hält sie das Auto von selbst, auch am Berg, Gas geben löst sie. Rote (P)-Leuchte in jedem Cockpit und eine P-Taste neben der Bremse; Auto-Hold lässt sich in den Einstellungen abschalten.", refs: [91, 92] },
+      { kind: "behoben", text: "Das Auto rollt im Stand nicht mehr von selbst los, und mit angezogener Handbremse lassen sich die Übersetzungen ändern.", refs: [91, 92] },
+    ],
+  },
+  {
     date: "2026-11-14",
     title: "Was ist neu",
     items: [

@@ -16,6 +16,7 @@ import type { DriveInfo, Frame, LayoutView } from "./view.ts";
 
 type LampKey = keyof LampSet;
 const LAMPS: { k: LampKey; color: "red" | "amber" | "ice"; icon: string; on: string; text?: string }[] = [
+  { k: "park", color: "red", icon: BASE_ICON.park, on: "Feststellbremse angezogen" },
   { k: "battery", color: "red", icon: ICON2.battery, on: "Ladekontrolle: Lichtmaschine lädt nicht" },
   { k: "oil", color: "red", icon: ICON2.oil, on: "Öldruck zu niedrig" },
   { k: "coolant", color: "red", icon: ICON2.coolant, on: "Kühlmittel zu heiß" },
@@ -582,6 +583,7 @@ export class CockpitView implements LayoutView {
       esp: vehicle ? { esp: a.esp, asr: a.asr, active: !!(ds.asrActive || ds.espActive) } : undefined,
       ice: !!ds.iceWarning,
       fuelReserve: vehicle ? d.tank.reserve : undefined,
+      parkingBrake: vehicle ? !!ds.parkingBrake : undefined,
     });
     const key = Object.values(set).join("|");
     if (key === this.lastLamps) return;

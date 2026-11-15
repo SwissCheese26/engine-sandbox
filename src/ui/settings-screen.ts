@@ -162,6 +162,7 @@ export class SettingsScreen {
             <label><input type="checkbox" data-set="startWarm" /> <span><b>Motor warm starten</b>: Kühlmittel und Öl sind schon auf Betriebstemperatur.</span></label>
             <label><input type="checkbox" data-set="autoMeasure" /> <span><b>Automatisch messen</b>: nach jedem Umbau die Volllastkurve neu aufnehmen.</span></label>
             <label><input type="checkbox" data-set="wakeLock" /> <span><b>Bildschirm wach halten</b>, solange der Motor läuft.</span></label>
+            <label><input type="checkbox" data-set="autoHold" /> <span><b>Auto-Hold</b>: Im Stand hält die Feststellbremse das Auto von selbst, Gas geben löst sie.</span></label>
           </fieldset>
           <fieldset class="office__choice">
             <legend>Vibration</legend>
@@ -312,7 +313,7 @@ export class SettingsScreen {
     radio("realism", "realism", (v) => (v === "lenient" || v === "off" ? v : "real"));
     radio("limithints", "limitHints", (v) => (v === "toast" ? "toast" : "off"));
     el.querySelectorAll<HTMLInputElement>("input[data-set]").forEach((c) =>
-      c.addEventListener("change", () => setSettings({ [c.dataset.set as "startWarm" | "autoMeasure" | "wakeLock" | "sound"]: c.checked })),
+      c.addEventListener("change", () => setSettings({ [c.dataset.set as "startWarm" | "autoMeasure" | "wakeLock" | "sound" | "autoHold"]: c.checked })),
     );
     el.querySelectorAll<HTMLInputElement>("input[data-price]").forEach((inp) =>
       inp.addEventListener("change", () => {
@@ -402,7 +403,7 @@ export class SettingsScreen {
     check("vibration", s.vibration);
     check("realism", s.realism);
     check("limithints", s.limitHints);
-    this.el.querySelectorAll<HTMLInputElement>("input[data-set]").forEach((c) => (c.checked = s[c.dataset.set as "startWarm" | "autoMeasure" | "wakeLock" | "sound"]));
+    this.el.querySelectorAll<HTMLInputElement>("input[data-set]").forEach((c) => (c.checked = s[c.dataset.set as "startWarm" | "autoMeasure" | "wakeLock" | "sound" | "autoHold"]));
     this.el.querySelectorAll<HTMLInputElement>("input[data-price]").forEach((inp) => (inp.value = s.fuelPrice[inp.dataset.price as "diesel" | "petrol"].toFixed(2)));
     const nav = globalThis.navigator as { wakeLock?: unknown; vibrate?: unknown } | undefined;
     const missing = [!nav?.wakeLock && "Bildschirm wach halten", typeof nav?.vibrate !== "function" && "Vibration"].filter(Boolean);

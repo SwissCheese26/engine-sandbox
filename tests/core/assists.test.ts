@@ -69,6 +69,8 @@ describe("environment (issue #23)", () => {
         v = r.step(1).vehicleSpeedMs! * 3.6;
       }
       const r2 = assistRig(TDI, { env: { gradePct } });
+      r2.dt.setAutoHold(false); // rolling without a brake: Auto-Hold off (issue #91)
+      r2.dt.setParkingBrake(false); // the start-up brake left it applied
       let roll = 0;
       for (let i = 0; i < 300; i++) roll = r2.step(0).vehicleSpeedMs! * 3.6;
       return { v, roll };
