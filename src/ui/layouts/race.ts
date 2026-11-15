@@ -98,7 +98,7 @@ export class RaceView implements LayoutView {
     this.put("rpm", fmt(Math.round(s.rpm / 10) * 10));
     this.put("gear", vehicle ? (ds.shifting && ds.type === "manual" ? "–" : d.gearLabel().replace(/^[DM](?=\d)/, "")) : "–");
     this.put("power", fmtQ("power", Math.max(0, s.powerKw)));
-    updateParkLamp(this.out.park!, vehicle && !!ds.parkingBrake, ds.autoHold !== false);
+    updateParkLamp(this.out.park!, vehicle && !!ds.parkingBrake, ds.autoHold !== false, ds.speedKmh > 0.5);
 
     // shift lights: on the chassis dyno at the gear's optimal shift point, on the engine dyno at peak power
     const shiftRpm = vehicle && ds.gear > 0 && ds.type !== "cvt" && ds.gear < ds.gearCount ? this.info.shiftRpm(ds.gear) : vehicle ? this.cfg.revLimitRpm : this.summary.peakPowerRpm;

@@ -9,9 +9,9 @@ export function parkLampHtml(prefix: "rd" | "kp"): string {
 }
 
 /** Sets the lamp state; the DOM is touched only on a change. */
-export function updateParkLamp(el: HTMLElement, held: boolean, autoHold: boolean) {
+export function updateParkLamp(el: HTMLElement, held: boolean, autoHold: boolean, moving = false) {
   const st = held ? "on" : "off";
-  const label = parkLampLabel(held, autoHold);
+  const label = parkLampLabel(held, autoHold, moving);
   if (el.dataset.state === st && el.getAttribute("aria-label") === label) return;
   el.dataset.state = st;
   el.setAttribute("aria-label", label);

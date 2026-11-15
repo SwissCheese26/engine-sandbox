@@ -89,9 +89,12 @@ export const ICON = {
 
 type LampState = "off" | "on" | "blink";
 
-/** Label of the parking-brake lamp and P button (issue #91). */
-export function parkLampLabel(held: boolean, autoHold: boolean): string {
-  return held ? "Feststellbremse angezogen" : autoHold ? "Feststellbremse gelöst, Auto-Hold bereit" : "Feststellbremse gelöst, Auto-Hold aus";
+/**
+ * Label of the parking-brake lamp and P button (issue #91). Applied while the car still rolls it brakes the car down
+ * (it does not hold yet), so the label says that (review PR #92).
+ */
+export function parkLampLabel(held: boolean, autoHold: boolean, moving = false): string {
+  return held ? (moving ? "Feststellbremse angezogen: bremst das Auto ab" : "Feststellbremse angezogen") : autoHold ? "Feststellbremse gelöst, Auto-Hold bereit" : "Feststellbremse gelöst, Auto-Hold aus";
 }
 
 /** Kontrollleuchten-Leiste: ABS, ESP (blinks while ASR/ESP intervene), ESP OFF / ASR OFF, black ice, launch control. */
@@ -129,10 +132,11 @@ export class WarningLamps {
     const ice: LampState = s.iceWarning ? "on" : "off";
     const launch: LampState = s.launchArmed ? "on" : "off";
     const park: LampState = s.parkingBrake ? "on" : "off";
-    const key = `${park}|${abs}|${esp}|${offLabel}|${ice}|${launch}|${a.launchControl}`;
+    const parkMoving = !!s.parkingBrake && s.speedKmh > 0.5;
+    const key = `${park}|${parkMoving}|${abs}|${esp}|${offLabel}|${ice}|${launch}|${a.launchControl}`;
     if (key === this.last) return;
     this.last = key;
-    this.set("park", park, parkLampLabel(!!s.parkingBrake, s.autoHold !== false));
+    this.set("park", park, parkLampLabel(!!s.parkingBrake, s.autoHold !== false, parkMoving));
     this.set("abs", abs, abs === "on" ? "ABS ausgeschaltet" : abs === "blink" ? "ABS regelt" : "ABS bereit");
     this.set("esp", esp, esp === "blink" ? "ESP/ASR greift ein" : "ESP/ASR bereit");
     this.offText.textContent = offLabel || "ESP OFF";

@@ -51,6 +51,7 @@ export class ControlPanel {
   /** Parking brake / Auto-Hold toggle (issue #91), next to the brake pedal; key P. */
   readonly parkEl: HTMLButtonElement;
   private parkKey = "";
+  private parkLabel: HTMLElement;
   /** Gas lever and brake pedal side by side, as placed in the deck. */
   readonly pedalsEl: HTMLElement;
   private starterPointer = false;
@@ -213,12 +214,13 @@ export class ControlPanel {
     this.parkEl.dataset.control = "park";
     this.parkEl.setAttribute("aria-pressed", "false");
     this.parkEl.setAttribute("aria-keyshortcuts", "P");
-    this.parkEl.innerHTML = `<span class="parkbtn__plate">${LAMP_ICON.park}</span><span class="parkbtn__label">Halten</span>`;
+    this.parkEl.innerHTML = `<span class="parkbtn__plate">${LAMP_ICON.park}<span class="parkbtn__label">Halten</span></span>`;
     this.parkEl.addEventListener("click", () => this.onPark());
     this.parkEl.addEventListener("keydown", (e) => {
       if (e.key === "Enter" || e.key === " ") e.stopPropagation(); // not the gas key
     });
     this.parkEl.addEventListener("contextmenu", (e) => e.preventDefault());
+    this.parkLabel = this.parkEl.querySelector(".parkbtn__label")!;
     this.renderPark(false, true, false);
     this.pedalsEl = document.createElement("div");
     this.pedalsEl.className = "pedals";
@@ -409,15 +411,18 @@ export class ControlPanel {
   }
 
   /** Per frame from the app: parking brake applied, Auto-Hold on, button usable (chassis dyno). DOM only on change. */
-  renderPark(held: boolean, autoHold: boolean, enabled: boolean) {
-    const key = `${held}|${autoHold}|${enabled}`;
+  renderPark(held: boolean, autoHold: boolean, enabled: boolean, moving = false) {
+    const key = `${held}|${autoHold}|${enabled}|${moving}`;
     if (key === this.parkKey) return;
     this.parkKey = key;
     const b = this.parkEl;
     b.classList.toggle("is-held", held);
     b.setAttribute("aria-pressed", String(held));
     b.disabled = !enabled;
-    const label = enabled ? `${parkLampLabel(held, autoHold)}. ${held ? "Lösen" : "Anziehen"} mit P` : "Feststellbremse: nur auf dem Rollenprüfstand";
+    // applied while rolling it brakes the car down: the button reads "Bremst" until the car stands (review PR #92)
+    this.parkLabel.textContent = held && moving ? "Bremst" : "Halten";
+    b.classList.toggle("is-braking", held && moving);
+    const label = enabled ? `${parkLampLabel(held, autoHold, moving)}. ${held ? "Lösen" : "Anziehen"} mit P` : "Feststellbremse: nur auf dem Rollenprüfstand";
     b.setAttribute("aria-label", label);
     b.title = label;
   }

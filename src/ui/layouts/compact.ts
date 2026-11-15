@@ -61,7 +61,7 @@ export class CompactView implements LayoutView {
     this.put("speed", vehicle ? fmt(toUnit("speed", ds.speedKmh)) : "–");
     this.put("gear", vehicle ? f.drivetrain.gearLabel() : "–");
     this.put("power", fmt(toUnit("power", Math.max(0, s.powerKw))));
-    updateParkLamp(this.out.park!, vehicle && !!ds.parkingBrake, ds.autoHold !== false);
+    updateParkLamp(this.out.park!, vehicle && !!ds.parkingBrake, ds.autoHold !== false, ds.speedKmh > 0.5);
     this.bar.style.setProperty("--rpm", `${Math.min(100, (s.rpm / this.rpmMax) * 100).toFixed(1)}%`);
     const limit = String(s.rpm >= this.zone);
     if (this.last.limit !== limit) {

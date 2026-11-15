@@ -1269,7 +1269,9 @@ kbd {
 }
 .parkbtn__plate {
   display: grid;
-  place-items: center;
+  place-content: center;
+  justify-items: center;
+  gap: 2px;
   width: 48px;
   height: var(--park-h);
   border-radius: 6px;
@@ -1280,6 +1282,11 @@ kbd {
 .parkbtn__plate svg {
   width: 40px;
   height: 28px;
+}
+/* the label sits inside the plate, so the button is exactly as tall as the gas lever (review PR #92) */
+.parkbtn__label {
+  font-size: 10px;
+  line-height: 1;
 }
 .parkbtn.is-held .parkbtn__plate {
   color: #f0412f;

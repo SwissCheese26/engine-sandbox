@@ -258,8 +258,10 @@ export class App {
     this.console.onModeChange = (mode) => this.gearbox.setVisible(mode === "vehicle");
     // parking brake by hand (issue #91): P button or key
     this.console.onPark = () => {
-      const held = this.gearbox.drivetrain.toggleParkingBrake();
-      this.announce(held ? "Feststellbremse angezogen." : "Feststellbremse gelöst.");
+      const d = this.gearbox.drivetrain;
+      const held = d.toggleParkingBrake();
+      // at speed it does not hold: it brakes the car down to a stop (review PR #92)
+      this.announce(!held ? "Feststellbremse gelöst." : d.state.speedKmh > 0.5 ? "Feststellbremse angezogen: Sie bremst das Auto bis zum Stillstand ab." : "Feststellbremse angezogen.");
     };
     this.console.onIgnition = (on) => {
       if (on) void this.ensureSound();
@@ -510,7 +512,7 @@ export class App {
       if (this.inputs.dynoMode === "vehicle") this.gearbox.update(this.console.brakeHeld);
       {
         const ds = this.gearbox.drivetrain.state;
-        this.console.renderPark(this.inputs.dynoMode === "vehicle" && !!ds.parkingBrake, ds.autoHold !== false, this.inputs.dynoMode === "vehicle");
+        this.console.renderPark(this.inputs.dynoMode === "vehicle" && !!ds.parkingBrake, ds.autoHold !== false, this.inputs.dynoMode === "vehicle", ds.speedKmh > 0.5);
       }
       this.shiftPad.update(this.inputs.dynoMode === "vehicle");
       // board computer counts only while the car drives on the chassis dyno (#40, #41)
