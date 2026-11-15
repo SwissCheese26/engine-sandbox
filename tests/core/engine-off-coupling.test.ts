@@ -35,8 +35,10 @@ test("parked in 1st with the engine off on a 15 % slope: the car does not roll a
   expect(r.dt.state.speedKmh).toBeLessThan(1);
 });
 
-test("in neutral the same car rolls down the slope (gravity, no engine braking)", () => {
+test("in neutral the same car rolls down the slope with Auto-Hold off (gravity, no engine braking)", () => {
   const r = cruiseRig("car-vw-golf6-tdi");
+  r.dt.setAutoHold(false); // with Auto-Hold (issue #91) the parking brake holds it, see parking-brake.test.ts
+  r.dt.setParkingBrake(false); // the start-up brake left it applied
   r.dt.setEnvironment({ gradePct: -15 });
   r.inp.ignition = false;
   for (let k = 0; k < 8; k++) r.dt.shift(-1);

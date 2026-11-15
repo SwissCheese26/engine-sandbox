@@ -82,8 +82,18 @@ Die Gänge lassen sich aus der Übersetzung des 1. und des höchsten Gangs berec
   - *zu lang übersetzt:* Der Schnittpunkt liegt im höchsten Gang unter ≈ 90 % der Nenndrehzahl, oder ein niedrigerer Gang ist schneller.
   - *auf Vmax ausgelegt:* Der Schnittpunkt liegt nahe der Nenndrehzahl, also bei maximaler Leistung.
 
+## 7. Feststellbremse und Auto-Hold (#91)
+- **Warum das Auto rollte:** Im Stand hält nur der Rollwiderstand (f_R ≈ 1,2 %). Bergab über ≈ 1,2 % und bei der kriechenden Wandlerautomatik rollt das Auto los, sobald die Bremse gelöst ist (§3). Das ist richtige Physik, es fehlte nur die Feststellbremse.
+- **Haltegrenze:** Die Feststellbremse muss das beladene Fahrzeug auf 20 % Steigung und Gefälle halten [B10, B11]. Elektrische Feststellbremsen sind mit Reserve ausgelegt, im Modell 30 % [S]. Sie wirkt über die Hinterräder, also höchstens μ·N_hinten [B2].
+- **Auto-Hold** [B2]: Bei laufendem Motor hält die ESP-Hydraulik das Auto über alle vier Räder (im Modell ≈ 0,5 g Haltedruck [S]), mit Motor aus übernimmt die Feststellbremse. Zusammen nie mehr als μ·m·g·cos θ. Gegen die Hydraulik kommt auch das Kriechmoment einer Wandlerautomatik in D nicht an. Der Wandler bleibt dabei im Festbremspunkt belastet, die Leerlaufregelung hält die Drehzahl.
+- **Greift**, wenn v ≤ 5 km/h und kein Gas gegeben wird und zusätzlich gebremst wird, der Motor aus ist, N eingelegt ist oder das Auto schon langsamer als 1 km/h ist [S, Spielregel aus #91].
+- **Löst** beim Anfahren (Gas mit eingelegtem Gang bei laufendem Motor, wie die Anfahrfreigabe der EPB) oder per Hand mit der P-Taste. Nach dem Lösen per Hand greift Auto-Hold erst wieder nach einem neuen Bremstritt, nach dem Anfahren oder über 5 km/h.
+- **Mit Motor aus und Gang drin** lässt der Fahrer die Kupplung erst kommen, wenn der Motor ausgelaufen ist. Sonst würde die Schwungmasse das blockierte Auto anrucken.
+
 ### Quellen zu §4–6
 - [B6] Naunheimer, H.; Bertsche, B.; Lechner, G. et al.: Fahrzeuggetriebe, 2. Aufl., Springer 2007, Kap. „Anfahrelemente: Hydrodynamische Wandler“ und „Gangabstufung“.
 - [B7] Robert Bosch GmbH: Kraftfahrtechnisches Taschenbuch, Kapitel „Getriebe: Drehmomentwandler, Automatikgetriebe“.
 - [B8] SAE J643: Hydrodynamic Drive Test Code (K-Faktor, Wandlung, Wirkungsgrad über dem Drehzahlverhältnis).
 - [B9] Haken, K.-L.: Grundlagen der Kraftfahrzeugtechnik, Hanser, Kap. „Zugkraftdiagramm, Getriebeauslegung“.
+- [B10] UN ECE Regelung Nr. 13-H (Bremsen von Personenkraftwagen), Abs. 5.2.2.3: Feststellbremse hält das Fahrzeug auf 20 % Steigung bzw. Gefälle.
+- [B11] StVZO §41 (Bremsen und Unterlegkeile); für Pkw über die Typgenehmigung nach UN ECE R13-H.

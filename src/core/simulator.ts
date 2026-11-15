@@ -14,7 +14,8 @@ import { meanPistonSpeed } from "./geometry.ts";
 import { createLimitTracker, evaluateLimits, oilPressureBar, stepThermal, stepTurbo } from "./subsystems.ts";
 import type { LimitTracker, ThermalState, TurboState } from "./subsystems.ts";
 import { isAirCooled } from "./thermal.ts";
-import { PEAK_SLIP, tyreForceFactor } from "./tyres.ts";
+import { PEAK_SLIP, SLIDE_FACTOR, tyreForceFactor } from "./tyres.ts";
+import { holdCapN } from "./parking-brake.ts";
 import { drivenAxleLoadN, wheelieLimitN } from "./vehicle.ts";
 import type { EngineConfig, EngineState, SimInputs, VehicleCoupling, Warning } from "./types.ts";
 import { converterTorques } from "./converter.ts";
@@ -565,7 +566,11 @@ function stepVehicle(x: Internal, c: VehicleCoupling, engineTorqueNm: number, J:
   const atRest = x.vSpeed <= 1e-3;
   const traction = c.grip !== undefined && Number.isFinite(c.grip) && veh.driveLayout !== undefined;
   x.absT = Math.min(9, x.absT + h);
-  if (!traction || (atRest && pedalB > 0.05 && x.vWheel <= 0.05)) {
+  if (c.parkingBrake) {
+    heldStep(x, c, engineTorqueNm, J, h, traction ? Math.max(0.01, c.grip!) : undefined);
+    return;
+  }
+  if (!traction ||(atRest && pedalB > 0.05 && x.vWheel <= 0.05)) {
     tiedStep(x, c, engineTorqueNm, J, h, traction ? Math.max(0.01, c.grip!) : undefined);
     return;
   }
@@ -755,6 +760,66 @@ function solve3(A: number[][], b: number[]): [number, number, number] {
   const D = d(A);
   const col = (k: number) => A.map((row, j) => row.map((v, c) => (c === k ? b[j]! : v)));
   return [d(col(0)) / D, d(col(1)) / D, d(col(2)) / D];
+}
+
+/**
+ * Parking brake applied (issue #91, docs/research/vehicle.md §7): the braked wheels are locked, so the gearbox output
+ * stands still. The engine works against the input shaft at rest: a converter is loaded at stall (pump torque
+ * λ(0)·(n/K)², converter.ts) and the idle governor holds the speed; a clutch slips (it is opened by the drivetrain).
+ * Vehicle: the drive force through the turbine/clutch, the downhill force m·g·sin θ (Mitschke/Wallentowitz [B5]) and
+ * the static friction of parking brake, Auto-Hold hydraulics (engine running) and service brake, together at most
+ * μ·m·g·cos θ (tyre), see holdCapN. At rest the car stays at
+ * v = 0 while |F_drive − F_grade| ≤ F_hold; above the limit it slides forward (no reverse, see §3). Rolling, it is
+ * braked by F_hold plus road load.
+ */
+function heldStep(x: Internal, c: VehicleCoupling, engineTorqueNm: number, J: number, h: number, mu?: number) {
+  const veh = c.vehicle;
+  const m = veh.massKg;
+  const r = veh.wheelRadiusM;
+  const i = c.totalRatio;
+  const eta = clamp(c.efficiency, 0.5, 1);
+  const wEng = x.rpm / RPM_PER_RADS;
+  const cap = clamp(c.clutch, 0, 1) * c.clutchCapacityNm;
+  const gr = gradeOf(c);
+  const muEff = mu ?? 1;
+  let pump = 0;
+  let tIn = 0;
+  if (i > 0 && c.converter) {
+    const t = converterTorques(c.converter, x.rpm, 0);
+    const l = cap * Math.tanh(wEng / 3);
+    pump = t.pumpNm + l;
+    tIn = t.turbineNm + l;
+  } else if (i > 0) {
+    pump = cap * Math.tanh(wEng / 3);
+    tIn = pump * (pump > 0 ? Math.max(1, c.torqueRatio ?? 1) : 1);
+  }
+  let wE = wEng + ((engineTorqueNm - pump) / J) * h;
+  if (wE < 0) wE = 0;
+  x.rpm = wE * RPM_PER_RADS;
+  const fWheelie = wheelieLimitN(veh);
+  const fDrive = i > 0 ? Math.min(fWheelie, (tIn * i * (tIn >= 0 ? eta : 1 / eta)) / r) : 0;
+  const fGrade = m * G * gr.sin;
+  const pedalB = clamp(c.brake ?? 0, 0, 1);
+  const tyreMax = muEff * m * G * gr.cos;
+  const fHold = Math.min(tyreMax, holdCapN(veh, muEff, gr.cos, x.running) + Math.min(pedalB * BRAKE_MAX_G, muEff) * m * G * gr.cos);
+  const v0 = x.vSpeed;
+  if (v0 <= 1e-3) {
+    const net = fDrive - fGrade;
+    x.vSpeed = net > fHold ? ((net - SLIDE_FACTOR * fHold) / m) * h : 0;
+  } else {
+    // locked wheels slide: the friction falls to the sliding value (tyres.ts SLIDE_FACTOR)
+    const R = roadLoadN(veh, v0, airRho(c), gr.cos) + fGrade + SLIDE_FACTOR * fHold;
+    x.vSpeed = Math.max(0, v0 + ((fDrive - R) / m) * h);
+  }
+  x.grip = muEff;
+  x.vWheel = 0;
+  x.vBrk = 0;
+  x.absF = 0;
+  x.absRelease = false;
+  x.spin = false;
+  x.locked = x.vSpeed > 0.5;
+  x.tyreF = x.vSpeed > 0 ? -SLIDE_FACTOR * fHold : 0;
+  x.aLong += ((x.vSpeed - v0) / h - x.aLong) * Math.min(1, h / 0.02);
 }
 
 /**
