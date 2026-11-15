@@ -211,6 +211,7 @@ async function gearsChecks(page, label) {
     return n;
   });
   if (ink < 200) failures.push(`${label}: Zugkraftdiagramm leer (${ink} farbige Pixel)`);
+  await parkChecks(page, label);
   const hasAuto = await page.evaluate(() => [...document.querySelectorAll('select[data-control="gearbox"] option')].some((o) => o.value === "automatic" && !o.hidden));
   if (!hasAuto) failures.push(`${label}: Wandlerautomatik fehlt in der Getriebeauswahl`);
   await page.selectOption('select[data-control="gear-count"]', "8");
@@ -231,6 +232,53 @@ async function gearsChecks(page, label) {
   await page.evaluate(() => localStorage.removeItem("pruefzelle.gearRatios"));
   await mode("free");
   await page.waitForTimeout(150);
+}
+
+/**
+ * #91 Auto-Hold: the car stands on the chassis dyno with the engine running → the parking brake holds, the red (P)
+ * lamp lights in the Getriebe-Pult and on the P button, the gear plate says so and a ratio can be changed. The P button
+ * (≥ 44 px, as tall as the gas lever) releases and applies it; the control bar keeps its height.
+ */
+async function parkChecks(page, label) {
+  const deck0 = await deckHeight(page);
+  await page.waitForTimeout(300);
+  const st = await page.evaluate(() => ({
+    lamp: document.querySelector('.lamps [data-lamp="park"]')?.dataset.state,
+    btn: document.querySelector(".parkbtn")?.getAttribute("aria-pressed"),
+    hint: document.querySelector('[data-out="gear-lock"]')?.textContent ?? "",
+  }));
+  if (st.lamp !== "on") failures.push(`${label}: Feststellbremsen-Leuchte im Stand aus (${st.lamp})`);
+  if (st.btn !== "true") failures.push(`${label}: P-Taste zeigt die Feststellbremse nicht (${st.btn})`);
+  if (!/Handbremse aktiv/.test(st.hint)) failures.push(`${label}: Gänge-Platte ohne Handbremsen-Hinweis („${st.hint}“)`);
+  if (!(await page.isVisible('.lamps [data-lamp="park"]'))) failures.push(`${label}: Feststellbremsen-Leuchte nicht sichtbar`);
+  // a single ratio typed in (decimal comma) is taken while held
+  const first = page.locator('[data-out="gear-inputs"] input').first();
+  await first.scrollIntoViewIfNeeded();
+  await first.fill("3.9");
+  await first.dispatchEvent("change");
+  await page.waitForTimeout(150);
+  const applied = await page.evaluate(() => window.__pruefzelle?.gearbox?.drivetrain?.gearbox?.ratios?.[0]);
+  if (applied !== undefined && Math.abs(applied - 3.9) > 1e-6) failures.push(`${label}: Übersetzung bei Handbremse nicht übernommen (${applied})`);
+  const msg = (await page.locator('[data-out="gear-msg"]').textContent()) ?? "";
+  if (/Nicht übernommen/.test(msg)) failures.push(`${label}: Gänge-Platte lehnt ab: ${msg}`);
+  // P button: size, release, apply
+  const bb = await page.locator(".parkbtn__plate").boundingBox();
+  const lever = await page.locator(".pedal__track").boundingBox();
+  if (!bb || bb.width < 44 || bb.height < 44) failures.push(`${label}: P-Taste unter 44 px (${JSON.stringify(bb)})`);
+  if (bb && lever && Math.abs(bb.height - lever.height) > 1) failures.push(`${label}: P-Taste nicht so hoch wie der Gashebel (${bb.height} / ${lever.height})`);
+  await page.locator(".parkbtn").scrollIntoViewIfNeeded();
+  await page.locator(".parkbtn").click();
+  await page.waitForTimeout(100);
+  const off = await page.locator(".parkbtn").getAttribute("aria-pressed");
+  await page.locator(".parkbtn").click();
+  await page.waitForTimeout(100);
+  const on = await page.locator(".parkbtn").getAttribute("aria-pressed");
+  if (off !== "false" || on !== "true") failures.push(`${label}: P-Taste schaltet nicht (${off} → ${on})`);
+  const deck1 = await deckHeight(page);
+  if (deck1 !== deck0) failures.push(`${label}: Bedienleiste ändert die Höhe mit der Feststellbremse (${deck0} → ${deck1} px)`);
+  await page.locator(".gears").screenshot({ path: join(outDir, `smoke-${label}-park-gears.png`) });
+  await page.locator(".deck").screenshot({ path: join(outDir, `smoke-${label}-park-deck.png`) });
+  console.log(`${label}: Feststellbremse ${st.lamp}, P-Taste ${Math.round(bb?.width ?? 0)}×${Math.round(bb?.height ?? 0)} px, Übersetzung 1. Gang ${applied}`);
 }
 
 /** Height of the bottom control bar in px. */
