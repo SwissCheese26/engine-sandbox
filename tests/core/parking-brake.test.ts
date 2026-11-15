@@ -198,6 +198,58 @@ describe("parking brake in the simulation (issue #91)", () => {
     expect(run(-40)).toBeGreaterThan(0.5);
   });
 
+  test("engaging while rolling (brake pedal 0.15) does not jolt: decel ≤ 3 m/s², wheels lock only at standstill", () => {
+    const { sim, dt, step, start } = rig("manual");
+    start();
+    for (let i = 0; i < 4 * 60 && dt.state.speedKmh < 12; i++) step(0.5);
+    let minA = 0;
+    let engagedRolling = false;
+    let lockedRolling = false;
+    let v = dt.state.speedKmh / 3.6;
+    for (let i = 0; i < 8 * 60; i++) {
+      step(0, 0.15);
+      const v1 = dt.state.speedKmh / 3.6;
+      minA = Math.min(minA, (v1 - v) / H);
+      v = v1;
+      if (dt.state.parkingBrake && v1 > 0.2) engagedRolling = true;
+      if (sim.state.wheelsLocked && v1 > 0.2) lockedRolling = true;
+    }
+    expect(engagedRolling).toBe(true);
+    expect(lockedRolling).toBe(false);
+    expect(minA).toBeGreaterThanOrEqual(-3);
+    expect(dt.state.speedKmh).toBe(0);
+    expect(dt.state.parkingBrake).toBe(true);
+  });
+
+  test("P pressed while rolling in gear: stays applied (closed clutch / throttle are no drive-away) and brakes gently to a stop", () => {
+    const { dt, step, start } = rig("manual");
+    start();
+    for (let i = 0; i < 10 * 60 && dt.state.speedKmh < 40; i++) {
+      if (dt.state.gear === 1 && dt.state.speedKmh > 25 && !dt.state.shifting) dt.shift(1);
+      step(0.6);
+    }
+    expect(dt.state.speedKmh).toBeGreaterThan(35);
+    expect(dt.state.clutch).toBeGreaterThan(0.9);
+    expect(dt.toggleParkingBrake()).toBe(true);
+    // a moment on the throttle at speed does not release it either
+    for (let i = 0; i < 10; i++) step(0.3);
+    expect(dt.state.parkingBrake).toBe(true);
+    let v = dt.state.speedKmh / 3.6;
+    let minA = 0;
+    for (let i = 0; i < 15 * 60; i++) {
+      step(0);
+      expect(dt.state.parkingBrake).toBe(true);
+      const v1 = dt.state.speedKmh / 3.6;
+      minA = Math.min(minA, (v1 - v) / H);
+      v = v1;
+    }
+    expect(dt.state.speedKmh).toBe(0);
+    expect(minA).toBeGreaterThan(-4.5); // ≈ 0.25 g + road load, no locked-wheel jolt
+    // at standstill drive-away releases it again
+    for (let i = 0; i < 30; i++) step(0.4);
+    expect(dt.state.parkingBrake).toBe(false);
+  });
+
   test("gear plate: own ratios while held", () => {
     const { dt, step, start } = rig("manual");
     dt.setEnvironment({ gradePct: -6 });

@@ -448,6 +448,11 @@ async function layouts(page, label) {
   if (brakeShown) await page.mouse.up();
   else await page.keyboard.up("s");
   console.log(`${label}: Bremse ${fmt(b0)} → ${fmt(b1)}`);
+  // #91: braked to a stop → Auto-Hold holds, the red (P) lamp lights in the cockpit's lamp strip
+  await page.waitForTimeout(300);
+  const ckPark = await page.evaluate(() => document.querySelector('.ck [data-lamp="park"]')?.dataset.state);
+  if (ckPark !== "on") failures.push(`${label}: Cockpit-Leuchte Feststellbremse im Stand nicht an (${ckPark})`);
+  if (!(await page.isVisible('.ck [data-lamp="park"]'))) failures.push(`${label}: Cockpit-Leuchte Feststellbremse nicht sichtbar`);
   if (!(b0 > 5 && Number.isFinite(b1) && b1 < b0 - 3)) failures.push(`${label}: Bremse bremst nicht (${b0} → ${b1})`);
   // on the chassis dyno the gas lever springs back when it is let go (else the car drives on by itself)
   const tr = await page.locator(".pedal__track").boundingBox();
@@ -528,7 +533,7 @@ async function whatsNew(page, label) {
   const btn = '.hall [data-action="whats-new"]';
   if (!(await page.isVisible(`${btn} .whatsnew__badge`))) failures.push(`${label}: Was-ist-neu ohne Neu-Hinweis beim ersten Besuch`);
   // desktop by keyboard; the phone by touch (a key press would switch it to keyboard hints)
-  const touch = label === "mobile";
+  const touch = label !== "desktop";
   if (touch) await page.tap(btn);
   else {
     await page.focus(btn);
