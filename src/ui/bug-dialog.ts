@@ -30,7 +30,8 @@ export function installErrorCapture() {
 
 function baseSections(): { before: DiagnosisSection[]; after: DiagnosisSection[] } {
   const st = getSettings();
-  const layout = LAYOUTS.find((l) => l.id === st.layout)?.label ?? st.layout;
+  // the cockpit's design (#94: Renn-Dash and Kompakt are designs now) belongs to the view
+  const layout = `${LAYOUTS.find((l) => l.id === st.layout)?.label ?? st.layout}${st.layout === "cockpit" ? ` (${st.cockpitDesign})` : ""}`;
   const touch = navigator.maxTouchPoints > 0 || "ontouchstart" in window;
   return {
     before: [

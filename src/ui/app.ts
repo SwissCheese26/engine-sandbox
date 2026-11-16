@@ -17,8 +17,6 @@ import { SOUND_AVAILABLE, createSound } from "./sound-bridge.ts";
 import { Workbench } from "./workbench.ts";
 import { LAYOUTS, getSettings, onSettingsChange, setSettings, type LayoutId } from "./settings.ts";
 import { CockpitView } from "./layouts/cockpit.ts";
-import { CompactView } from "./layouts/compact.ts";
-import { RaceView } from "./layouts/race.ts";
 import { DriveInfo, type LayoutView } from "./layouts/view.ts";
 import { fmtQ } from "./units.ts";
 import { Haptics, ScreenWake, isTouch } from "./device.ts";
@@ -136,7 +134,8 @@ export class App {
   private view(id: Exclude<LayoutId, "pruefzelle">): LayoutView {
     let v = this.views.get(id);
     if (!v) {
-      if (id === "cockpit") {
+      {
+        // the only view besides the Prüfzelle since #94; Renn-Dash and Kompakt are cockpit designs now
         const c = new CockpitView();
         c.onWantVehicle = () => {
           const sel = this.root.querySelector<HTMLSelectElement>("select[data-control=mode]");
@@ -152,7 +151,7 @@ export class App {
           panel.querySelector<HTMLSelectElement>("[data-control=terrain]")?.focus({ preventScroll: true });
         };
         v = c;
-      } else v = id === "race" ? new RaceView() : new CompactView();
+      }
       v.configure(this.cfg, this.summary, this.info);
       this.views.set(id, v);
     }

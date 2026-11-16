@@ -4,6 +4,18 @@ Alle sichtbaren Änderungen an der Prüfzelle, neueste zuerst. Aufbau nach [Keep
 
 _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `bun scripts/changelog.ts` ausführen._
 
+## 2026-11-16 – Einfachere Ansichten und Credits
+
+### Neu
+
+- Renn-Dash im Cockpit mit Kontrollleuchten, (P)-Leuchte, Tempomat-Anzeige und Tankanzeige. ([#94](https://github.com/SwissCheese26/engine-sandbox/issues/94), [#96](https://github.com/SwissCheese26/engine-sandbox/issues/96))
+- „Credits“ im Hauptmenü: wer die Prüfzelle gebaut hat. ([#94](https://github.com/SwissCheese26/engine-sandbox/issues/94), [#96](https://github.com/SwissCheese26/engine-sandbox/issues/96))
+
+### Geändert
+
+- Oben gibt es nur noch zwei Ansichten: Prüfzelle und Cockpit. Renn-Dash ist jetzt ein Cockpit-Design, Kompakt steckt im Design Head-up (mit Drehzahl und Leistung groß). Deine bisherige Wahl wird übernommen. ([#94](https://github.com/SwissCheese26/engine-sandbox/issues/94), [#96](https://github.com/SwissCheese26/engine-sandbox/issues/96))
+- Das Cockpit-Design wählst du in den Einstellungen aus einer kurzen Liste mit Name und Beschreibung, direkt unter „Cockpit“. ([#94](https://github.com/SwissCheese26/engine-sandbox/issues/94), [#96](https://github.com/SwissCheese26/engine-sandbox/issues/96))
+
 ## 2026-11-15 – Handbremse und Auto-Hold
 
 ### Neu
