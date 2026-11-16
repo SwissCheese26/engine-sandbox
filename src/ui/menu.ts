@@ -4,6 +4,7 @@
 import { RoutePicker } from "./route-picker.ts";
 import { bugButton } from "./bug-dialog.ts";
 import { ChangelogDialog } from "./changelog-dialog.ts";
+import { CreditsDialog } from "./credits.ts";
 
 interface Door {
   no: string;
@@ -58,6 +59,9 @@ export class MainMenu {
     const news = new ChangelogDialog();
     el.querySelector(".hall__credit")!.after(news.button);
     el.append(news.el);
+    // "Credits" (#94) after them
+    const credits = new CreditsDialog();
+    el.querySelector(".hall__credit")!.parentElement!.append(credits.button, credits.el);
     // the Sandbox door asks for the route first (Wähle eine Strecke)
     const picker = new RoutePicker();
     el.append(picker.el);
