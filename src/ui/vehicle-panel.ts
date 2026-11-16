@@ -1,10 +1,11 @@
 // Fahrzeug-Platte on the chassis dyno (issue #22): body and chassis data, tyres, ready-made cars.
 // Everything here can only be changed at standstill (like the gearbox). The plate edits the Drivetrain of the
 // Getriebe-Pult; loading a ready-made car also asks the app to load its engine (onLoadCar).
-import { SPEED_INDEX, TYRE_TYPES, formatTyreSize, frontAxleShare, isCommercialKind, isMotorcycleKind, parseTyreSize, speedRatingKmh, tyreRadii } from "../core/index.ts";
+import { SPEED_INDEX, TYRE_TYPES, frontAxleShare, isCommercialKind, isMotorcycleKind, speedRatingKmh, tyreRadii } from "../core/index.ts";
 import type { CarSetup, Drivetrain, DriveLayout, SpeedIndex, TyreSetup, TyreType, VehicleParams } from "../core/index.ts";
 import { VEHICLE_LIBRARY, type LibraryCar } from "../data/vehicle-library.ts";
 import { prefs } from "./settings.ts";
+import { TyreSizePicker, tyreClassOf } from "./tyre-size-picker.ts";
 import { toUnit } from "./units.ts";
 
 /** Speed in the globally chosen unit (#24), e.g. "250 km/h" or "155 mph". */
@@ -46,7 +47,7 @@ export class VehiclePanel {
   private loadBtn: HTMLButtonElement;
   private layoutSel: HTMLSelectElement;
   private tyreSel: HTMLSelectElement;
-  private sizeInput: HTMLInputElement;
+  private sizePicker: TyreSizePicker;
   private indexSel: HTMLSelectElement;
   private tyreOut: HTMLElement;
   private tyreHint: HTMLElement;
@@ -102,13 +103,11 @@ export class VehiclePanel {
           <select data-control="tyre">${(Object.keys(TYRE_TYPES) as TyreType[])
             .map((k) => `<option value="${k}">${TYRE_TYPES[k].label}</option>`).join("")}</select>
         </label>
-        <label class="vehicle__num"><span>Größe</span>
-          <input type="text" data-control="tyre-size" spellcheck="false" autocomplete="off" placeholder="225/45 R17" aria-describedby="tyre-size-help" />
-        </label>
         <label class="vehicle__num"><span>Index</span>
           <select data-control="speed-index">${INDEX_CHOICES
             .map((k) => `<option value="${k}">${k}</option>`).join("")}</select>
         </label>
+        <div class="vehicle__size" data-out="tyre-picker"></div>
       </div>
       <p class="vehicle__tyre num" data-out="tyre" id="tyre-size-help"></p>
       <p class="vehicle__hint" data-out="tyre-hint"></p>`;
@@ -118,7 +117,9 @@ export class VehiclePanel {
     this.loadBtn = q("[data-control=load-car]");
     this.layoutSel = q("[data-control=layout]");
     this.tyreSel = q("[data-control=tyre]");
-    this.sizeInput = q("[data-control=tyre-size]");
+    // tyre size from three lists (no free text): Breite / Querschnitt R Zoll, lists per vehicle class
+    this.sizePicker = new TyreSizePicker({ cls: tyreClassOf(drivetrain.kind), value: drivetrain.tyre.size, describedBy: "tyre-size-help" });
+    q("[data-out=tyre-picker]").append(this.sizePicker.el);
     this.indexSel = q("[data-control=speed-index]");
     this.tyreOut = q("[data-out=tyre]");
     this.tyreHint = q("[data-out=tyre-hint]");
@@ -142,16 +143,7 @@ export class VehiclePanel {
     this.layoutSel.addEventListener("change", () => this.edit({ driveLayout: this.layoutSel.value as DriveLayout }));
     this.tyreSel.addEventListener("change", () => this.editTyre({ type: this.tyreSel.value as TyreType }));
     this.indexSel.addEventListener("change", () => this.editTyre({ speedIndex: this.indexSel.value as SpeedIndex }));
-    this.sizeInput.addEventListener("change", () => {
-      const size = parseTyreSize(this.sizeInput.value);
-      if (!size) {
-        this.sizeInput.setAttribute("aria-invalid", "true");
-        this.tyreOut.textContent = "Größe als Breite/Querschnitt R Zoll eingeben, z. B. 225/45 R17.";
-        return;
-      }
-      this.sizeInput.removeAttribute("aria-invalid");
-      this.editTyre({ size });
-    });
+    this.sizePicker.onChange = (size) => this.editTyre({ size });
     this.loadBtn.addEventListener("click", () => this.loadSelected());
     this.sync();
   }
@@ -296,11 +288,10 @@ export class VehiclePanel {
     this.layoutSel.value = v.driveLayout ?? "fwd";
     this.layoutSel.dataset.fixed = bike ? "1" : "";
     this.tyreSel.value = t.type;
-    this.sizeInput.value = formatTyreSize(t.size);
-    this.sizeInput.removeAttribute("aria-invalid");
+    this.sizePicker.setValue(t.size, tyreClassOf(this.drivetrain.kind));
     this.indexSel.value = t.speedIndex;
     const r = tyreRadii(t.size);
-    this.tyreOut.textContent = `Dynamischer Radius ${fmt(r.dynamicM * 1000, 0)} mm, Abrollumfang ${fmt(2 * Math.PI * r.dynamicM, 2)} m, Freigabe bis ${t.speedIndex === "(Y)" ? `über ${spd(300)}` : spd(speedRatingKmh(t.speedIndex))}.`;
+    this.tyreOut.textContent = `Dynamischer Radius ${fmt(r.dynamicM * 1000, 0)} mm, Freigabe bis ${t.speedIndex === "(Y)" ? `über ${spd(300)}` : spd(speedRatingKmh(t.speedIndex))}.`;
     this.lastTemp = "";
     this.updateTyreHint();
     this.setLocked(this.moving);
