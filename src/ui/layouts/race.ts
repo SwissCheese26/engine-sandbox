@@ -1,4 +1,5 @@
-// Renn-Dash (#26): digital motorsport display. Shift-light LED bar (green → yellow → red, all blue flashing at the
+// Renn-Dash (#26), since #94 a cockpit design shown inside CockpitView (whose lamp strip carries the (P) lamp and the
+// warning lamps, and whose centre line the cruise control): digital motorsport display. Shift-light LED bar (green → yellow → red, all blue flashing at the
 // optimal shift point from the full-load curve), big gear number, rpm as a bar, speed, 0–100 time with delta to the
 // best run of this session, oil and water temperature tiles that turn signal yellow at their limits.
 import type { EngineConfig, EngineSummary } from "../../core/index.ts";
@@ -8,7 +9,6 @@ import { prefs } from "../settings.ts";
 import { fmtQ, toUnit } from "../units.ts";
 import { ledColors, limitZoneRpm, shiftLights, tachoMax } from "./logic.ts";
 import type { DriveInfo, Frame, LayoutView } from "./view.ts";
-import { parkLampHtml, updateParkLamp } from "./park-lamp.ts";
 
 const LEDS = 12;
 /** Flash rate of the blue shift light, Hz (typical motorsport dashes: 5 … 10 Hz). */
@@ -41,7 +41,7 @@ export class RaceView implements LayoutView {
       <div class="rd__leds" aria-hidden="true">${ledColors(LEDS).map((c) => `<span class="rd-led" data-color="${c}"></span>`).join("")}</div>
       <p class="sr-only" data-rd="shift" role="status"></p>
       <div class="rd__grid">
-        <div class="rd__cell rd__cell--speed"><span class="rd__lab" data-rd="speed-unit">km/h</span><b class="num rd__big" data-rd="speed">–</b>${parkLampHtml("rd")}</div>
+        <div class="rd__cell rd__cell--speed"><span class="rd__lab" data-rd="speed-unit">km/h</span><b class="num rd__big" data-rd="speed">–</b></div>
         <div class="rd__gear num"><span class="sr-only">Gang </span><b data-rd="gear">N</b></div>
         <div class="rd__cell rd__cell--rpm"><span class="rd__lab">1/min</span><b class="num rd__big" data-rd="rpm">0</b></div>
       </div>
@@ -52,6 +52,7 @@ export class RaceView implements LayoutView {
         <div class="rd__cell"><span class="rd__lab">Leistung</span><b class="num" data-rd="power">–</b></div>
         <div class="rd__cell rd__cell--warn" data-rd="oil-tile"><span class="rd__lab">Öl</span><b class="num" data-rd="oil">–</b></div>
         <div class="rd__cell rd__cell--warn" data-rd="water-tile"><span class="rd__lab" data-rd="water-label">Wasser</span><b class="num" data-rd="water">–</b></div>
+        <div class="rd__cell rd__cell--warn" data-rd="tank-tile"><span class="rd__lab">Tank</span><b class="num" data-rd="tank">–</b></div>
       </div>`;
     this.el = el;
     this.leds = [...el.querySelectorAll<HTMLElement>(".rd-led")];
@@ -98,7 +99,6 @@ export class RaceView implements LayoutView {
     this.put("rpm", fmt(Math.round(s.rpm / 10) * 10));
     this.put("gear", vehicle ? (ds.shifting && ds.type === "manual" ? "–" : d.gearLabel().replace(/^[DM](?=\d)/, "")) : "–");
     this.put("power", fmtQ("power", Math.max(0, s.powerKw)));
-    updateParkLamp(this.out.park!, vehicle && !!ds.parkingBrake, ds.autoHold !== false, ds.speedKmh > 0.5);
 
     // shift lights: on the chassis dyno at the gear's optimal shift point, on the engine dyno at peak power
     const shiftRpm = vehicle && ds.gear > 0 && ds.type !== "cvt" && ds.gear < ds.gearCount ? this.info.shiftRpm(ds.gear) : vehicle ? this.cfg.revLimitRpm : this.summary.peakPowerRpm;
@@ -149,6 +149,11 @@ export class RaceView implements LayoutView {
     this.put("water", `${fmt(toUnit("temp", s.coolantC, u.temp))} ${u.temp}`);
     this.flag("oil-tile", oilWarn);
     this.flag("water-tile", waterWarn);
+    // tank (chassis dyno, #94): litres or US gallons, signal yellow in the reserve
+    const gal = u.fuel === "mpg";
+    const lv = gal ? d.tank.levelL / 3.785411784 : d.tank.levelL;
+    this.put("tank", vehicle ? `${fmt(lv, gal ? 1 : 0)} ${gal ? "gal" : "l"}` : "–");
+    this.flag("tank-tile", vehicle && d.tank.reserve);
   }
 
   private flag(k: string, on: boolean) {

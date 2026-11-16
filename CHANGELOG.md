@@ -4,12 +4,19 @@ Alle sichtbaren Änderungen an der Prüfzelle, neueste zuerst. Aufbau nach [Keep
 
 _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `bun scripts/changelog.ts` ausführen._
 
-## 2026-11-16 – Geführter Start in die Sandbox
+## 2026-11-16 – Geführter Start, einfachere Ansichten und Credits
 
 ### Neu
 
 - Die Sandbox führt jetzt Schritt für Schritt hinein: Fahrzeugart, Fahrzeug (mit PS, Gewicht, Getriebe und Tank), Strecke und zum Schluss „Kurz erklärt“, wo Zündung, Gas, Schalten, Handbremse, Tempomat, Umwelt und Einstellungen liegen. „Weiter wie zuletzt“ bleibt der schnelle Weg hinein. ([#93](https://github.com/SwissCheese26/engine-sandbox/issues/93), [#95](https://github.com/SwissCheese26/engine-sandbox/issues/95))
 - Eigenes Fahrzeug direkt beim Start: Auto, Lkw oder Motorrad mit eigenem Gewicht, cW-Wert, Stirnfläche, Reifen, Antrieb, Getriebe, Tank und einem Motor aus der Bibliothek. ([#93](https://github.com/SwissCheese26/engine-sandbox/issues/93), [#95](https://github.com/SwissCheese26/engine-sandbox/issues/95))
+- Renn-Dash im Cockpit mit Kontrollleuchten, (P)-Leuchte, Tempomat-Anzeige und Tankanzeige. ([#94](https://github.com/SwissCheese26/engine-sandbox/issues/94), [#96](https://github.com/SwissCheese26/engine-sandbox/issues/96))
+- „Credits“ im Hauptmenü: wer die Prüfzelle gebaut hat. ([#94](https://github.com/SwissCheese26/engine-sandbox/issues/94), [#96](https://github.com/SwissCheese26/engine-sandbox/issues/96))
+
+### Geändert
+
+- Oben gibt es nur noch zwei Ansichten: Prüfzelle und Cockpit. Renn-Dash ist jetzt ein Cockpit-Design, Kompakt steckt im Design Head-up (mit Drehzahl und Leistung groß). Deine bisherige Wahl wird übernommen. ([#94](https://github.com/SwissCheese26/engine-sandbox/issues/94), [#96](https://github.com/SwissCheese26/engine-sandbox/issues/96))
+- Das Cockpit-Design wählst du in den Einstellungen aus einer kurzen Liste mit Name und Beschreibung, direkt unter „Cockpit“. ([#94](https://github.com/SwissCheese26/engine-sandbox/issues/94), [#96](https://github.com/SwissCheese26/engine-sandbox/issues/96))
 
 ## 2026-11-15 – Handbremse und Auto-Hold
 

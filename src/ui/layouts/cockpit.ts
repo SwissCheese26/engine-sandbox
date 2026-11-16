@@ -1,6 +1,8 @@
 // Cockpit / Kombiinstrument (#26): speedometer and rev counter as round dials with needles, a centre display (gear,
 // digital speed, outside temperature, board computer, cruise control), five small instruments and the warning-lamp
 // strip. Built for the chassis dyno; on the engine dyno the speedometer rests and reads "–".
+// Since #94 the former views Renn-Dash and Kompakt are designs here: "race" shows RaceView inside the cluster (lamp
+// strip and cruise line stay), "hud" took over Kompakt's big rpm and power values.
 import type { EngineConfig, EngineSummary } from "../../core/index.ts";
 import { fmt } from "../format.ts";
 import { RESERVE_SHARE, TERRAIN_LABELS } from "../../core/index.ts";
@@ -8,10 +10,11 @@ import { reducedMotion } from "../canvas.ts";
 import { GAS_RAMPS, getSettings, prefs, setSettings } from "../settings.ts";
 import { toUnit } from "../units.ts";
 import { Dial, type DialScale } from "./dial.ts";
-import { AUTO_DESIGN, COCKPIT_DESIGNS, FIELD_PRESETS, dialTheme, isCockpitChoice, resolveDesign, type CockpitDesignId, type FieldId, type FieldSet } from "./designs.ts";
+import { DESIGN_CHOICES, FIELD_PRESETS, dialTheme, isCockpitChoice, resolveDesign, type CockpitDesignId, type FieldId, type FieldSet } from "./designs.ts";
 import { driveModeWord, fieldAriaLabel, formatField, nextField, shownField, type FieldContext, type FieldInputs } from "./fields-logic.ts";
 import { BASE_ICON, ICON2 } from "./icons.ts";
 import { ledColors, shiftLights, avgL100, clusterLamps, fuelScale, SPEEDO_SCALES, clampSpeedoKmh, isSpeedoScale, speedoScaleMax, speedoTicks, tachoMax, tachoZones, type Lamp, type LampSet } from "./logic.ts";
+import { RaceView } from "./race.ts";
 import type { DriveInfo, Frame, LayoutView } from "./view.ts";
 
 type LampKey = keyof LampSet;
@@ -87,6 +90,8 @@ export class CockpitView implements LayoutView {
   private flashing = false;
   private rpmMax = 8000;
   private zones = { warnFrom: 0, redFrom: 0 };
+  /** The Renn-Dash design (#94): created the first time it is chosen. */
+  private race: RaceView | null = null;
   /** Set by the app: switches the console to the chassis dyno. */
   onWantVehicle: () => void = () => {};
   /** Set by the app: jump to the Umwelt panel (route, weather, gradient). */
@@ -104,12 +109,13 @@ export class CockpitView implements LayoutView {
       <div class="ck__lamps" role="group" aria-label="Kontrollleuchten">
         ${LAMPS.map((l) => `<span class="ck-lamp ck-lamp--${l.color}" data-lamp="${l.k}" data-state="off" role="img" aria-label="${l.on}: aus">${l.icon}${l.text ? `<b>${l.text}</b>` : ""}</span>`).join("")}
       </div>
+      <div class="ck__alt" data-slot="alt"></div>
       <div class="ck__main">
         <div class="ck__dial ck__dial--speed" data-slot="speed">
           <p class="ck__read num" aria-live="off"><span data-ck="speed">–</span> <small data-ck="speed-unit">km/h</small></p>
           <div class="ck__scale">
             <label><span>Design<span class="sr-only"> des Cockpits</span></span>
-              <select data-control="ck-design">${COCKPIT_DESIGNS.map((d) => `<option value="${d.id}">${d.label}</option>`).join("")}<option value="auto">${AUTO_DESIGN.label}</option></select>
+              <select data-control="ck-design">${DESIGN_CHOICES.map((d) => `<option value="${d.id}">${d.id === "auto" ? "Automatisch" : d.label}</option>`).join("")}</select>
             </label>
             <label data-ck-skala><span>Skala<span class="sr-only"> des Tachos</span></span>
               <select data-control="speedo-scale">${SPEEDO_SCALES.map((o) => `<option value="${o.id}">${o.label}${o.kmh ? ` · ${o.kmh} km/h` : ""}</option>`).join("")}</select>
@@ -126,6 +132,10 @@ export class CockpitView implements LayoutView {
           <p class="ck__gear num"><span class="sr-only">Gang </span><span data-ck="gear">N</span></p>
           <button type="button" class="ck__mode" data-ck="mode"></button>
           <p class="ck__speed num"><span data-ck="speed-big">–</span><small data-ck="speed-unit2">km/h</small></p>
+          <dl class="ck__hud num" aria-label="Drehzahl und Leistung">
+            <div class="ck__hud-rpm"><dt>Drehzahl</dt><dd><span data-ck="hud-rpm">0</span> <small>1/min</small></dd></div>
+            <div><dt>Leistung</dt><dd><span data-ck="hud-power">0</span> <small data-ck="hud-power-unit">kW</small></dd></div>
+          </dl>
           <p class="ck__dyno" data-ck="dyno" hidden>Motorprüfstand: kein Tempo.
             <button type="button" class="ck__btn" data-ck="to-vehicle">Auf die Rolle</button></p>
           <p class="ck__cruise num" data-ck="cruise" data-state="off" hidden>${ICON2.cruise}<span data-ck="cruise-text"></span></p>
@@ -266,6 +276,7 @@ export class CockpitView implements LayoutView {
     this.el.style.setProperty("--ck-warn-at", `${f(this.zones.warnFrom).toFixed(2)}%`);
     this.fieldCtx = { ...this.fieldCtx, turbo: summary.limits.boostMaxBar > 0 };
     this.out["bike-cool-label"]!.textContent = airCooled(cfg) ? "Zyl.-Kopf" : "Kühlmittel";
+    this.race?.configure(cfg, summary, info);
     this.syncUnits();
   }
 
@@ -274,6 +285,11 @@ export class CockpitView implements LayoutView {
     if (id === this.design) return;
     this.design = id;
     this.el.dataset.design = id;
+    if (id === "race" && !this.race) {
+      this.race = new RaceView();
+      this.race.configure(this.cfg, this.summary, this.info);
+      this.el.querySelector("[data-slot=alt]")!.append(this.race.el);
+    }
     const t = dialTheme(id);
     for (const d of [this.speedo, this.tacho, ...Object.values(this.minis).map((m) => m.dial)]) d.setTheme(t);
     for (const k of Object.keys(this.last)) this.last[k] = "";
@@ -308,6 +324,8 @@ export class CockpitView implements LayoutView {
     this.fuelKey = "";
     this.tankKey = "";
     this.out["speed-unit"]!.textContent = this.out["speed-unit2"]!.textContent = u.speed;
+    this.out["hud-power-unit"]!.textContent = u.power;
+    this.race?.syncUnits();
     this.speedKey = "";
     for (const k of Object.keys(this.last)) this.last[k] = "";
     for (const m of Object.values(this.minis)) m.last = "";
@@ -456,6 +474,11 @@ export class CockpitView implements LayoutView {
     // design-specific readouts are only fed while their design is shown
     const design = this.design;
     if (design === "digital") this.updateFields(f, l100, u, st.ckFields);
+    if (design === "race") this.race?.update(f);
+    if (design === "hud") {
+      this.put("hud-rpm", fmt(Math.round(s.rpm / 10) * 10));
+      this.put("hud-power", fmt(toUnit("power", Math.max(0, s.powerKw), u.power)));
+    }
     if (design === "italian") {
       const mode = driveModeWord(st.gasRamp);
       if (this.last.mode !== mode) {

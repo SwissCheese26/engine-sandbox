@@ -51,8 +51,7 @@
   align-content: start;
 }
 /* the cockpit is the night view: the stage dims around the cluster */
-.cell[data-layout="cockpit"] .stage,
-.cell[data-layout="race"] .stage {
+.cell[data-layout="cockpit"] .stage {
   background: #27312d;
 }
 .stage__view {
@@ -545,7 +544,7 @@
 }
 .rd__row {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: var(--space-2);
 }
 .rd__cell--warn.is-limit {
@@ -576,70 +575,6 @@
   .rd__row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-  .rd__row .rd__cell:first-child {
-    grid-column: 1 / -1;
-  }
-}
-
-/* ── Kompakt ───────────────────────────────────────────────────────────── */
-.kp {
-  max-width: 640px;
-  margin: 0 auto;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-3);
-}
-.kp__val {
-  display: grid;
-  align-content: start;
-  padding: var(--space-3) var(--space-4);
-  border-radius: var(--radius-plate);
-  background: var(--hammer-deep);
-}
-.kp__val span {
-  font-size: var(--fs-14);
-  color: var(--alu-shade);
-}
-.kp__val b {
-  font-size: var(--fs-39);
-  line-height: 1.1;
-  font-weight: 600;
-  color: var(--alu);
-}
-.kp__val small {
-  font-size: var(--fs-14);
-  color: var(--alu-shade);
-}
-.kp__val--rpm {
-  grid-column: 1 / -1;
-}
-.kp__val--rpm b {
-  font-size: 72px;
-}
-.kp.is-limit .kp__val--rpm b {
-  color: var(--signal);
-}
-.kp__bar {
-  grid-column: 1 / -1;
-  position: relative;
-  height: 10px;
-  margin-top: calc(-1 * var(--space-2));
-  border-radius: 2px;
-  background: var(--hammer-deep);
-  overflow: hidden;
-}
-.kp__bar i {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: var(--rpm, 0%);
-  background: var(--alu);
-}
-.kp__bar::after {
-  content: "";
-  position: absolute;
-  inset: 0 0 0 var(--zone, 90%);
-  background: var(--signal);
-  opacity: 0.6;
 }
 
 /* ── Preview tiles in the settings ─────────────────────────────────────── */
@@ -782,25 +717,4 @@
 .ck__cruisectl .cruise {
   background: transparent;
   padding: 0;
-}
-
-/* parking-brake lamp (issue #91) in Renn-Dash (speed tile) and Kompakt (gear tile): red "(P)" in the corner */
-.rd__cell--speed,
-.kp__val--gear {
-  position: relative;
-}
-.park-lamp {
-  position: absolute;
-  top: var(--space-2);
-  right: var(--space-2);
-  display: inline-flex;
-  color: #2a3230;
-}
-.park-lamp svg {
-  width: 36px;
-  height: 25px;
-}
-.park-lamp[data-state="on"] {
-  color: #f0412f;
-  filter: drop-shadow(0 0 4px rgba(240, 65, 47, 0.6));
 }

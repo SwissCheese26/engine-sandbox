@@ -125,6 +125,7 @@ async function run(label, viewport) {
     failures.push(`${label}: Fehler-melden-Dialog ungestylt (${JSON.stringify(look)})`);
   await page.click('dialog.bugreport [data-action="cancel"]');
   await whatsNew(page, label);
+  await credits(page, label);
   await page.click('a[href="#settings"]:visible');
   await page.waitForSelector('[data-screen="settings"]:not([hidden]) input[name="preset"]');
   await page.screenshot({ path: join(outDir, `smoke-${label}-settings.png`), fullPage: true });
@@ -543,14 +544,18 @@ async function readNum(page, sel) {
 
 /**
  * Layouts (#26): choose the cockpit (desktop: tile in the settings, mobile: switch in the header), put the car on the
- * chassis dyno with the cockpit's own button, drive and check that the speedometer rises; shoot race dash and compact
- * view; no horizontal scrolling; back to the Prüfzelle at the end so later runs start from the default.
+ * chassis dyno with the cockpit's own button, drive and check that the speedometer rises; only two views (#94);
+ * no horizontal scrolling; back to the Prüfzelle at the end so later runs start from the default.
  */
 async function layouts(page, label) {
   if (label === "desktop") {
     await page.click('.cell__top a[href="#menu"]');
     await page.click('a[href="#settings"]:visible');
+    // #94: the design list is a sub-option of the Cockpit, hidden while the Prüfzelle is chosen
+    const before = await page.isVisible('input[name="ckdesign"][value="race"]');
     await page.click('.layout-tile:has(input[value="cockpit"])');
+    const after = await page.isVisible('input[name="ckdesign"][value="race"]');
+    if (before || !after) failures.push(`${label}: Design-Liste nicht als Unteroption des Cockpits (vorher ${before}, nachher ${after})`);
     await page.click('.office__top a[href="#menu"]');
     await page.click('a.door[href="#sandbox"]');
     // the guided start (#93) opens first; the smoke test starts on the engine dyno
@@ -612,20 +617,16 @@ async function layouts(page, label) {
   if (after !== "0 %") failures.push(`${label}: Gashebel federt auf der Rolle nicht zurück (${held} → ${after})`);
   await page.keyboard.down("w");
   await cockpitDesigns(page, label);
-  for (const id of ["race", "compact"]) {
-    await page.selectOption('select[data-control="layout"]', id);
-    await page.waitForTimeout(400);
-    await page.screenshot({ path: join(outDir, `smoke-${label}-${id}.png`) });
-  }
   await page.keyboard.up("w");
-  const sw = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-  if (sw > 0) failures.push(`${label}: Kompakt-Ansicht scrollt horizontal (${sw} px)`);
+  // #94: the view switch offers only Prüfzelle and Cockpit (Renn-Dash and Kompakt are cockpit designs now)
+  const views = await page.$$eval('.cell__top select[data-control="layout"] option', (o) => o.map((e) => e.value));
+  if (views.join("|") !== "pruefzelle|cockpit") failures.push(`${label}: Ansichtsauswahl bietet ${views.join(", ")}`);
   await page.selectOption('select[data-control="layout"]', "pruefzelle");
   await page.waitForTimeout(200);
   if (!(await page.isVisible(RPM_READOUT))) failures.push(`${label}: zurück zur Prüfzelle fehlen die Instrumente`);
 }
 
-const DESIGNS = ["classic", "night-orange", "italian", "oldschool", "digital", "hud", "motorrad"];
+const DESIGNS = ["classic", "night-orange", "italian", "oldschool", "digital", "hud", "race", "motorrad"];
 
 /**
  * Cockpit designs (#83): switch through every design with the select in the cockpit while driving, one screenshot of
@@ -639,7 +640,16 @@ async function cockpitDesigns(page, label) {
     const st = await page.evaluate(() => ({ design: document.querySelector(".ck")?.dataset.design, sw: document.documentElement.scrollWidth - window.innerWidth }));
     if (st.design !== id) failures.push(`${label}: Cockpit-Design ${id} nicht angewendet (${st.design})`);
     if (st.sw > 0) failures.push(`${label}: Cockpit-Design ${id} scrollt horizontal (${st.sw} px)`);
-    if (!(await page.isVisible('[data-ck="speed-big"]'))) failures.push(`${label}: Cockpit-Design ${id} zeigt kein Tempo`);
+    // the Renn-Dash (#94) shows its own speed tile; every other design the centre display's speed
+    const speedSel = id === "race" ? '.ck .rd [data-rd="speed"]' : '[data-ck="speed-big"]';
+    if (!(await page.isVisible(speedSel))) failures.push(`${label}: Cockpit-Design ${id} zeigt kein Tempo`);
+    if (id === "race") {
+      // what the old Renn-Dash view did stays: shift LEDs, big gear, lamp strip with (P), tank
+      for (const sel of [".ck .rd__leds", '.ck .rd [data-rd="gear"]', '.ck [data-lamp="park"]', '.ck .rd [data-rd="tank"]']) {
+        if (!(await page.isVisible(sel))) failures.push(`${label}: Renn-Dash-Design ohne ${sel}`);
+      }
+    }
+    if (id === "hud" && !(await page.isVisible('.ck [data-ck="hud-rpm"]'))) failures.push(`${label}: Head-up zeigt die Drehzahl nicht groß (Kompakt-Ersatz)`);
     await page.locator(".ck").screenshot({ path: join(outDir, `smoke-${label}-design-${id}.png`) });
     if (id === "digital") {
       const field = page.locator('.ck-field[data-field="0"]');
@@ -702,6 +712,41 @@ async function whatsNew(page, label) {
   else await page.keyboard.press("Escape");
   if (await page.isVisible("dialog.whatsnew[open]")) failures.push(`${label}: Was-ist-neu schließt nicht`);
   if (await page.isVisible(`${btn} .whatsnew__badge`)) failures.push(`${label}: Neu-Hinweis bleibt nach dem Öffnen`);
+}
+
+// Credits (#94): button in the hall footer opens the dialog with both names and links, no e-mail; Esc (desktop) or
+// "Schließen" (phone) closes it and the focus returns to the button
+async function credits(page, label) {
+  const btn = '.hall [data-action="credits"]';
+  const touch = label !== "desktop";
+  if (touch) await page.tap(btn);
+  else {
+    await page.focus(btn);
+    await page.keyboard.press("Enter");
+  }
+  await page.waitForSelector("dialog.credits[open]");
+  const r = await page.evaluate(() => {
+    const d = document.querySelector("dialog.credits");
+    return {
+      text: d.textContent ?? "",
+      links: [...d.querySelectorAll("a")].map((a) => a.href),
+      overflow: d.scrollWidth > d.clientWidth + 1 || document.documentElement.scrollWidth > innerWidth,
+      focusInside: d.contains(document.activeElement),
+    };
+  });
+  await page.screenshot({ path: join(outDir, `smoke-${label}-credits.png`) });
+  if (!/Arthur Reznikov/.test(r.text) || !/Claude/.test(r.text)) failures.push(`${label}: Credits ohne Namen`);
+  for (const href of ["https://github.com/SwissCheese26", "https://claude.com/claude-code", "https://github.com/SwissCheese26/engine-sandbox"]) {
+    if (!r.links.includes(href)) failures.push(`${label}: Credits ohne Link ${href}`);
+  }
+  if (r.links.some((h) => h.startsWith("mailto:")) || /\S+@\S+\.\w+/.test(r.text)) failures.push(`${label}: Credits enthalten eine E-Mail-Adresse`);
+  if (r.overflow) failures.push(`${label}: Credits scrollen seitlich`);
+  if (!r.focusInside) failures.push(`${label}: Fokus nicht im Credits-Fenster`);
+  if (touch) await page.tap('dialog.credits [data-action="close"]');
+  else await page.keyboard.press("Escape");
+  await page.waitForTimeout(100);
+  if (await page.isVisible("dialog.credits[open]")) failures.push(`${label}: Credits schließen nicht`);
+  if (!touch && !(await page.evaluate(() => document.activeElement?.dataset.action === "credits"))) failures.push(`${label}: Fokus kehrt nicht zum Credits-Knopf zurück`);
 }
 
 async function bugReport(page, label) {
