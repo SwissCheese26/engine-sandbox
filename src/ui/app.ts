@@ -1,7 +1,7 @@
 // Prüfzelle: wires workbench, schematic, nameplate, instruments, recorder and console to the
 // simulator and runs the main loop.
 import { EngineSimulator, TERRAIN_LABELS, defaultInputs, summarize } from "../core/index.ts";
-import { customSetup, takePendingSetup } from "./sandbox-setup.ts";
+import { customSetup, loadOwnVehicle, saveOwnVehicle, setOwnVehicleActive, takePendingSetup, type PendingSetup } from "./sandbox-setup.ts";
 import { ShiftPad } from "./shift-pad.ts";
 import type { EngineConfig, EngineState, EngineSummary } from "../core/index.ts";
 import { defaultConfig } from "../data/presets.ts";
@@ -247,13 +247,17 @@ export class App {
         return false;
       }
       this.bench.loadLibrary(car.engineId);
+      setOwnVehicleActive(false);
       this.announce(`${car.name} geladen.`);
       return true;
     };
     // a production engine picked on the bench brings its car along (gearbox, body, tyres), if the library has it
     this.bench.onLibraryLoad = (id) => {
       const car = this.gearbox.vehiclePanel.selectCarForEngine(id);
-      if (car) this.announce(`Fahrzeug passend zum Motor: ${car.name}.`);
+      if (car) {
+        setOwnVehicleActive(false);
+        this.announce(`Fahrzeug passend zum Motor: ${car.name}.`);
+      }
     };
     this.console.onModeChange = (mode) => this.gearbox.setVisible(mode === "vehicle");
     // parking brake by hand (issue #91): P button or key
@@ -487,6 +491,7 @@ export class App {
         s = this.sim.state;
       }
       this.bench.setLocked(App.turning(s));
+      if (this.pendingEngineId && !App.turning(s)) this.loadEngine(this.pendingEngineId);
       this.sample(s, dt);
       this.sinceIgnition = this.inputs.ignition ? this.sinceIgnition + dt : 0;
       const view = this.activeView;
@@ -548,47 +553,79 @@ export class App {
     }
   }
 
+  /** Engine of the guided start waiting for the running engine to spin down (#93 review). */
+  private pendingEngineId: string | null = null;
+
+  private setMode(v: string) {
+    const mode = this.root.querySelector<HTMLSelectElement>("select[data-control=mode]");
+    if (!mode || mode.value === v) return;
+    mode.value = v;
+    mode.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  /**
+   * Loads a library engine on the bench (applied by the main loop at standstill). A running engine is switched off
+   * first and the new one follows as soon as it stands still, so the vehicle never runs with the old engine.
+   * Returns true when the swap had to wait.
+   */
+  private loadEngine(id: string): boolean {
+    if (id === this.cfg.id && !this.pendingEngineId) return false;
+    if (App.turning(this.sim.state) || this.bench.isLocked) {
+      this.console.switchOff();
+      this.pendingEngineId = id;
+      return true;
+    }
+    this.pendingEngineId = null;
+    this.bench.loadLibrary(id);
+    return false;
+  }
+
   /**
    * The guided start in the main menu (#93): vehicle kind, vehicle (+ its engine), route. Applied on mount/resume;
    * nothing pending ("Weiter wie zuletzt") leaves the sandbox as it was.
    */
-  applyPendingSetup() {
-    const p = takePendingSetup();
+  applyPendingSetup(p: PendingSetup | null = takePendingSetup()) {
     if (!p) return;
     // the car is still rolling (left the sandbox while driving): nothing is switched under it
     if (this.gearbox.drivetrain.state.speedKmh > 0.5) {
       this.announce("Das Fahrzeug rollt noch: erst anhalten, dann Fahrzeug und Strecke wählen.");
       return;
     }
-    const mode = this.root.querySelector<HTMLSelectElement>("select[data-control=mode]");
-    const setMode = (v: string) => {
-      if (!mode || mode.value === v) return;
-      mode.value = v;
-      mode.dispatchEvent(new Event("change", { bubbles: true }));
-    };
     if (p.kind === "engine" || !p.route) {
-      if (mode?.value === "vehicle") setMode("free");
+      setOwnVehicleActive(false);
+      this.setMode("free");
       return;
     }
-    const notes: string[] = [];
-    // the engine: loaded on the bench (applied by the main loop at standstill); a running engine stays
-    if (p.engineId && p.engineId !== this.cfg.id) {
-      if (App.turning(this.sim.state) || this.bench.isLocked) notes.push("Der Motor läuft: erst abstellen, dann den passenden Motor in der Werkbank laden.");
-      else this.bench.loadLibrary(p.engineId);
-    }
+    // engine first (or the order to swap it once the running engine is off), then the vehicle
+    const waits = p.engineId ? this.loadEngine(p.engineId) : false;
     const panel = this.gearbox.vehiclePanel;
     let name = "";
     if (p.kind === "custom" && p.custom) {
-      if (panel.applyOwn(customSetup(p.custom))) name = "Eigenes Fahrzeug";
+      if (panel.applyOwn(customSetup(p.custom))) {
+        name = "Eigenes Fahrzeug";
+        saveOwnVehicle(p.custom, true);
+      }
     } else if (p.vehicleId) {
       name = panel.selectCar(p.vehicleId)?.name ?? "";
+      if (name) setOwnVehicleActive(false);
     }
     // the route after the vehicle: loading a vehicle puts it back to the start of the route
     this.gearbox.environmentPanel.setRoute(p.route);
     this.gearbox.drivetrain.setPosition(0);
-    setMode("vehicle");
+    this.setMode("vehicle");
     const t = p.route;
-    this.announce([`${name ? `${name}, ` : ""}Strecke: ${t === "static" ? "eben" : TERRAIN_LABELS[t]}. Rollenprüfstand gewählt.`, ...notes].join(" "));
+    this.announce(`${name ? `${name}, ` : ""}Strecke: ${t === "static" ? "eben" : TERRAIN_LABELS[t]}. Rollenprüfstand gewählt.${waits ? " Der Motor wird abgestellt, danach kommt der passende Motor." : ""}`);
+  }
+
+  /** Reload (#93 review): the own vehicle comes back when it was the last setup (engine, body, tank; the route is
+   *  restored by the Umwelt panel). */
+  restoreOwnVehicle() {
+    const own = loadOwnVehicle();
+    if (!own?.active) return;
+    this.loadEngine(own.custom.engineId);
+    if (!this.gearbox.vehiclePanel.applyOwn(customSetup(own.custom))) return;
+    this.gearbox.restoreTank();
+    this.setMode("vehicle");
   }
 
   resume() {
@@ -638,7 +675,9 @@ export class App {
 export function mountApp(root: HTMLElement): App {
   const app = new App(root);
   app.start();
-  app.applyPendingSetup();
+  const p = takePendingSetup();
+  if (p) app.applyPendingSetup(p);
+  else app.restoreOwnVehicle();
   // Small hook for the e2e tests and for debugging in the console.
   (window as unknown as { __pruefzelle?: App }).__pruefzelle = app;
   return app;

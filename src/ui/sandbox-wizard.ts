@@ -6,7 +6,7 @@ import { TERRAIN_LABELS, terrainSamples } from "../core/index.ts";
 import type { DriveLayout, GearboxType, Terrain } from "../core/index.ts";
 import {
   CUSTOM_BASE_LABEL, CUSTOM_LIMITS, GEARBOX_SHORT, KIND_LABEL, PS_PER_KW, buildSetup, defaultCustom, drivesFor, enginesFor,
-  gearboxesFor, setPendingSetup, validateCustom, vehicleFacts, vehiclesOf,
+  gearboxesFor, loadOwnVehicle, setPendingSetup, validateCustom, vehicleFacts, vehiclesOf,
   type CustomBase, type CustomField, type CustomVehicle, type PendingSetup, type SetupKind,
 } from "./sandbox-setup.ts";
 import { getSettings, setSettings } from "./settings.ts";
@@ -195,7 +195,7 @@ export class SandboxWizard {
     this.q("[data-nav=cancel]").addEventListener("click", () => d.close());
     this.q("[data-pick=resume]").addEventListener("click", () => this.finish(null));
     d.querySelectorAll<HTMLInputElement>("input[name=route]").forEach((r) => r.addEventListener("change", () => (this.route = r.value as Terrain)));
-    this.q<HTMLSelectElement>("[data-c=base]").addEventListener("change", (e) => this.fillCustom(defaultCustom((e.target as HTMLSelectElement).value as CustomBase)));
+    this.q<HTMLSelectElement>("[data-c=base]").addEventListener("change", (e) => this.fillCustom(SandboxWizard.startValues((e.target as HTMLSelectElement).value as CustomBase)));
     this.q("[data-out=custom]").addEventListener("input", (e) => {
       // a corrected field loses its error at once
       const t = e.target as HTMLElement;
@@ -212,7 +212,14 @@ export class SandboxWizard {
       if (downOutside && e.target === d && outside(e)) d.close();
       downOutside = false;
     });
-    this.fillCustom(defaultCustom("car"));
+    this.fillCustom(SandboxWizard.startValues());
+  }
+
+  /** Form start values: the stored own vehicle (#93 review) when it fits the base type, else the type's defaults. */
+  private static startValues(base?: CustomBase): CustomVehicle {
+    const own = loadOwnVehicle()?.custom;
+    if (own && (!base || own.base === base)) return own;
+    return defaultCustom(base ?? "car");
   }
 
   open() {
@@ -243,6 +250,8 @@ export class SandboxWizard {
       this.kind = k;
       this.vehicleId = "";
       this.renderVehicles();
+      // the last own vehicle (also after a reload) fills the form
+      if (k === "custom") this.fillCustom(SandboxWizard.startValues());
     }
     this.el.querySelectorAll<HTMLButtonElement>("[data-kind]").forEach((b) => b.setAttribute("aria-pressed", String(b.dataset.kind === k)));
     this.next();
@@ -331,6 +340,8 @@ export class SandboxWizard {
       this.q(`#wiz-range-${f.key}`).textContent = `${fmtDe(r.min, f.digits)} bis ${fmtDe(r.max, f.digits)}${f.unit ? ` ${f.unit}` : ""}`;
     }
     this.q<HTMLInputElement>("[data-c=tyre]").value = c.tyre;
+    const rr = CUSTOM_LIMITS[c.base].radiusM;
+    this.q("#wiz-range-tyre").textContent = `z. B. 225/45 R17; Radradius ${fmtDe(rr.min * 1000)} bis ${fmtDe(rr.max * 1000)} mm`;
     const drives = drivesFor(c.base);
     sel("drive").innerHTML = drives.map((d) => `<option value="${d}">${c.base === "bike" ? "Hinterrad (Kette)" : LAYOUT_LABEL[d]}</option>`).join("");
     sel("drive").value = c.drive;

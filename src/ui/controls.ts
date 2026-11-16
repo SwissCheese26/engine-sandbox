@@ -458,6 +458,11 @@ export class ControlPanel {
     return this.inputs.ignition;
   }
 
+  /** Ignition off (the guided start swaps the engine, #93): the engine spins down. */
+  switchOff() {
+    if (this.inputs.ignition) this.setIgnition(false);
+  }
+
   private setIgnition(on: boolean) {
     this.ignition.setAttribute("aria-checked", String(on));
     this.el.classList.toggle("is-ign", on);
