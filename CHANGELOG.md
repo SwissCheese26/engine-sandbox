@@ -8,8 +8,8 @@ _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `
 
 ### Neu
 
-- Die Sandbox führt jetzt Schritt für Schritt hinein: Fahrzeugart, Fahrzeug (mit PS, Gewicht, Getriebe und Tank), Strecke und zum Schluss „Kurz erklärt“, wo Zündung, Gas, Schalten, Handbremse, Tempomat, Umwelt und Einstellungen liegen. „Weiter wie zuletzt“ bleibt der schnelle Weg hinein. ([#93](https://github.com/SwissCheese26/engine-sandbox/issues/93))
-- Eigenes Fahrzeug direkt beim Start: Auto, Lkw oder Motorrad mit eigenem Gewicht, cW-Wert, Stirnfläche, Reifen, Antrieb, Getriebe, Tank und einem Motor aus der Bibliothek. ([#93](https://github.com/SwissCheese26/engine-sandbox/issues/93))
+- Die Sandbox führt jetzt Schritt für Schritt hinein: Fahrzeugart, Fahrzeug (mit PS, Gewicht, Getriebe und Tank), Strecke und zum Schluss „Kurz erklärt“, wo Zündung, Gas, Schalten, Handbremse, Tempomat, Umwelt und Einstellungen liegen. „Weiter wie zuletzt“ bleibt der schnelle Weg hinein. ([#93](https://github.com/SwissCheese26/engine-sandbox/issues/93), [#95](https://github.com/SwissCheese26/engine-sandbox/issues/95))
+- Eigenes Fahrzeug direkt beim Start: Auto, Lkw oder Motorrad mit eigenem Gewicht, cW-Wert, Stirnfläche, Reifen, Antrieb, Getriebe, Tank und einem Motor aus der Bibliothek. ([#93](https://github.com/SwissCheese26/engine-sandbox/issues/93), [#95](https://github.com/SwissCheese26/engine-sandbox/issues/95))
 
 ## 2026-11-15 – Handbremse und Auto-Hold
 
