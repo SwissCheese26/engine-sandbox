@@ -8,6 +8,7 @@ import {
 import type { CarSetup, DriveLayout, GearboxType, Terrain, VehicleKind } from "../core/index.ts";
 import { ENGINE_LIBRARY, type LibraryEngine } from "../data/engine-library.ts";
 import { VEHICLE_LIBRARY, type LibraryCar } from "../data/vehicle-library.ts";
+import { isListed, migrateTyreSize } from "./tyre-size-picker.ts";
 
 /** Library groups of step 1 (Auto, Lkw & Bus, Motorrad). */
 export type VehicleGroup = "car" | "commercial" | "bike";
@@ -203,6 +204,8 @@ export function validateCustom(raw: Partial<Record<keyof CustomVehicle, unknown>
     const r = tyreRadii(size).dynamicM;
     const rl = lim.radiusM;
     if (r < rl.min || r > rl.max) errors.tyre = `Raddurchmesser passt nicht: Radius ${de(Math.round(r * 1000))} mm, erlaubt ${de(rl.min * 1000)} bis ${de(rl.max * 1000)} mm.`;
+    // only sizes of the base type's list (tyre-size-picker.ts); old saves are migrated before (migrateCustomTyre)
+    else if (!isListed(base, size)) errors.tyre = `Die Größe ${formatTyreSize(size)} gibt es für ${base === "car" ? "ein Auto" : base === "truck" ? "einen Lkw" : "ein Motorrad"} nicht in der Liste.`;
   }
   const drive = raw.drive as DriveLayout;
   if (!drivesFor(base).includes(drive)) errors.drive = "Diese Antriebsart passt nicht zum Fahrzeugtyp.";
@@ -285,8 +288,23 @@ function store(): Store | null {
 export function parseOwnVehicle(raw: unknown): StoredOwnVehicle | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
-  const v = validateCustom((r.custom && typeof r.custom === "object" ? r.custom : {}) as Record<string, unknown>);
+  const custom = (r.custom && typeof r.custom === "object" ? r.custom : {}) as Record<string, unknown>;
+  const v = validateCustom(migrateCustomTyre(custom));
   return v.ok ? { custom: v.value, active: r.active === true } : null;
+}
+
+/**
+ * Tyre of a stored own vehicle (tyre size picker): older saves may hold free text ("225/45ZR17", "225/45-17"), an
+ * off-list size or only a wheel radius (tyre as a number, or radiusM / wheelRadiusM). It becomes the nearest size
+ * of the base type's list (tyre-size-picker.ts), so the vehicle still loads.
+ */
+export function migrateCustomTyre(c: Record<string, unknown>): Record<string, unknown> {
+  const base: CustomBase = c.base === "truck" || c.base === "bike" ? c.base : "car";
+  const raw = c.tyre ?? c.radiusM ?? c.wheelRadiusM;
+  const size = migrateTyreSize(base, raw);
+  if (!size) return c;
+  const { radiusM: _r, wheelRadiusM: _w, ...rest } = c;
+  return { ...rest, tyre: formatTyreSize(size) };
 }
 
 export function loadOwnVehicle(st: Store | null = store()): StoredOwnVehicle | null {

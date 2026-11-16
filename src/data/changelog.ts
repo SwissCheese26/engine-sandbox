@@ -29,6 +29,8 @@ export const CHANGELOG: ChangelogEntry[] = [
       { kind: "geändert", text: "Das Cockpit-Design wählst du in den Einstellungen aus einer kurzen Liste mit Name und Beschreibung, direkt unter „Cockpit“.", refs: [94, 96] },
       { kind: "neu", text: "Renn-Dash im Cockpit mit Kontrollleuchten, (P)-Leuchte, Tempomat-Anzeige und Tankanzeige.", refs: [94, 96] },
       { kind: "neu", text: "„Credits“ im Hauptmenü: wer die Prüfzelle gebaut hat.", refs: [94, 96] },
+      { kind: "geändert", text: "Die Reifengröße wählst du jetzt aus drei Listen: Breite, Querschnitt und Zoll, darunter stehen Durchmesser und Abrollumfang. Es gibt passende Größen für Autos, Motorräder sowie Lkw und Busse. Ungewöhnliche Kombinationen bekommen einen Hinweis. Ein gespeichertes eigenes Fahrzeug wird übernommen.", refs: [97, 98] },
+      { kind: "neu", text: "In der Fahrzeugliste beim Start gibt es „+ Neues erstellen“: Das Formular für ein eigenes Fahrzeug öffnet sich direkt mit der passenden Fahrzeugart.", refs: [97, 98] },
     ],
   },
   {

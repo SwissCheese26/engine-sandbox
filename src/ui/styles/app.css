@@ -1833,6 +1833,75 @@ kbd {
 .vehicle__num input[aria-invalid="true"] {
   border-color: var(--signal);
 }
+/* tyre size picker (tyre-size-picker.ts): Breite / Querschnitt R Zoll in one row, 44 px touch targets, fits 360 px */
+.vehicle__size {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.tyrepick {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  font-size: var(--fs-12);
+  color: var(--alu-shade);
+}
+.tyrepick__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: end;
+  gap: var(--space-1);
+  max-width: 26rem;
+}
+.tyrepick__f {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.tyrepick__f > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.tyrepick select {
+  min-height: 44px;
+  width: 100%;
+  min-width: 0;
+  padding: 0 4px;
+  border-radius: var(--radius-plate);
+  border: 1px solid var(--alu-shade);
+  background: var(--hammer);
+  color: var(--alu);
+  font-family: var(--font-num);
+  font-size: var(--fs-16);
+  font-variant-numeric: tabular-nums;
+}
+.tyrepick select:disabled {
+  opacity: 0.55;
+}
+.tyrepick select[aria-invalid="true"] {
+  border-color: var(--signal);
+  box-shadow: 0 0 0 1px var(--signal);
+}
+.tyrepick__sep {
+  align-self: end;
+  line-height: 44px;
+  font-size: var(--fs-16);
+  font-weight: 600;
+  color: var(--alu);
+}
+.tyrepick__out {
+  margin: 0;
+  font-size: var(--fs-14);
+  color: var(--alu);
+}
+.tyrepick__hint {
+  margin: 0;
+  font-size: var(--fs-12);
+  color: var(--signal);
+}
+.tyrepick__hint[hidden] {
+  display: none;
+}
 .vehicle__tyre,
 .vehicle__note {
   font-size: var(--fs-14);

@@ -195,6 +195,82 @@ async function run(label, viewport) {
   await wizard(label, viewport, touch);
 }
 
+/**
+ * Step 2 of a library list: "Weitere folgen …" at the end, "+ Neues erstellen" opens the own-vehicle form with the
+ * list's base type (Auto), Zurück returns to the list. Tyre picker in the form: one row, no overflow, 44 px.
+ */
+async function createOwnChecks(page, label) {
+  const more = await page.isVisible('.wizard .wizard__more');
+  if (!more) failures.push(`${label}: „Weitere folgen …“ fehlt in der Fahrzeugliste`);
+  await page.click('.wizard [data-action="create-own"]');
+  const st = await page.evaluate(() => ({
+    form: !document.querySelector('.wizard [data-out="custom"]').hidden,
+    base: document.querySelector('.wizard [data-c="base"]').value,
+    title: document.querySelector("#wiz-h2").textContent,
+    step: document.querySelector('.wizard [aria-current="step"]')?.dataset.stepMark,
+  }));
+  if (!st.form || st.base !== "car" || st.step !== "2") failures.push(`${label}: „Neues erstellen“ öffnet das Formular nicht mit Fahrzeugtyp Auto (${JSON.stringify(st)})`);
+  const pick = await page.evaluate(() => {
+    const sel = [...document.querySelectorAll(".wizard .tyrepick select")];
+    const tops = new Set(sel.map((s) => Math.round(s.getBoundingClientRect().top)));
+    const d = document.querySelector(".wizard[open]");
+    return { n: sel.length, oneRow: tops.size === 1, minH: Math.min(...sel.map((s) => s.getBoundingClientRect().height)), overflow: d.scrollWidth - d.clientWidth };
+  });
+  if (pick.n !== 3 || !pick.oneRow || pick.minH < 44 || pick.overflow > 0) failures.push(`${label}: Reifenwahl im Formular nicht in einer Zeile / zu klein / scrollt (${JSON.stringify(pick)})`);
+  await page.screenshot({ path: join(outDir, `smoke-${label}-wizard-create-own.png`) });
+  await page.click('.wizard [data-nav="back"]');
+  const back = await page.evaluate(() => ({
+    list: !document.querySelector('.wizard [data-out="vehicles"]').hidden,
+    golf: !!document.querySelector('.wizard__vehicle input[value="car-vw-golf7-gti"]'),
+    step: document.querySelector('.wizard [aria-current="step"]')?.dataset.stepMark,
+  }));
+  if (!back.list || !back.golf || back.step !== "2") failures.push(`${label}: Zurück aus „Neues erstellen“ führt nicht zur Liste (${JSON.stringify(back)})`);
+}
+
+/**
+ * Tyre size picker in the Fahrzeug-Platte: another width changes the readout (size, diameter, circumference) and the
+ * fitted tyre; three selects in one row, no horizontal scroll, 44 px on touch layouts.
+ */
+async function tyreChecks(page, label) {
+  const read = () => page.evaluate(() => ({
+    text: document.querySelector('.vehicle [data-out="tyre-size"]')?.textContent ?? "",
+    width: window.__pruefzelle?.gearbox.drivetrain.tyre.size.widthMm,
+  }));
+  const before = await read();
+  const cur = await page.evaluate(() => document.querySelector('.vehicle [data-control="tyre-width"]')?.value);
+  const next = cur === "235" ? "245" : "235";
+  await page.evaluate((v) => {
+    const sel = document.querySelector('.vehicle [data-control="tyre-width"]');
+    sel.value = v;
+    sel.dispatchEvent(new Event("change", { bubbles: true }));
+  }, next);
+  await page.waitForTimeout(100);
+  const after = await read();
+  if (!/^\d{3}\/\d{2} R\d+ · Ø \d+ mm · Abrollumfang \d,\d\d m$/.test(after.text) || after.text === before.text || !after.text.startsWith(`${next}/`) || after.width !== Number(next))
+    failures.push(`${label}: Reifenbreite ändert die Anzeige nicht („${before.text}“ → „${after.text}“, Breite ${after.width})`);
+  const vis = await page.isVisible(".vehicle .tyrepick");
+  if (vis) {
+    await page.locator(".vehicle .tyrepick").scrollIntoViewIfNeeded();
+    const sz = await page.evaluate(() => {
+      const sel = [...document.querySelectorAll(".vehicle .tyrepick select")];
+      return {
+        oneRow: new Set(sel.map((s) => Math.round(s.getBoundingClientRect().top))).size === 1,
+        minH: Math.min(...sel.map((s) => s.getBoundingClientRect().height)),
+        overflow: document.documentElement.scrollWidth - window.innerWidth,
+      };
+    });
+    if (!sz.oneRow || sz.minH < 44 || sz.overflow > 0) failures.push(`${label}: Reifenwahl in der Fahrzeug-Platte ungünstig (${JSON.stringify(sz)})`);
+    await page.locator(".vehicle .tyrepick").screenshot({ path: join(outDir, `smoke-${label}-tyre-picker.png`) });
+  }
+  console.log(`${label}: Reifen ${before.text} → ${after.text}`);
+  // back to the car's own size for the later steps
+  await page.evaluate((v) => {
+    const sel = document.querySelector('.vehicle [data-control="tyre-width"]');
+    sel.value = v;
+    sel.dispatchEvent(new Event("change", { bubbles: true }));
+  }, cur);
+}
+
 /** Guided start (#93), step 1 "Nur Motorprüfstand": straight to "Kurz erklärt", then "Losfahren". */
 async function wizardEngine(page) {
   await page.click('.wizard [data-pick="engine"]');
@@ -257,6 +333,7 @@ async function wizard(label, viewport, touch) {
 
   // full run: Auto → Golf 7 GTI → Alpen → Losfahren
   await page.click('.wizard [data-kind="car"]');
+  await createOwnChecks(page, label);
   await page.click('.wizard__vehicle:has(input[value="car-vw-golf7-gti"])');
   await page.screenshot({ path: join(outDir, `smoke-${label}-wizard-step2.png`) });
   await page.click('.wizard [data-nav="next"]');
@@ -296,7 +373,10 @@ async function wizard(label, viewport, touch) {
   await page.click('.wizard [data-kind="custom"]');
   await page.fill('.wizard [data-c="massKg"]', "1.300");
   await page.fill('.wizard [data-c="cw"]', "0,28");
-  await page.fill('.wizard [data-c="tyre"]', "205/55 R16");
+  // tyre size from three lists (no free text)
+  await page.selectOption('.wizard [data-control="tyre-width"]', "205");
+  await page.selectOption('.wizard [data-control="tyre-aspect"]', "55");
+  await page.selectOption('.wizard [data-control="tyre-rim"]', "16");
   await page.selectOption('.wizard [data-c="drive"]', "rwd");
   await page.click('.wizard [data-nav="next"]');
   await page.click('.routepick__card:has(input[value="flat"])');
@@ -325,8 +405,8 @@ async function wizard(label, viewport, touch) {
   await page.waitForSelector('[data-screen="menu"]:not([hidden])');
   await page.click('a.door[href="#sandbox"]');
   await page.click('.wizard [data-kind="custom"]');
-  const pre = await page.evaluate(() => ({ mass: document.querySelector('.wizard [data-c="massKg"]').value, tyre: document.querySelector('.wizard [data-c="tyre"]').value }));
-  if (pre.mass !== "1300" || pre.tyre !== "205/55 R16") failures.push(`${label}: Formular nicht mit dem eigenen Fahrzeug vorbelegt (${JSON.stringify(pre)})`);
+  const pre = await page.evaluate(() => ({ mass: document.querySelector('.wizard [data-c="massKg"]').value, tyre: [...document.querySelectorAll('.wizard .tyrepick select')].map((s) => s.value).join(" ") }));
+  if (pre.mass !== "1300" || pre.tyre !== "205 55 16") failures.push(`${label}: Formular nicht mit dem eigenen Fahrzeug vorbelegt (${JSON.stringify(pre)})`);
   console.log(`${label}: eigenes Fahrzeug nach Neuladen ${JSON.stringify(after)}`);
   await page.close();
 }
@@ -345,6 +425,7 @@ async function gearsChecks(page, label) {
   }, m);
   await mode("vehicle");
   await page.waitForSelector(".gears canvas", { state: "visible" });
+  await tyreChecks(page, label);
   await page.locator(".gears").scrollIntoViewIfNeeded();
   await page.waitForTimeout(200);
   const verdict = (await page.locator('[data-out="traction-verdict"]').textContent()) ?? "";
