@@ -20,6 +20,16 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    date: "2026-11-16",
+    title: "Einfachere Ansichten und Credits",
+    items: [
+      { kind: "geändert", text: "Oben gibt es nur noch zwei Ansichten: Prüfzelle und Cockpit. Renn-Dash ist jetzt ein Cockpit-Design, Kompakt steckt im Design Head-up (mit Drehzahl und Leistung groß). Deine bisherige Wahl wird übernommen.", refs: [94] },
+      { kind: "geändert", text: "Das Cockpit-Design wählst du in den Einstellungen aus einer kurzen Liste mit Name und Beschreibung, direkt unter „Cockpit“.", refs: [94] },
+      { kind: "neu", text: "Renn-Dash im Cockpit mit Kontrollleuchten, (P)-Leuchte, Tempomat-Anzeige und Tankanzeige.", refs: [94] },
+      { kind: "neu", text: "„Credits“ im Hauptmenü: wer die Prüfzelle gebaut hat.", refs: [94] },
+    ],
+  },
+  {
     date: "2026-11-15",
     title: "Handbremse und Auto-Hold",
     items: [
