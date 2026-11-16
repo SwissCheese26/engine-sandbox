@@ -607,9 +607,10 @@
   color: #fff;
 }
 
-/* Guided start of the Sandbox (#93): step dialog in the hall's colours (replaces "Wähle eine Strecke") */
+/* Menu dialogs (.routepick base: "Fehler melden", "Was ist neu", …) and the guided start of the Sandbox (#93) */
+.routepick,
 .wizard {
-  width: min(760px, calc(100vw - 32px));
+  width: min(720px, calc(100vw - 32px));
   max-height: calc(100dvh - 32px);
   overflow: auto;
   overscroll-behavior: contain;
@@ -619,9 +620,11 @@
   background: var(--hammer-deep);
   color: var(--alu);
 }
+.routepick::backdrop,
 .wizard::backdrop {
   background: rgba(10, 14, 12, 0.72);
 }
+.routepick__form,
 .wizard__form {
   display: grid;
   gap: var(--space-3);
@@ -636,6 +639,7 @@
 .wizard__step[hidden] {
   display: none;
 }
+.routepick__title,
 .wizard__title {
   margin: 0;
   font-size: var(--fs-25);
@@ -646,6 +650,7 @@
 .wizard__title:focus-visible {
   box-shadow: var(--focus);
 }
+.routepick__lead,
 .wizard__lead {
   margin: 0;
   font-size: var(--fs-14);
@@ -938,13 +943,25 @@
   flex: none;
   accent-color: var(--signal);
 }
+.routepick__foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  justify-content: flex-end;
+}
+/* sticky at the bottom of the scrolling dialog: Weiter/Losfahren stays reachable on phones (#93 review) */
 .wizard__foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
   align-items: center;
-  padding-top: var(--space-3);
+  margin: 0 calc(-1 * var(--space-4)) calc(-1 * var(--space-4));
+  padding: var(--space-3) var(--space-4) var(--space-4);
   border-top: 1px solid #56655e;
+  background: var(--hammer-deep);
 }
 .wizard__foot .btn {
   min-height: 44px;
@@ -958,6 +975,10 @@
 @media (max-width: 480px) {
   .wizard__form {
     padding: var(--space-3);
+  }
+  .wizard__foot {
+    margin: 0 calc(-1 * var(--space-3)) calc(-1 * var(--space-3));
+    padding: var(--space-2) var(--space-3) var(--space-3);
   }
   .wizard__kinds,
   .routepick__list,
