@@ -3,7 +3,7 @@
 // from it, and the pending setup the menu hands to the sandbox (App.applyPendingSetup).
 import {
   BUS_AUTOMATIC, DEFAULT_SPEED_LIMIT_KMH, DEFAULT_TANK_L, GEARBOXES, TRUCK_AMT, VEHICLES, formatTyreSize, isCommercialKind,
-  isMotorcycleKind, parseTyreSize, withTyre,
+  isMotorcycleKind, parseTyreSize, tyreRadii, withTyre,
 } from "../core/index.ts";
 import type { CarSetup, DriveLayout, GearboxType, Terrain, VehicleKind } from "../core/index.ts";
 import { ENGINE_LIBRARY, type LibraryEngine } from "../data/engine-library.ts";
@@ -104,10 +104,13 @@ interface Range {
   max: number;
 }
 /** Plausible ranges per base type (mass incl. driver; the vehicle panel allows 150 … 44 000 kg overall). */
-export const CUSTOM_LIMITS: Record<CustomBase, Record<"massKg" | "cw" | "areaM2" | "tankL", Range>> = {
-  car: { massKg: { min: 500, max: 4000 }, cw: { min: 0.15, max: 0.9 }, areaM2: { min: 1.2, max: 4.5 }, tankL: { min: 5, max: 150 } },
-  truck: { massKg: { min: 3500, max: 44000 }, cw: { min: 0.4, max: 0.9 }, areaM2: { min: 4, max: 12 }, tankL: { min: 50, max: 1200 } },
-  bike: { massKg: { min: 100, max: 600 }, cw: { min: 0.3, max: 0.9 }, areaM2: { min: 0.3, max: 1.5 }, tankL: { min: 2, max: 40 } },
+// Bike minimum mass = the vehicle panel's minimum (150 kg), so an own bike can be edited there afterwards.
+// Dynamic wheel radius (from the tyre size, tyreRadii): the span of the library vehicles of each type with margin
+// (Citroën C1 155/65 R14 ≈ 0,28 m … Land Cruiser 265/65 R17 ≈ 0,38 m; bikes ≈ 0,30–0,31 m; truck/bus R22.5 ≈ 0,46–0,49 m).
+export const CUSTOM_LIMITS: Record<CustomBase, Record<"massKg" | "cw" | "areaM2" | "tankL" | "radiusM", Range>> = {
+  car: { massKg: { min: 500, max: 4000 }, cw: { min: 0.15, max: 0.9 }, areaM2: { min: 1.2, max: 4.5 }, tankL: { min: 5, max: 150 }, radiusM: { min: 0.25, max: 0.45 } },
+  truck: { massKg: { min: 3500, max: 44000 }, cw: { min: 0.4, max: 0.9 }, areaM2: { min: 4, max: 12 }, tankL: { min: 50, max: 1200 }, radiusM: { min: 0.4, max: 0.6 } },
+  bike: { massKg: { min: 150, max: 600 }, cw: { min: 0.3, max: 0.9 }, areaM2: { min: 0.3, max: 1.5 }, tankL: { min: 2, max: 40 }, radiusM: { min: 0.25, max: 0.38 } },
 };
 
 /** Gearboxes an own vehicle of this base can have (the drivetrain presets' choice; Lkw: AMT or converter automatic). */
@@ -152,7 +155,29 @@ export function defaultCustom(base: CustomBase): CustomVehicle {
 
 export type CustomResult = { ok: true; value: CustomVehicle } | { ok: false; errors: Partial<Record<CustomField, string>> };
 
-const num = (v: unknown): number => (typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v.replace(",", ".")) : Number.NaN);
+/**
+ * A number as typed in a German (or English) form: "1350", "1.350" (thousands), "1.350,5", "0,29", "0.29".
+ * A dot followed by exactly three digits in groups is a thousands separator; anything else unclear ("1.2.3",
+ * "1,5,0", "1,500.5") is rejected (NaN), never guessed.
+ */
+export function parseDecimal(v: unknown): number {
+  if (typeof v === "number") return v;
+  if (typeof v !== "string") return Number.NaN;
+  let t = v.trim().replace(/\s/g, "");
+  if (!t) return Number.NaN;
+  const dots = (t.match(/\./g) ?? []).length;
+  const commas = (t.match(/,/g) ?? []).length;
+  if (commas > 1) return Number.NaN;
+  if (commas === 1) {
+    // comma = decimal; dots before it only as thousands groups
+    if (dots && !/^-?\d{1,3}(\.\d{3})+,\d+$/.test(t)) return Number.NaN;
+    t = t.replace(/\./g, "").replace(",", ".");
+  } else if (/^-?\d{1,3}(\.\d{3})+$/.test(t)) {
+    t = t.replace(/\./g, "");
+  } else if (dots > 1) return Number.NaN;
+  return /^-?\d+(\.\d+)?$/.test(t) ? Number(t) : Number.NaN;
+}
+const num = parseDecimal;
 const de = (n: number) => n.toLocaleString("de-DE", { maximumFractionDigits: 2 });
 
 /** Checks the form values (strings from inputs or numbers). Every bad field gets a German message. */
@@ -172,7 +197,13 @@ export function validateCustom(raw: Partial<Record<keyof CustomVehicle, unknown>
   const areaM2 = range("areaM2", "Stirnfläche", " m²");
   const tankL = range("tankL", "Tank", " l");
   const tyre = typeof raw.tyre === "string" ? raw.tyre.trim() : "";
-  if (!parseTyreSize(tyre)) errors.tyre = "Reifengröße als Breite/Querschnitt R Zoll, z. B. 225/45 R17.";
+  const size = parseTyreSize(tyre);
+  if (!size) errors.tyre = "Reifengröße als Breite/Querschnitt R Zoll, z. B. 225/45 R17.";
+  else {
+    const r = tyreRadii(size).dynamicM;
+    const rl = lim.radiusM;
+    if (r < rl.min || r > rl.max) errors.tyre = `Raddurchmesser passt nicht: Radius ${de(Math.round(r * 1000))} mm, erlaubt ${de(rl.min * 1000)} bis ${de(rl.max * 1000)} mm.`;
+  }
   const drive = raw.drive as DriveLayout;
   if (!drivesFor(base).includes(drive)) errors.drive = "Diese Antriebsart passt nicht zum Fahrzeugtyp.";
   const gearbox = raw.gearbox as GearboxType;
@@ -229,6 +260,58 @@ export function buildSetup(kind: SetupKind, choice: { vehicleId?: string; custom
   const car = vehiclesOf(kind).find((c) => c.id === choice.vehicleId);
   if (!car) return null;
   return { kind, vehicleId: car.id, engineId: car.engineId, route: choice.route };
+}
+
+// --- own vehicle across reloads (#93 review) ------------------------------------------------------------------------
+
+export const OWN_VEHICLE_KEY = "pruefzelle.ownVehicle";
+
+/** The last own vehicle and whether it was the last setup (then the sandbox loads it again on mount). */
+export interface StoredOwnVehicle {
+  custom: CustomVehicle;
+  active: boolean;
+}
+
+type Store = Pick<Storage, "getItem" | "setItem">;
+function store(): Store | null {
+  try {
+    return typeof localStorage === "undefined" ? null : localStorage;
+  } catch {
+    return null;
+  }
+}
+
+/** Accepts anything (stored JSON may be old, edited or broken); only a valid own vehicle comes back. */
+export function parseOwnVehicle(raw: unknown): StoredOwnVehicle | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const v = validateCustom((r.custom && typeof r.custom === "object" ? r.custom : {}) as Record<string, unknown>);
+  return v.ok ? { custom: v.value, active: r.active === true } : null;
+}
+
+export function loadOwnVehicle(st: Store | null = store()): StoredOwnVehicle | null {
+  try {
+    return parseOwnVehicle(JSON.parse(st?.getItem(OWN_VEHICLE_KEY) ?? "null"));
+  } catch {
+    return null;
+  }
+}
+
+/** Stores a validated own vehicle (invalid ones are not stored). */
+export function saveOwnVehicle(custom: CustomVehicle, active: boolean, st: Store | null = store()) {
+  const v = validateCustom(custom);
+  if (!v.ok) return;
+  try {
+    st?.setItem(OWN_VEHICLE_KEY, JSON.stringify({ custom: v.value, active }));
+  } catch {
+    /* storage unavailable: lasts for this visit */
+  }
+}
+
+/** Another vehicle (or the engine dyno) became the last setup: the own vehicle stays stored for the form. */
+export function setOwnVehicleActive(active: boolean, st: Store | null = store()) {
+  const o = loadOwnVehicle(st);
+  if (o && o.active !== active) saveOwnVehicle(o.custom, active, st);
 }
 
 let pending: PendingSetup | null = null;

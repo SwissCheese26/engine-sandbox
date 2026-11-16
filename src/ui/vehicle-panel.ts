@@ -190,12 +190,22 @@ export class VehiclePanel {
 
   /** Guided start (#93): an own vehicle built in the wizard ("eigenes Fahrzeug", like any own edit). */
   applyOwn(setup: CarSetup): boolean {
-    if (this.moving) return false;
+    if (this.moving || !VehiclePanel.withinLimits(setup)) return false;
     this.drivetrain.applyCar(structuredClone(setup));
     this.markOwn();
     this.sync();
     this.onChange();
     return true;
+  }
+
+  /** An own vehicle must stay inside the panel's own field limits (mass, cW, area, tank). */
+  static withinLimits(setup: CarSetup): boolean {
+    const v = setup.vehicle;
+    const values: Partial<Record<NumField["key"], number | undefined>> = { mass: v.massKg, cw: v.dragCoefficient, area: v.frontalAreaM2, tank: setup.tankL };
+    return FIELDS.every((f) => {
+      const n = values[f.key];
+      return n === undefined || (Number.isFinite(n) && n >= f.min && n <= f.max);
+    });
   }
 
   private applyCar(car: LibraryCar) {
