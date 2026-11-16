@@ -20,6 +20,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    date: "2026-11-16",
+    title: "Geführter Start in die Sandbox",
+    items: [
+      { kind: "neu", text: "Die Sandbox führt jetzt Schritt für Schritt hinein: Fahrzeugart, Fahrzeug (mit PS, Gewicht, Getriebe und Tank), Strecke und zum Schluss „Kurz erklärt“, wo Zündung, Gas, Schalten, Handbremse, Tempomat, Umwelt und Einstellungen liegen. „Weiter wie zuletzt“ bleibt der schnelle Weg hinein.", refs: [93] },
+      { kind: "neu", text: "Eigenes Fahrzeug direkt beim Start: Auto, Lkw oder Motorrad mit eigenem Gewicht, cW-Wert, Stirnfläche, Reifen, Antrieb, Getriebe, Tank und einem Motor aus der Bibliothek.", refs: [93] },
+    ],
+  },
+  {
     date: "2026-11-15",
     title: "Handbremse und Auto-Hold",
     items: [
