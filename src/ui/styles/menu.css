@@ -607,35 +607,96 @@
   color: #fff;
 }
 
-/* "Wähle eine Strecke" (route picker before the sandbox) */
-.routepick {
-  width: min(720px, calc(100vw - 32px));
+/* Guided start of the Sandbox (#93): step dialog in the hall's colours (replaces "Wähle eine Strecke") */
+.wizard {
+  width: min(760px, calc(100vw - 32px));
   max-height: calc(100dvh - 32px);
   overflow: auto;
+  overscroll-behavior: contain;
   padding: 0;
   border: 1px solid var(--alu-shade);
   border-radius: 8px;
   background: var(--hammer-deep);
   color: var(--alu);
 }
-.routepick::backdrop {
+.wizard::backdrop {
   background: rgba(10, 14, 12, 0.72);
 }
-.routepick__form {
+.wizard__form {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-4);
+  min-width: 0;
 }
-.routepick__title {
+.wizard__step {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.wizard__step[hidden] {
+  display: none;
+}
+.wizard__title {
   margin: 0;
   font-size: var(--fs-25);
 }
-.routepick__lead {
+.wizard__title:focus {
+  outline: none;
+}
+.wizard__title:focus-visible {
+  box-shadow: var(--focus);
+}
+.wizard__lead {
   margin: 0;
   font-size: var(--fs-14);
   color: var(--alu-shade);
 }
-.routepick__list {
+/* step indicator: 1 Fahrzeugart · 2 Fahrzeug · 3 Strecke · 4 Los geht's */
+.wizard__steps {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 var(--space-3);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  border-bottom: 1px solid #56655e;
+  font-size: var(--fs-14);
+  color: var(--alu-shade);
+}
+.wizard__steps li {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.wizard__no {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  font-family: var(--font-num);
+  font-size: var(--fs-12);
+  font-weight: 700;
+}
+.wizard__steps [data-state="current"] {
+  color: var(--signal);
+  font-weight: 700;
+}
+.wizard__steps [data-state="current"] .wizard__no {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: var(--signal-ink);
+}
+.wizard__steps [data-state="done"] {
+  color: var(--alu);
+}
+.wizard__steps [data-state="skip"] {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+/* step 1: large kind cards */
+.wizard__kinds {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -643,12 +704,16 @@
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: var(--space-2);
 }
-.routepick__card {
+.wizard__kind {
   width: 100%;
   height: 100%;
+  min-height: 44px;
   display: grid;
-  gap: var(--space-1);
-  align-content: start;
+  grid-template-columns: 56px 1fr;
+  grid-template-rows: auto auto;
+  column-gap: var(--space-3);
+  row-gap: var(--space-1);
+  align-items: center;
   padding: var(--space-3);
   border: 1px solid #56655e;
   border-radius: 6px;
@@ -658,10 +723,159 @@
   text-align: left;
   cursor: pointer;
 }
-.routepick__card:hover,
-.routepick__card:focus-visible {
+.wizard__kind .wizard__icon {
+  grid-row: span 2;
+  width: 56px;
+  height: 38px;
+  color: var(--signal);
+}
+.wizard__kname {
+  font-weight: 700;
+  font-size: var(--fs-20);
+}
+.wizard__ktext {
+  font-size: var(--fs-12);
+  color: var(--alu-shade);
+}
+.wizard__kind--plain {
+  background: transparent;
+  border-style: dashed;
+}
+.wizard__kind:hover,
+.wizard__kind:focus-visible,
+.wizard__kind[aria-pressed="true"] {
   border-color: var(--signal);
   outline: none;
+  box-shadow: 0 0 0 2px var(--signal);
+}
+.wizard__icon {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* step 2: library vehicles */
+.wizard__vlist {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.wizard__vehicle {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  column-gap: var(--space-2);
+  align-items: center;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid #56655e;
+  border-radius: 6px;
+  background: var(--hammer);
+  cursor: pointer;
+}
+.wizard__vehicle input {
+  grid-row: span 2;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--signal);
+}
+.wizard__vehicle:has(input:checked) {
+  border-color: var(--signal);
+}
+.wizard__vehicle:has(input:focus-visible) {
+  box-shadow: 0 0 0 2px var(--signal);
+}
+.wizard__vname {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.wizard__vname small {
+  font-weight: 400;
+  color: var(--alu-shade);
+}
+.wizard__vfacts {
+  font-size: var(--fs-12);
+  color: var(--alu-shade);
+  overflow-wrap: anywhere;
+}
+/* step 2: own vehicle */
+.wizard__custom {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-3);
+}
+.wizard__custom[hidden] {
+  display: none;
+}
+.wizard__field {
+  display: grid;
+  gap: 2px;
+  font-size: var(--fs-14);
+  min-width: 0;
+}
+.wizard__field--wide {
+  grid-column: 1 / -1;
+}
+.wizard__field input,
+.wizard__field select {
+  min-height: 44px;
+  width: 100%;
+  min-width: 0;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--alu-shade);
+  border-radius: var(--radius-plate);
+  background: var(--engrave);
+  color: var(--alu);
+  font: inherit;
+}
+.wizard__field [aria-invalid="true"] {
+  border-color: var(--signal);
+  box-shadow: 0 0 0 1px var(--signal);
+}
+.wizard__range {
+  font-size: var(--fs-12);
+  color: var(--alu-shade);
+}
+.wizard__err {
+  font-size: var(--fs-12);
+  color: var(--signal);
+}
+.wizard__err:empty {
+  display: none;
+}
+/* step 3: route cards (radio inside the card) */
+.routepick__list {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-2);
+}
+.routepick__card {
+  display: grid;
+  gap: var(--space-1);
+  align-content: start;
+  min-height: 44px;
+  padding: var(--space-3);
+  border: 1px solid #56655e;
+  border-radius: 6px;
+  background: var(--hammer);
+  cursor: pointer;
+}
+.routepick__card:hover,
+.routepick__card:has(input:checked) {
+  border-color: var(--signal);
+}
+.routepick__card:has(input:checked) {
+  box-shadow: inset 0 0 0 1px var(--signal);
+}
+.routepick__card:has(input:focus-visible) {
   box-shadow: 0 0 0 2px var(--signal);
 }
 .routepick__name {
@@ -683,11 +897,90 @@
   font-size: var(--fs-12);
   color: var(--alu-shade);
 }
-.routepick__foot {
+/* step 4: cheat sheet */
+.wizard__cheats {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--space-2) var(--space-4);
+}
+.wizard__cheats li {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: var(--space-2);
+  align-items: start;
+  min-width: 0;
+}
+.wizard__cheats .wizard__icon {
+  width: 36px;
+  height: 24px;
+  color: var(--signal);
+}
+.wizard__cheats p {
+  margin: 2px 0 0;
+  font-size: var(--fs-14);
+  color: var(--alu-shade);
+  overflow-wrap: anywhere;
+}
+.wizard__hide {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 44px;
+  font-size: var(--fs-14);
+  cursor: pointer;
+}
+.wizard__hide input {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  accent-color: var(--signal);
+}
+.wizard__foot {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-  justify-content: flex-end;
+  align-items: center;
+  padding-top: var(--space-3);
+  border-top: 1px solid #56655e;
+}
+.wizard__foot .btn {
+  min-height: 44px;
+}
+.wizard__foot [hidden] {
+  display: none;
+}
+.wizard__spacer {
+  flex: 1;
+}
+@media (max-width: 480px) {
+  .wizard__form {
+    padding: var(--space-3);
+  }
+  .wizard__kinds,
+  .routepick__list,
+  .wizard__custom,
+  .wizard__cheats {
+    grid-template-columns: 1fr;
+  }
+  /* phones: numbers only, the current step with its name (names stay for screen readers) */
+  .wizard__steps li:not([data-state="current"]) .wizard__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .wizard__foot .btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+  .wizard__spacer {
+    display: none;
+  }
 }
 
 /* settings → Bedienung: radio choice with a sentence per option */

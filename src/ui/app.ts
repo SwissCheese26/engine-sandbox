@@ -1,7 +1,7 @@
 // Prüfzelle: wires workbench, schematic, nameplate, instruments, recorder and console to the
 // simulator and runs the main loop.
 import { EngineSimulator, TERRAIN_LABELS, defaultInputs, summarize } from "../core/index.ts";
-import { takePendingRoute } from "./route-picker.ts";
+import { customSetup, takePendingSetup } from "./sandbox-setup.ts";
 import { ShiftPad } from "./shift-pad.ts";
 import type { EngineConfig, EngineState, EngineSummary } from "../core/index.ts";
 import { defaultConfig } from "../data/presets.ts";
@@ -548,37 +548,53 @@ export class App {
     }
   }
 
-  /** A route chosen in the main menu ("Wähle eine Strecke"): Umwelt → Strecke, onto the chassis dyno. */
-  applyPendingRoute() {
-    const t = takePendingRoute();
-    if (!t) return;
-    // the car is still rolling (left the sandbox while driving): the route is not switched under it
+  /**
+   * The guided start in the main menu (#93): vehicle kind, vehicle (+ its engine), route. Applied on mount/resume;
+   * nothing pending ("Weiter wie zuletzt") leaves the sandbox as it was.
+   */
+  applyPendingSetup() {
+    const p = takePendingSetup();
+    if (!p) return;
+    // the car is still rolling (left the sandbox while driving): nothing is switched under it
     if (this.gearbox.drivetrain.state.speedKmh > 0.5) {
-      this.announce("Das Fahrzeug rollt noch: erst anhalten, dann die Strecke unter Umwelt wählen.");
+      this.announce("Das Fahrzeug rollt noch: erst anhalten, dann Fahrzeug und Strecke wählen.");
       return;
     }
-    if (t === "engine") {
-      const m = this.root.querySelector<HTMLSelectElement>("select[data-control=mode]");
-      if (m && m.value === "vehicle") {
-        m.value = "free";
-        m.dispatchEvent(new Event("change", { bubbles: true }));
-      }
+    const mode = this.root.querySelector<HTMLSelectElement>("select[data-control=mode]");
+    const setMode = (v: string) => {
+      if (!mode || mode.value === v) return;
+      mode.value = v;
+      mode.dispatchEvent(new Event("change", { bubbles: true }));
+    };
+    if (p.kind === "engine" || !p.route) {
+      if (mode?.value === "vehicle") setMode("free");
       return;
     }
-    this.gearbox.environmentPanel.setRoute(t);
+    const notes: string[] = [];
+    // the engine: loaded on the bench (applied by the main loop at standstill); a running engine stays
+    if (p.engineId && p.engineId !== this.cfg.id) {
+      if (App.turning(this.sim.state) || this.bench.isLocked) notes.push("Der Motor läuft: erst abstellen, dann den passenden Motor in der Werkbank laden.");
+      else this.bench.loadLibrary(p.engineId);
+    }
+    const panel = this.gearbox.vehiclePanel;
+    let name = "";
+    if (p.kind === "custom" && p.custom) {
+      if (panel.applyOwn(customSetup(p.custom))) name = "Eigenes Fahrzeug";
+    } else if (p.vehicleId) {
+      name = panel.selectCar(p.vehicleId)?.name ?? "";
+    }
+    // the route after the vehicle: loading a vehicle puts it back to the start of the route
+    this.gearbox.environmentPanel.setRoute(p.route);
     this.gearbox.drivetrain.setPosition(0);
-    const sel = this.root.querySelector<HTMLSelectElement>("select[data-control=mode]");
-    if (sel && sel.value !== "vehicle") {
-      sel.value = "vehicle";
-      sel.dispatchEvent(new Event("change", { bubbles: true }));
-    }
-    this.announce(`Strecke: ${t === "static" ? "eben" : TERRAIN_LABELS[t]}. Rollenprüfstand gewählt.`);
+    setMode("vehicle");
+    const t = p.route;
+    this.announce([`${name ? `${name}, ` : ""}Strecke: ${t === "static" ? "eben" : TERRAIN_LABELS[t]}. Rollenprüfstand gewählt.`, ...notes].join(" "));
   }
 
   resume() {
     if (!this.paused || this.disposed) return;
     this.paused = false;
-    this.applyPendingRoute();
+    this.applyPendingSetup();
     if (this.soundStarted) {
       void this.sound.resume();
       this.sound.setVolume(this.console.muted ? 0 : this.console.volumeLevel);
@@ -622,7 +638,7 @@ export class App {
 export function mountApp(root: HTMLElement): App {
   const app = new App(root);
   app.start();
-  app.applyPendingRoute();
+  app.applyPendingSetup();
   // Small hook for the e2e tests and for debugging in the console.
   (window as unknown as { __pruefzelle?: App }).__pruefzelle = app;
   return app;
