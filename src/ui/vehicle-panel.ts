@@ -2,7 +2,7 @@
 // Everything here can only be changed at standstill (like the gearbox). The plate edits the Drivetrain of the
 // Getriebe-Pult; loading a ready-made car also asks the app to load its engine (onLoadCar).
 import { SPEED_INDEX, TYRE_TYPES, formatTyreSize, frontAxleShare, isCommercialKind, isMotorcycleKind, parseTyreSize, speedRatingKmh, tyreRadii } from "../core/index.ts";
-import type { Drivetrain, DriveLayout, SpeedIndex, TyreSetup, TyreType, VehicleParams } from "../core/index.ts";
+import type { CarSetup, Drivetrain, DriveLayout, SpeedIndex, TyreSetup, TyreType, VehicleParams } from "../core/index.ts";
 import { VEHICLE_LIBRARY, type LibraryCar } from "../data/vehicle-library.ts";
 import { prefs } from "./settings.ts";
 import { toUnit } from "./units.ts";
@@ -177,6 +177,35 @@ export class VehiclePanel {
     this.carSel.value = car.id;
     this.applyCar(car);
     return car;
+  }
+
+  /** Guided start (#93): loads a library vehicle by id (its engine is loaded by the app). */
+  selectCar(id: string): LibraryCar | null {
+    const car = VEHICLE_LIBRARY.find((c) => c.id === id);
+    if (!car || this.moving) return null;
+    this.carSel.value = car.id;
+    this.applyCar(car);
+    return car;
+  }
+
+  /** Guided start (#93): an own vehicle built in the wizard ("eigenes Fahrzeug", like any own edit). */
+  applyOwn(setup: CarSetup): boolean {
+    if (this.moving || !VehiclePanel.withinLimits(setup)) return false;
+    this.drivetrain.applyCar(structuredClone(setup));
+    this.markOwn();
+    this.sync();
+    this.onChange();
+    return true;
+  }
+
+  /** An own vehicle must stay inside the panel's own field limits (mass, cW, area, tank). */
+  static withinLimits(setup: CarSetup): boolean {
+    const v = setup.vehicle;
+    const values: Partial<Record<NumField["key"], number | undefined>> = { mass: v.massKg, cw: v.dragCoefficient, area: v.frontalAreaM2, tank: setup.tankL };
+    return FIELDS.every((f) => {
+      const n = values[f.key];
+      return n === undefined || (Number.isFinite(n) && n >= f.min && n <= f.max);
+    });
   }
 
   private applyCar(car: LibraryCar) {

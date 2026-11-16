@@ -79,6 +79,16 @@ export class GearboxPanel {
       /* storage unavailable */
     }
   }
+  /** The tank of the last visit, if it was the same vehicle (library id, or the own vehicle, #93 restores it). */
+  restoreTank() {
+    const saved = loadTank();
+    // (an own vehicle keeps its own tank size too)
+    if (saved && saved.vehicle === this.vehiclePanel.carId && saved.kind === this.drivetrain.kind) {
+      this.drivetrain.tank.setCapacity(saved.tank.capacityL, false);
+      this.drivetrain.tank.setLevel(saved.tank.levelL);
+      this.vehiclePanel.sync();
+    }
+  }
   private tankAbort = new AbortController();
   /** Saves the tank once more and removes the page listeners (App.dispose). */
   disposeTank() {
@@ -194,13 +204,7 @@ export class GearboxPanel {
     this.lockEl = q("[data-out=wheels-locked]");
     this.vehiclePanel = new VehiclePanel(this.drivetrain);
     // the tank level of the last visit, if it was the same vehicle (library id, or the own vehicle), else full
-    const saved = loadTank();
-    // (an own vehicle keeps its own tank size too)
-    if (saved && saved.vehicle === this.vehiclePanel.carId && saved.kind === this.drivetrain.kind) {
-      this.drivetrain.tank.setCapacity(saved.tank.capacityL, false);
-      this.drivetrain.tank.setLevel(saved.tank.levelL);
-      this.vehiclePanel.sync();
-    }
+    this.restoreTank();
     this.vehiclePanel.onChange = () => {
       this.onResetVehicle();
       this.syncSetup();

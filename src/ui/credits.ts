@@ -56,7 +56,23 @@ export class CreditsDialog {
       downOutside = false;
     });
     d.addEventListener("close", () => this.button.focus());
+    // without showModal (old browsers) the dialog is opened by attribute and gets no native Esc: close it here
+    d.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape" || typeof d.showModal === "function" || !d.hasAttribute("open")) return;
+      e.preventDefault();
+      e.stopPropagation();
+      this.close();
+    });
     this.el = d;
+  }
+
+  /** Closes the dialog, also where <dialog> has no close() (attribute fallback). */
+  close() {
+    if (typeof this.el.close === "function" && this.el.open) this.el.close("");
+    else {
+      this.el.removeAttribute("open");
+      this.button.focus();
+    }
   }
 
   open() {

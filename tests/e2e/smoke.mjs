@@ -115,6 +115,14 @@ async function run(label, viewport) {
   // "Fehler melden" (#55) in the hall: opens the dialog, Abbrechen closes it
   await page.click('.hall [data-action="bug-report"]');
   if (!(await page.isVisible("dialog.bugreport[open]"))) failures.push(`${label}: Fehler-melden-Dialog öffnet im Menü nicht`);
+  // the menu dialogs share the .routepick base (review PR #95): box in the hall colours, dimmed backdrop
+  const look = await page.evaluate(() => {
+    const d = document.querySelector("dialog.bugreport[open]");
+    const cs = getComputedStyle(d);
+    return { cls: d.classList.contains("routepick"), bg: cs.backgroundColor, radius: cs.borderTopLeftRadius, backdrop: getComputedStyle(d, "::backdrop").backgroundColor, width: d.getBoundingClientRect().width };
+  });
+  if (!look.cls || look.bg !== "rgb(46, 58, 53)" || look.radius !== "8px" || !/rgba\(10, 14, 12, 0\.72\)/.test(look.backdrop) || look.width > 720)
+    failures.push(`${label}: Fehler-melden-Dialog ungestylt (${JSON.stringify(look)})`);
   await page.click('dialog.bugreport [data-action="cancel"]');
   await whatsNew(page, label);
   await credits(page, label);
@@ -125,8 +133,8 @@ async function run(label, viewport) {
   await page.click('.office__top a[href="#menu"]');
   await page.waitForSelector('[data-screen="menu"]:not([hidden])');
   await page.click('a.door[href="#sandbox"]');
-  // "Wähle eine Strecke" opens first; the smoke test starts on the engine dyno
-  await page.click('.routepick [data-pick="engine"]');
+  // the guided start (#93) opens first; the smoke test starts on the engine dyno
+  await wizardEngine(page);
   await page.waitForSelector(RPM_READOUT, { state: "visible" });
   await page.waitForTimeout(300);
 
@@ -183,6 +191,143 @@ async function run(label, viewport) {
 
   await layouts(page, label);
 
+  await page.close();
+  await wizard(label, viewport, touch);
+}
+
+/** Guided start (#93), step 1 "Nur Motorprüfstand": straight to "Kurz erklärt", then "Losfahren". */
+async function wizardEngine(page) {
+  await page.click('.wizard [data-pick="engine"]');
+  if (await page.isVisible('.wizard[open] [data-nav="next"]')) await page.click('.wizard[open] [data-nav="next"]');
+}
+
+/**
+ * #93 Guided start on a fresh page: step indicator and heading focus, Esc cancels, 44 px targets and no horizontal
+ * overflow, own-vehicle validation, and one full run Auto → Golf 7 GTI → Alpen → Losfahren that loads car, engine
+ * and route in the sandbox.
+ */
+async function wizard(label, viewport, touch) {
+  const page = await browser.newPage({ viewport, deviceScaleFactor: 1, hasTouch: touch, isMobile: touch });
+  page.on("pageerror", (e) => errors.push(`${label}: pageerror (Assistent): ${e.message}`));
+  await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
+  await page.goto(base, { waitUntil: "load" });
+  await page.click('a.door[href="#sandbox"]');
+  await page.waitForSelector(".wizard[open] [data-step='1']:not([hidden])");
+  await page.waitForTimeout(150);
+  const fit = () => page.evaluate(() => {
+    const d = document.querySelector(".wizard[open]");
+    const step = d.querySelector(".wizard__step:not([hidden])");
+    const targets = [...step.querySelectorAll("button, .wizard__vehicle, .routepick__card, input:not([type=radio]):not([type=checkbox]), select, .wizard__hide"), ...d.querySelectorAll(".wizard__foot .btn:not([hidden])")]
+      .filter((e) => e.getClientRects().length && !e.closest("[hidden]"));
+    return {
+      focus: document.activeElement?.id ?? "",
+      minH: Math.min(...targets.map((e) => e.getBoundingClientRect().height)),
+      overflow: Math.max(d.scrollWidth - d.clientWidth, document.documentElement.scrollWidth - window.innerWidth),
+      current: d.querySelector('[aria-current="step"]')?.dataset.stepMark,
+    };
+  });
+  const checkStep = async (n) => {
+    const f = await fit();
+    if (f.focus !== `wiz-h${n}` || f.current !== String(n)) failures.push(`${label}: Assistent Schritt ${n}: Fokus/Anzeige falsch (${JSON.stringify(f)})`);
+    if (f.overflow > 0) failures.push(`${label}: Assistent Schritt ${n} läuft horizontal über (${f.overflow} px)`);
+    if (touch && f.minH < 44) failures.push(`${label}: Assistent Schritt ${n}: Bedienelement unter 44 px (${f.minH})`);
+  };
+  await checkStep(1);
+  await page.screenshot({ path: join(outDir, `smoke-${label}-wizard-step1.png`) });
+  // Esc cancels: dialog closed, still in the menu
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(150);
+  const esc = await page.evaluate(() => ({ open: !!document.querySelector(".wizard[open]"), hash: location.hash }));
+  if (esc.open || esc.hash === "#sandbox") failures.push(`${label}: Esc bricht den Assistenten nicht ab (${JSON.stringify(esc)})`);
+
+  // own vehicle: a bad weight is refused with a message at the field
+  await page.click('a.door[href="#sandbox"]');
+  await page.click('.wizard [data-kind="custom"]');
+  await checkStep(2);
+  await page.fill('.wizard [data-c="massKg"]', "abc");
+  await page.click('.wizard [data-nav="next"]');
+  const bad = await page.evaluate(() => ({
+    invalid: document.querySelector('.wizard [data-c="massKg"]').getAttribute("aria-invalid"),
+    msg: document.querySelector("#wiz-err-massKg").textContent,
+    step: document.querySelector('.wizard [aria-current="step"]').dataset.stepMark,
+  }));
+  if (bad.invalid !== "true" || !bad.msg || bad.step !== "2") failures.push(`${label}: eigenes Fahrzeug ohne Prüfung (${JSON.stringify(bad)})`);
+  await page.screenshot({ path: join(outDir, `smoke-${label}-wizard-custom.png`) });
+  await page.click('.wizard [data-nav="back"]');
+
+  // full run: Auto → Golf 7 GTI → Alpen → Losfahren
+  await page.click('.wizard [data-kind="car"]');
+  await page.click('.wizard__vehicle:has(input[value="car-vw-golf7-gti"])');
+  await page.screenshot({ path: join(outDir, `smoke-${label}-wizard-step2.png`) });
+  await page.click('.wizard [data-nav="next"]');
+  await checkStep(3);
+  await page.click('.routepick__card:has(input[value="alps"])');
+  await page.click('.wizard [data-nav="next"]');
+  await checkStep(4);
+  await page.screenshot({ path: join(outDir, `smoke-${label}-wizard-step4.png`) });
+  // sticky footer (review PR #95): "Losfahren" in view without scrolling the cheat sheet
+  const foot = await page.evaluate(() => {
+    const r = document.querySelector('.wizard [data-nav="next"]').getBoundingClientRect();
+    const d = document.querySelector(".wizard[open]");
+    return { bottom: Math.round(r.bottom), top: Math.round(r.top), vh: window.innerHeight, scrolls: d.scrollHeight > d.clientHeight };
+  });
+  if (foot.bottom > foot.vh || foot.top < 0) failures.push(`${label}: „Losfahren“ außerhalb des Bildschirms (${JSON.stringify(foot)})`);
+  const go = (await page.textContent('.wizard [data-nav="next"]'))?.trim();
+  if (go !== "Losfahren") failures.push(`${label}: Schritt 4 ohne „Losfahren“ („${go}“)`);
+  await page.click('.wizard [data-nav="next"]');
+  await page.waitForSelector(RPM_READOUT, { state: "visible" });
+  await page.waitForTimeout(500);
+  const st = await page.evaluate(() => {
+    const a = window.__pruefzelle;
+    return {
+      hash: location.hash, car: a?.gearbox.vehiclePanel.carId, terrain: a?.gearbox.drivetrain.environment.terrain,
+      engine: a?.cfg.id, mode: document.querySelector('select[data-control="mode"]')?.value,
+    };
+  });
+  const want = { hash: "#sandbox", car: "car-vw-golf7-gti", terrain: "alps", engine: "ref-vw-ea888-gen3-chhb", mode: "vehicle" };
+  if (JSON.stringify(st) !== JSON.stringify(want)) failures.push(`${label}: Assistent übernimmt Fahrzeug/Strecke nicht (${JSON.stringify(st)})`);
+  console.log(`${label}: Assistent ${JSON.stringify(st)}`);
+
+  // own vehicle survives a reload (review PR #95): build one, reload, it is back; the form is prefilled
+  await page.mouse.click(2, 2);
+  await page.keyboard.press("Escape");
+  await page.waitForSelector('[data-screen="menu"]:not([hidden])');
+  await page.click('a.door[href="#sandbox"]');
+  await page.click('.wizard [data-kind="custom"]');
+  await page.fill('.wizard [data-c="massKg"]', "1.300");
+  await page.fill('.wizard [data-c="cw"]', "0,28");
+  await page.fill('.wizard [data-c="tyre"]', "205/55 R16");
+  await page.selectOption('.wizard [data-c="drive"]', "rwd");
+  await page.click('.wizard [data-nav="next"]');
+  await page.click('.routepick__card:has(input[value="flat"])');
+  await page.click('.wizard [data-nav="next"]');
+  await page.click('.wizard [data-nav="next"]');
+  await page.waitForSelector(RPM_READOUT, { state: "visible" });
+  await page.waitForTimeout(400);
+  const ownState = () => page.evaluate(() => {
+    const a = window.__pruefzelle;
+    const v = a?.gearbox.drivetrain.vehicle;
+    return {
+      car: a?.gearbox.vehiclePanel.carId, mass: v?.massKg, cw: v?.dragCoefficient, drive: v?.driveLayout, engine: a?.cfg.id,
+      terrain: a?.gearbox.drivetrain.environment.terrain, mode: document.querySelector('select[data-control="mode"]')?.value,
+    };
+  });
+  const wantOwn = { car: "", mass: 1300, cw: 0.28, drive: "rwd", engine: "lib-vw-ea189-20tdi-103kw", terrain: "flat", mode: "vehicle" };
+  const before = await ownState();
+  if (JSON.stringify(before) !== JSON.stringify(wantOwn)) failures.push(`${label}: eigenes Fahrzeug nicht übernommen (${JSON.stringify(before)})`);
+  await page.reload({ waitUntil: "load" });
+  await page.waitForSelector(RPM_READOUT, { state: "visible" });
+  await page.waitForTimeout(400);
+  const after = await ownState();
+  if (JSON.stringify(after) !== JSON.stringify(wantOwn)) failures.push(`${label}: eigenes Fahrzeug nach Neuladen weg (${JSON.stringify(after)})`);
+  await page.mouse.click(2, 2);
+  await page.keyboard.press("Escape");
+  await page.waitForSelector('[data-screen="menu"]:not([hidden])');
+  await page.click('a.door[href="#sandbox"]');
+  await page.click('.wizard [data-kind="custom"]');
+  const pre = await page.evaluate(() => ({ mass: document.querySelector('.wizard [data-c="massKg"]').value, tyre: document.querySelector('.wizard [data-c="tyre"]').value }));
+  if (pre.mass !== "1300" || pre.tyre !== "205/55 R16") failures.push(`${label}: Formular nicht mit dem eigenen Fahrzeug vorbelegt (${JSON.stringify(pre)})`);
+  console.log(`${label}: eigenes Fahrzeug nach Neuladen ${JSON.stringify(after)}`);
   await page.close();
 }
 
@@ -413,8 +558,8 @@ async function layouts(page, label) {
     if (before || !after) failures.push(`${label}: Design-Liste nicht als Unteroption des Cockpits (vorher ${before}, nachher ${after})`);
     await page.click('.office__top a[href="#menu"]');
     await page.click('a.door[href="#sandbox"]');
-    // "Wähle eine Strecke" opens first; the smoke test starts on the engine dyno
-    await page.click('.routepick [data-pick="engine"]');
+    // the guided start (#93) opens first; the smoke test starts on the engine dyno
+    await wizardEngine(page);
   } else {
     await page.selectOption('select[data-control="layout"]', "cockpit");
   }
