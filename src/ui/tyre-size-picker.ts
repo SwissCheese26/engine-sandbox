@@ -3,10 +3,10 @@
 //
 // Value lists per vehicle class follow the real ETRTO steps:
 // - car: width 135–335 mm in 10 mm steps (ETRTO widths end in 5), aspect 25–80 % in 5 % steps, rim 13–22 inch;
-// - motorcycle: a list of real radial sizes (front and rear), rims 16/17/18/19/21;
+// - motorcycle: real radial REAR sizes (rims 16/17/18), because the core models the driven rear wheel only;
 // - truck/bus: the common R22.5 sizes of long-haul trucks and buses.
-// The core models ONE tyre size: the driven axle (motorcycles: the rear wheel, tyres.ts TyreSetup). Front sizes of
-// motorcycles stay selectable (like any other size) but get a hint that the rear wheel is what drives.
+// The core models ONE tyre size: the driven axle (motorcycles: the rear wheel, tyres.ts TyreSetup), so
+// front sizes (120/70 ZR17, 120/70 R19, 90/90-21 …) are not offered for a motorcycle (review PR #98).
 // Every size offered must pass the core's own check (parseTyreSize ∘ formatTyreSize); sizes the core rejects are
 // filtered out (e.g. 385/65 R22.5: the core accepts widths up to 355 mm).
 import { formatTyreSize, isCommercialKind, isMotorcycleKind, parseTyreSize, tyreRadii } from "../core/index.ts";
@@ -21,16 +21,8 @@ export function tyreClassOf(kind: VehicleKind | undefined): TyreClass {
 const size = (widthMm: number, aspectPct: number, rimInch: number): TyreSize => ({ widthMm, aspectPct, rimInch });
 const range = (from: number, to: number, step: number) => Array.from({ length: Math.floor((to - from) / step) + 1 }, (_, i) => from + i * step);
 
-/** Motorcycle radial sizes (manufacturer fitments: sport bikes, nakeds, tourers, enduros, cruisers). front = front wheel only. */
-const BIKE: { s: TyreSize; front?: true }[] = [
-  // front
-  { s: size(120, 60, 17), front: true },
-  { s: size(120, 70, 17), front: true },
-  { s: size(130, 80, 17), front: true },
-  { s: size(120, 70, 19), front: true },
-  { s: size(130, 60, 19), front: true },
-  { s: size(120, 70, 21), front: true },
-  { s: size(130, 60, 21), front: true },
+/** Motorcycle radial rear sizes (manufacturer fitments: sport bikes, nakeds, tourers, enduros, cruisers). */
+const BIKE: { s: TyreSize }[] = [
   // rear
   { s: size(180, 65, 16) },
   { s: size(150, 60, 17) },
@@ -97,6 +89,21 @@ export function snapTyreSize(cls: TyreClass, s: TyreSize): TyreSize {
   return { ...best };
 }
 
+/** Allowed dynamic wheel radius (m), e.g. the own-vehicle limits of the wizard (sandbox-setup.ts CUSTOM_LIMITS). */
+export interface RadiusRange {
+  min: number;
+  max: number;
+}
+
+/** Sizes offered: the class list, limited to a dynamic radius range when given (then no offered size fails it). */
+export function offeredSizes(cls: TyreClass, radius?: RadiusRange): readonly TyreSize[] {
+  if (!radius) return TYRE_SIZES[cls];
+  return TYRE_SIZES[cls].filter((t) => {
+    const r = tyreRadii(t).dynamicM;
+    return r >= radius.min && r <= radius.max;
+  });
+}
+
 /** Nearest listed size for a dynamic wheel radius (metres), e.g. from an old save that kept only the radius. */
 export function sizeFromRadius(cls: TyreClass, dynamicRadiusM: number): TyreSize {
   const sizes = TYRE_SIZES[cls];
@@ -146,9 +153,6 @@ export function tyreReadout(s: TyreSize): string {
  * + 20 mm per inch above (BMW i3 155/70 R19 is the narrowest big-rim size).
  */
 export function tyreHint(cls: TyreClass, s: TyreSize): string {
-  if (cls === "bike") {
-    return BIKE.some((b) => b.front && sameSize(b.s, s)) ? "Das ist eine Vorderradgröße. Gerechnet wird mit dem angetriebenen Hinterrad." : "";
-  }
   if (cls !== "car") return "";
   const r = s.rimInch;
   const why: string[] = [];
@@ -167,6 +171,7 @@ export class TyreSizePicker {
   /** Called when the player picks another size (not on setValue). */
   onChange: (s: TyreSize) => void = () => {};
   private cls: TyreClass;
+  private radius: RadiusRange | undefined;
   private current: TyreSize;
   private wSel: HTMLSelectElement;
   private aSel: HTMLSelectElement;
@@ -174,9 +179,10 @@ export class TyreSizePicker {
   private out: HTMLElement;
   private hintEl: HTMLElement;
 
-  constructor(opts: { cls?: TyreClass; value?: TyreSize; label?: string; describedBy?: string } = {}) {
+  constructor(opts: { cls?: TyreClass; value?: TyreSize; label?: string; describedBy?: string; radius?: RadiusRange } = {}) {
     const id = `tsp${++pickerNo}`;
     this.cls = opts.cls ?? "car";
+    this.radius = opts.radius;
     this.current = opts.value ? { ...opts.value } : { ...TYRE_SIZES[this.cls][0]! };
     const el = document.createElement("div");
     el.className = "tyrepick";
@@ -214,8 +220,9 @@ export class TyreSizePicker {
   }
 
   /** Shows a size (an off-list size, e.g. from an old save, is shown as it is: it gets its own option). */
-  setValue(s: TyreSize, cls: TyreClass = this.cls) {
+  setValue(s: TyreSize, cls: TyreClass = this.cls, radius: RadiusRange | undefined = this.radius) {
     this.cls = cls;
+    this.radius = radius;
     this.current = { ...s };
     this.render();
   }
@@ -226,7 +233,7 @@ export class TyreSizePicker {
 
   /** Sizes to choose from: the class list plus the current size when it is off-list. */
   private entries(): readonly TyreSize[] {
-    const list = TYRE_SIZES[this.cls];
+    const list = offeredSizes(this.cls, this.radius);
     return list.some((t) => sameSize(t, this.current)) ? list : [...list, this.current];
   }
 

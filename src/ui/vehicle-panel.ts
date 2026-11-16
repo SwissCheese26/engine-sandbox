@@ -1,7 +1,7 @@
 // Fahrzeug-Platte on the chassis dyno (issue #22): body and chassis data, tyres, ready-made cars.
 // Everything here can only be changed at standstill (like the gearbox). The plate edits the Drivetrain of the
 // Getriebe-Pult; loading a ready-made car also asks the app to load its engine (onLoadCar).
-import { SPEED_INDEX, TYRE_TYPES, frontAxleShare, isCommercialKind, isMotorcycleKind, speedRatingKmh, tyreRadii } from "../core/index.ts";
+import { SPEED_INDEX, TYRE_TYPES, frontAxleShare, isCommercialKind, isMotorcycleKind, speedRatingKmh } from "../core/index.ts";
 import type { CarSetup, Drivetrain, DriveLayout, SpeedIndex, TyreSetup, TyreType, VehicleParams } from "../core/index.ts";
 import { VEHICLE_LIBRARY, type LibraryCar } from "../data/vehicle-library.ts";
 import { prefs } from "./settings.ts";
@@ -290,8 +290,7 @@ export class VehiclePanel {
     this.tyreSel.value = t.type;
     this.sizePicker.setValue(t.size, tyreClassOf(this.drivetrain.kind));
     this.indexSel.value = t.speedIndex;
-    const r = tyreRadii(t.size);
-    this.tyreOut.textContent = `Dynamischer Radius ${fmt(r.dynamicM * 1000, 0)} mm, Freigabe bis ${t.speedIndex === "(Y)" ? `über ${spd(300)}` : spd(speedRatingKmh(t.speedIndex))}.`;
+    this.tyreOut.textContent = `Reifenfreigabe bis ${t.speedIndex === "(Y)" ? `über ${spd(300)}` : spd(speedRatingKmh(t.speedIndex))}.`;
     this.lastTemp = "";
     this.updateTyreHint();
     this.setLocked(this.moving);

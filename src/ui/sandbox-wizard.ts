@@ -252,6 +252,8 @@ export class SandboxWizard {
       return;
     }
     this.q<HTMLInputElement>("[data-control=hide-intro]").checked = false;
+    // a form opened from "+ Neues erstellen" last time does not lead back to that list now
+    this.createdFrom = null;
     this.el.showModal();
     this.show(1);
   }
@@ -385,8 +387,9 @@ export class SandboxWizard {
       const r = CUSTOM_LIMITS[c.base][f.key];
       this.q(`#wiz-range-${f.key}`).textContent = `${fmtDe(r.min, f.digits)} bis ${fmtDe(r.max, f.digits)}${f.unit ? ` ${f.unit}` : ""}`;
     }
-    this.tyrePicker.setValue(parseTyreSize(c.tyre) ?? defaultSize(c.base), c.base);
+    // only sizes inside the base type's radius limit are offered, so a picked size never fails validateCustom
     const rr = CUSTOM_LIMITS[c.base].radiusM;
+    this.tyrePicker.setValue(parseTyreSize(c.tyre) ?? defaultSize(c.base), c.base, rr);
     this.q("#wiz-range-tyre").textContent = `Radradius ${fmtDe(rr.min * 1000)} bis ${fmtDe(rr.max * 1000)} mm`;
     const drives = drivesFor(c.base);
     sel("drive").innerHTML = drives.map((d) => `<option value="${d}">${c.base === "bike" ? "Hinterrad (Kette)" : LAYOUT_LABEL[d]}</option>`).join("");

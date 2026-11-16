@@ -3,9 +3,9 @@ import { describe, expect, test } from "bun:test";
 import { VEHICLES, formatTyreSize, parseTyreSize, tyreRadii } from "../../src/core/index.ts";
 import type { VehicleKind } from "../../src/core/index.ts";
 import { VEHICLE_LIBRARY } from "../../src/data/vehicle-library.ts";
-import { OWN_VEHICLE_KEY, defaultCustom, loadOwnVehicle, parseOwnVehicle, validateCustom } from "../../src/ui/sandbox-setup.ts";
+import { CUSTOM_LIMITS, OWN_VEHICLE_KEY, defaultCustom, loadOwnVehicle, parseOwnVehicle, validateCustom } from "../../src/ui/sandbox-setup.ts";
 import {
-  TYRE_SIZES, isListed, migrateTyreSize, sizeFromRadius, snapTyreSize, tyreClassOf, tyreHint, tyreReadout,
+  TYRE_SIZES, isListed, migrateTyreSize, offeredSizes, sizeFromRadius, snapTyreSize, tyreClassOf, tyreHint, tyreReadout,
 } from "../../src/ui/tyre-size-picker.ts";
 
 const uniq = (xs: number[]) => [...new Set(xs)].sort((a, b) => a - b);
@@ -24,11 +24,13 @@ describe("value lists (ETRTO steps)", () => {
     expect(c.length).toBe(21 * 12 * 10);
   });
 
-  test("motorcycle: real front and rear sizes", () => {
-    for (const s of [S(120, 70, 17), S(180, 55, 17), S(190, 50, 17), S(190, 55, 17), S(200, 55, 17), S(120, 70, 19), S(130, 60, 21)]) {
+  test("motorcycle: real rear sizes only (the core drives the rear wheel), no front sizes", () => {
+    for (const s of [S(180, 55, 17), S(190, 50, 17), S(190, 55, 17), S(200, 55, 17), S(180, 65, 16), S(240, 40, 18)]) {
       expect(isListed("bike", s)).toBe(true);
     }
-    expect(uniq(TYRE_SIZES.bike.map((s) => s.rimInch))).toEqual([16, 17, 18, 19, 21]);
+    for (const s of [S(120, 70, 17), S(120, 60, 17), S(120, 70, 19), S(130, 60, 21)]) expect(isListed("bike", s)).toBe(false);
+    expect(validateCustom({ ...defaultCustom("bike"), tyre: "120/70 R17" }).ok).toBe(false);
+    expect(uniq(TYRE_SIZES.bike.map((s) => s.rimInch))).toEqual([16, 17, 18]);
     // no car grid on a bike
     expect(isListed("bike", S(225, 45, 17))).toBe(false);
   });
@@ -82,7 +84,6 @@ describe("readout and hints", () => {
     expect(tyreHint("car", S(335, 25, 13))).toMatch(/Ungewöhnliche Kombination.*zu breit.*sehr flach/);
     expect(tyreHint("car", S(135, 80, 22))).toMatch(/zu schmal|hohe Flanke/);
     expect(tyreHint("car", S(205, 55, 16))).toBe("");
-    expect(tyreHint("bike", S(120, 70, 17))).toMatch(/Vorderrad/);
     expect(tyreHint("bike", S(190, 55, 17))).toBe("");
   });
 });
@@ -127,6 +128,21 @@ describe("snap and migration of old saves", () => {
     expect(isListed("car", parseTyreSize(r!.custom.tyre)!)).toBe(true);
     expect(Math.abs(tyreRadii(parseTyreSize(load({ ...base, tyre: 0.3 })!.custom.tyre)!).dynamicM - 0.3)).toBeLessThan(0.003);
     expect(parseOwnVehicle({ custom: { ...base, tyre: "groß" }, active: true })).toBeNull();
+  });
+
+  test("every size the wizard offers (within the base type's radius limit) passes validateCustom", () => {
+    for (const base of ["car", "truck", "bike"] as const) {
+      const sizes = offeredSizes(base, CUSTOM_LIMITS[base].radiusM);
+      expect(sizes.length).toBeGreaterThan(0);
+      const bad = sizes.filter((s) => !validateCustom({ ...defaultCustom(base), tyre: formatTyreSize(s) }).ok).map(formatTyreSize);
+      expect(bad).toEqual([]);
+      // the radius filter really removes something on the car grid (e.g. 135/25 R13)
+      if (base === "car") expect(sizes.length).toBeLessThan(TYRE_SIZES.car.length);
+    }
+  });
+
+  test("a stored front size on a motorcycle snaps to a rear size", () => {
+    expect(isListed("bike", migrateTyreSize("bike", "120/70 ZR17")!)).toBe(true);
   });
 
   test("the form accepts only listed sizes of the base type", () => {
