@@ -1,6 +1,6 @@
 // Global settings (issue #24): unit preset for the whole game. Stored per browser in localStorage
 // (`pruefzelle.settings`), validated on load. No DOM here, so the module runs in unit tests.
-import { DEFAULT_FIELDS, isCockpitChoice, validateFields, type CockpitChoice, type FieldSet } from "./layouts/designs.ts";
+import { DEFAULT_FIELDS, isCockpitChoice, validateFields, type CockpitChoice, type CockpitDesignId, type FieldSet } from "./layouts/designs.ts";
 import { clampSpeedoKmh, isSpeedoScale, type SpeedoScale } from "./layouts/logic.ts";
 
 /** Quantities the player can choose a unit for. The physics stays SI; this is display only. */
@@ -35,19 +35,21 @@ export const PRESETS: Record<Exclude<PresetId, "custom">, { label: string; hint:
   },
 };
 
-/** Sandbox views (#26). Only the display changes; the simulation and its data are shared. */
-export type LayoutId = "pruefzelle" | "cockpit" | "race" | "compact";
+/** Sandbox views (#26). Only the display changes; the simulation and its data are shared. Since #94 there are two:
+ *  the Prüfzelle and the Cockpit, whose look is chosen with `cockpitDesign`. */
+export type LayoutId = "pruefzelle" | "cockpit";
 
 export const LAYOUTS: readonly { id: LayoutId; label: string; hint: string }[] = [
   { id: "pruefzelle", label: "Prüfzelle", hint: "Schnittbild, Instrumententafel und Linienschreiber" },
-  { id: "cockpit", label: "Cockpit", hint: "Kombiinstrument mit Tacho, Drehzahlmesser und Kontrollleuchten" },
-  { id: "race", label: "Renn-Dash", hint: "Digitales Display mit Schaltblitz und großer Gangzahl" },
-  { id: "compact", label: "Kompakt", hint: "Wenige große Werte, gut fürs Handy" },
+  { id: "cockpit", label: "Cockpit", hint: "Kombiinstrument mit Kontrollleuchten, in mehreren Designs" },
 ];
 
 export function isLayoutId(v: unknown): v is LayoutId {
   return typeof v === "string" && LAYOUTS.some((l) => l.id === v);
 }
+
+/** Views before #94 that are cockpit designs now: stored layout → design shown in the cockpit. */
+export const LEGACY_LAYOUT_DESIGN: Readonly<Record<string, CockpitDesignId>> = { race: "race", compact: "hud" };
 
 export interface Settings {
   preset: PresetId;
@@ -143,7 +145,9 @@ export function validateSettings(raw: unknown): Settings {
     const v = c[q];
     if (typeof v === "string" && units.includes(v)) custom[q] = v;
   }
-  const layout = isLayoutId(r.layout) ? r.layout : DEFAULT_SETTINGS.layout;
+  // #94: the old views "race" and "compact" open the cockpit with the matching design
+  const legacy = typeof r.layout === "string" && Object.hasOwn(LEGACY_LAYOUT_DESIGN, r.layout) ? LEGACY_LAYOUT_DESIGN[r.layout] : undefined;
+  const layout = legacy ? "cockpit" : isLayoutId(r.layout) ? r.layout : DEFAULT_SETTINGS.layout;
   const speedo = isSpeedoScale(r.speedo) ? r.speedo : DEFAULT_SETTINGS.speedo;
   const throttle = r.throttle === "hold" ? "hold" : "spring";
   const shiftPad = r.shiftPad === "on" || r.shiftPad === "off" ? r.shiftPad : "auto";
@@ -151,7 +155,7 @@ export function validateSettings(raw: unknown): Settings {
   const fp = (r.fuelPrice && typeof r.fuelPrice === "object" ? r.fuelPrice : {}) as Record<string, unknown>;
   return {
     preset, custom, layout, speedo, speedoCustomKmh: clampSpeedoKmh(r.speedoCustomKmh), throttle, shiftPad,
-    cockpitDesign: isCockpitChoice(r.cockpitDesign) ? r.cockpitDesign : d.cockpitDesign,
+    cockpitDesign: legacy ?? (isCockpitChoice(r.cockpitDesign) ? r.cockpitDesign : d.cockpitDesign),
     ckFields: validateFields(r.ckFields),
     gasRamp: oneOf(r.gasRamp, GAS_RAMPS.map((g) => g.s), d.gasRamp),
     startWarm: typeof r.startWarm === "boolean" ? r.startWarm : d.startWarm,

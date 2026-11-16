@@ -2,7 +2,7 @@
 // `.ck[data-design=…]` root (layouts.css) plus a DialTheme for the canvas dials. No design has logic of its own.
 // Also the ids of the switchable fields of the digital design. DOM-free (imported by settings.ts and tests).
 
-export type CockpitDesignId = "classic" | "night-orange" | "italian" | "oldschool" | "digital" | "hud" | "motorrad";
+export type CockpitDesignId = "classic" | "night-orange" | "italian" | "oldschool" | "digital" | "hud" | "race" | "motorrad";
 /** Stored choice: a design, or "auto" = by vehicle (motorcycle → "motorrad", everything else → "classic"). */
 export type CockpitChoice = CockpitDesignId | "auto";
 
@@ -39,11 +39,17 @@ export const COCKPIT_DESIGNS: readonly CockpitDesign[] = [
   { id: "italian", label: "Sportlimousine", hint: "Zwei tiefe Röhren, schmales Display mit Fahrmodus", dial: { needle: "tip", ring: "tunnel", numeralWeight: 400, numeralScale: 1.12, glow: 2, minorTicks: true } },
   { id: "oldschool", label: "Oldschool", hint: "Chromringe, elfenbeinfarbene Blätter, Serifenziffern, Zählwerk", dial: { needle: "tip", ring: "chrome", numeralWeight: 600, numeralScale: 1.08, glow: 0, minorTicks: true, glass: true } },
   { id: "digital", label: "Digital", hint: "Große Ziffern, Drehzahlbogen und drei Felder zum Durchschalten", dial: DEFAULT_DIAL_THEME },
-  { id: "hud", label: "Head-up", hint: "Nur Tempo, Gang, Schaltblitz und Tempomat", dial: DEFAULT_DIAL_THEME },
+  // Head-up also replaces the former "Kompakt" view (#94): both were a few big values without dials
+  { id: "hud", label: "Head-up", hint: "Wenige große Werte: Tempo, Gang, Drehzahl, Leistung, Schaltblitz. Gut fürs Handy", dial: DEFAULT_DIAL_THEME },
+  // the former "Renn-Dash" view (#26), now a design (#94); drawn by RaceView inside the cockpit
+  { id: "race", label: "Renn-Dash", hint: "Schaltblitz-LEDs, große Gangzahl, 0–100 mit Delta, Öl und Wasser", dial: DEFAULT_DIAL_THEME },
   { id: "motorrad", label: "Motorrad", hint: "Kompaktes TFT: Drehzahlbalken mit Schaltblitz, Tempo und Gang groß", dial: DEFAULT_DIAL_THEME },
 ];
 
 export const AUTO_DESIGN = { id: "auto", label: "Automatisch nach Fahrzeug", hint: "Motorrad-Display auf dem Motorrad, sonst Klassisch" } as const;
+
+/** Everything the design picker offers, in its order: "Automatisch" first, then every design (#94). */
+export const DESIGN_CHOICES: readonly { id: CockpitChoice; label: string; hint: string }[] = [AUTO_DESIGN, ...COCKPIT_DESIGNS];
 
 export function isCockpitChoice(v: unknown): v is CockpitChoice {
   return v === "auto" || isCockpitDesign(v);
