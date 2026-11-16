@@ -2,7 +2,7 @@
 // the main menu is chosen and leads through 1 Fahrzeugart · 2 Fahrzeug · 3 Strecke · 4 Los geht's. The result is
 // handed to the sandbox (App) as a pending setup (sandbox-setup.ts); the App applies it on mount/resume.
 // "Weiter wie zuletzt" on step 1 goes straight in with everything as it was.
-import { TERRAIN_LABELS, terrainSamples } from "../core/index.ts";
+import { TERRAIN_LABELS, formatTyreSize, parseTyreSize, terrainSamples } from "../core/index.ts";
 import type { DriveLayout, GearboxType, Terrain } from "../core/index.ts";
 import {
   CUSTOM_BASE_LABEL, CUSTOM_LIMITS, GEARBOX_SHORT, KIND_LABEL, PS_PER_KW, buildSetup, defaultCustom, drivesFor, enginesFor,
@@ -10,6 +10,10 @@ import {
   type CustomBase, type CustomField, type CustomVehicle, type PendingSetup, type SetupKind,
 } from "./sandbox-setup.ts";
 import { getSettings, setSettings } from "./settings.ts";
+import { TyreSizePicker } from "./tyre-size-picker.ts";
+
+/** "+ Neues erstellen" in a library list: the own-vehicle form starts with the matching base type. */
+const BASE_OF_KIND: Partial<Record<SetupKind, CustomBase>> = { car: "car", commercial: "truck", bike: "bike" };
 
 const ROUTES: Terrain[] = ["static", "flat", "hills", "alps", "uphill", "downhill"];
 
@@ -87,11 +91,16 @@ const NUM_FIELDS: { key: "massKg" | "cw" | "areaM2" | "tankL"; label: string; un
   { key: "tankL", label: "Tank", unit: "l", step: "1", digits: 0 },
 ];
 
+const defaultSize = (base: CustomBase) => parseTyreSize(defaultCustom(base).tyre)!;
+
 export class SandboxWizard {
   readonly el: HTMLDialogElement;
   private step: Step = 1;
   private kind: SetupKind | null = null;
   private vehicleId = "";
+  private tyrePicker!: TyreSizePicker;
+  /** Set while the own-vehicle form was opened from a library list ("+ Neues erstellen"); Zurück returns there. */
+  private createdFrom: SetupKind | null = null;
   private route: Terrain = "static";
   private q = <T extends Element>(s: string) => this.el.querySelector<T>(s)!;
 
@@ -122,6 +131,14 @@ export class SandboxWizard {
           <h2 id="wiz-h2" class="wizard__title" tabindex="-1">Fahrzeug wählen</h2>
           <p class="wizard__lead" data-out="vehicle-lead"></p>
           <fieldset class="wizard__vlist" data-out="vehicles"><legend class="sr-only">Fahrzeug</legend></fieldset>
+          <div class="wizard__vmore" data-out="vehicles-more">
+            <p class="wizard__more">Weitere folgen …</p>
+            <button type="button" class="wizard__create" data-action="create-own">
+              <span class="wizard__plus" aria-hidden="true">+</span>
+              <span><span class="wizard__vname">Neues erstellen</span>
+              <span class="wizard__vfacts" data-out="create-text"></span></span>
+            </button>
+          </div>
           <div class="wizard__custom" data-out="custom" hidden>
             <label class="wizard__field wizard__field--wide"><span>Fahrzeugtyp</span>
               <select data-c="base">${(Object.keys(CUSTOM_BASE_LABEL) as CustomBase[]).map((b) => `<option value="${b}">${CUSTOM_BASE_LABEL[b]}</option>`).join("")}</select>
@@ -132,11 +149,10 @@ export class SandboxWizard {
                 <small class="wizard__range" id="wiz-range-${f.key}"></small>
                 <small class="wizard__err" id="wiz-err-${f.key}"></small>
               </label>`).join("")}
-            <label class="wizard__field"><span>Reifengröße</span>
-              <input type="text" data-c="tyre" spellcheck="false" autocomplete="off" placeholder="225/45 R17" aria-describedby="wiz-err-tyre wiz-range-tyre" />
-              <small class="wizard__range" id="wiz-range-tyre">z. B. 225/45 R17, der Radius folgt daraus</small>
+            <div class="wizard__field wizard__field--wide" data-out="tyre-field">
+              <small class="wizard__range" id="wiz-range-tyre"></small>
               <small class="wizard__err" id="wiz-err-tyre"></small>
-            </label>
+            </div>
             <label class="wizard__field"><span>Antrieb</span>
               <select data-c="drive" aria-describedby="wiz-err-drive"></select>
               <small class="wizard__err" id="wiz-err-drive"></small>
@@ -185,6 +201,12 @@ export class SandboxWizard {
         </div>
       </form>`;
     this.el = d;
+    // tyre size from lists (no free text); the width select carries the field's error state
+    this.tyrePicker = new TyreSizePicker({ describedBy: "wiz-err-tyre wiz-range-tyre" });
+    this.q("[data-out=tyre-field]").prepend(this.tyrePicker.el);
+    this.q<HTMLSelectElement>("[data-control=tyre-width]").dataset.c = "tyre";
+    this.tyrePicker.onChange = () => this.markError("tyre", "");
+    this.q("[data-action=create-own]").addEventListener("click", () => this.createOwn());
 
     d.querySelectorAll<HTMLButtonElement>("[data-kind]").forEach((b) => b.addEventListener("click", () => this.pickKind(b.dataset.kind as SetupKind)));
     this.q<HTMLFormElement>("form").addEventListener("submit", (e) => {
@@ -246,6 +268,7 @@ export class SandboxWizard {
   }
 
   private pickKind(k: SetupKind) {
+    this.createdFrom = null;
     if (this.kind !== k) {
       this.kind = k;
       this.vehicleId = "";
@@ -268,6 +291,14 @@ export class SandboxWizard {
   }
 
   private back() {
+    if (this.step === 2 && this.createdFrom) {
+      // the form came from "+ Neues erstellen": back to that list
+      this.kind = this.createdFrom;
+      this.createdFrom = null;
+      this.renderVehicles();
+      this.q<HTMLElement>("#wiz-h2").focus();
+      return;
+    }
     const steps = this.steps();
     const i = steps.indexOf(this.step);
     if (i > 0) this.show(steps[i - 1]!);
@@ -300,6 +331,18 @@ export class SandboxWizard {
     this.q<HTMLElement>(`#wiz-h${step}`).focus();
   }
 
+  /** "+ Neues erstellen" in a library list: the own-vehicle form, base type preset to the list's kind. */
+  private createOwn() {
+    const from = this.kind;
+    const base = from ? BASE_OF_KIND[from] : undefined;
+    if (!from || !base) return;
+    this.createdFrom = from;
+    this.kind = "custom";
+    this.renderVehicles();
+    this.fillCustom(SandboxWizard.startValues(base));
+    this.q<HTMLElement>("#wiz-h2").focus();
+  }
+
   /** Step 2: the library list of the kind, or the own-vehicle form. */
   private renderVehicles() {
     const k = this.kind;
@@ -309,6 +352,9 @@ export class SandboxWizard {
     const isCustom = k === "custom";
     list.hidden = isCustom;
     custom.hidden = !isCustom;
+    const more = this.q<HTMLElement>("[data-out=vehicles-more]");
+    more.hidden = isCustom || !k || !BASE_OF_KIND[k];
+    if (k && BASE_OF_KIND[k]) this.q("[data-out=create-text]").textContent = `Eigenes ${k === "bike" ? "Motorrad" : k === "commercial" ? "Nutzfahrzeug (Lkw)" : "Auto"} mit Gewicht, Reifen, Getriebe und Motor.`;
     this.q("#wiz-h2").textContent = isCustom ? "Eigenes Fahrzeug" : `${k ? KIND_LABEL[k] : ""} wählen`;
     lead.textContent = isCustom
       ? "Startwerte passen zum Fahrzeugtyp. Der Motor kommt aus der Bibliothek."
@@ -339,9 +385,9 @@ export class SandboxWizard {
       const r = CUSTOM_LIMITS[c.base][f.key];
       this.q(`#wiz-range-${f.key}`).textContent = `${fmtDe(r.min, f.digits)} bis ${fmtDe(r.max, f.digits)}${f.unit ? ` ${f.unit}` : ""}`;
     }
-    this.q<HTMLInputElement>("[data-c=tyre]").value = c.tyre;
+    this.tyrePicker.setValue(parseTyreSize(c.tyre) ?? defaultSize(c.base), c.base);
     const rr = CUSTOM_LIMITS[c.base].radiusM;
-    this.q("#wiz-range-tyre").textContent = `z. B. 225/45 R17; Radradius ${fmtDe(rr.min * 1000)} bis ${fmtDe(rr.max * 1000)} mm`;
+    this.q("#wiz-range-tyre").textContent = `Radradius ${fmtDe(rr.min * 1000)} bis ${fmtDe(rr.max * 1000)} mm`;
     const drives = drivesFor(c.base);
     sel("drive").innerHTML = drives.map((d) => `<option value="${d}">${c.base === "bike" ? "Hinterrad (Kette)" : LAYOUT_LABEL[d]}</option>`).join("");
     sel("drive").value = c.drive;
@@ -356,7 +402,7 @@ export class SandboxWizard {
 
   private readCustom() {
     const v = (k: string) => this.q<HTMLInputElement | HTMLSelectElement>(`[data-c=${k}]`).value;
-    return { base: v("base"), massKg: v("massKg"), cw: v("cw"), areaM2: v("areaM2"), tankL: v("tankL"), tyre: v("tyre"), drive: v("drive"), gearbox: v("gearbox"), engineId: v("engineId") };
+    return { base: v("base"), massKg: v("massKg"), cw: v("cw"), areaM2: v("areaM2"), tankL: v("tankL"), tyre: formatTyreSize(this.tyrePicker.value), drive: v("drive"), gearbox: v("gearbox"), engineId: v("engineId") };
   }
 
   private markError(k: CustomField, msg: string) {

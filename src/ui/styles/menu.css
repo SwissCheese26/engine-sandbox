@@ -807,6 +807,53 @@
   color: var(--alu-shade);
   overflow-wrap: anywhere;
 }
+/* step 2: end of a library list – "Weitere folgen …" and "+ Neues erstellen" */
+.wizard__vmore {
+  display: grid;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+.wizard__vmore[hidden] {
+  display: none;
+}
+.wizard__more {
+  margin: 0;
+  font-size: var(--fs-12);
+  color: var(--alu-shade);
+  font-style: italic;
+}
+.wizard__create {
+  display: grid;
+  grid-template-columns: 22px 1fr;
+  column-gap: var(--space-2);
+  align-items: center;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px dashed #8a978f;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--alu);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.wizard__create:hover {
+  border-color: var(--signal);
+}
+.wizard__create:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--signal);
+}
+.wizard__plus {
+  font-size: var(--fs-20);
+  font-weight: 700;
+  line-height: 1;
+  text-align: center;
+  color: var(--signal);
+}
+.wizard__create .wizard__vfacts {
+  display: block;
+}
 /* step 2: own vehicle */
 .wizard__custom {
   display: grid;
@@ -836,6 +883,10 @@
   background: var(--engrave);
   color: var(--alu);
   font: inherit;
+}
+.wizard__field .tyrepick select {
+  background: var(--engrave);
+  border-radius: var(--radius-plate);
 }
 .wizard__field [aria-invalid="true"] {
   border-color: var(--signal);
