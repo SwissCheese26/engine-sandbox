@@ -24,11 +24,11 @@ test("settings: layout is validated and defaults to the Prüfzelle", () => {
 
 test("settings: a partial change keeps the rest (units stay when the view changes and vice versa)", () => {
   setSettings({ preset: "imperial" });
-  setSettings({ layout: "race" });
+  setSettings({ layout: "cockpit" });
   expect(getSettings().preset).toBe("imperial");
-  expect(getSettings().layout).toBe("race");
+  expect(getSettings().layout).toBe("cockpit");
   setSettings({ preset: "metric-ps" });
-  expect(getSettings().layout).toBe("race");
+  expect(getSettings().layout).toBe("cockpit");
   setSettings(DEFAULT_SETTINGS);
 });
 
