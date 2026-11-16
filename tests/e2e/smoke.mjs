@@ -115,6 +115,14 @@ async function run(label, viewport) {
   // "Fehler melden" (#55) in the hall: opens the dialog, Abbrechen closes it
   await page.click('.hall [data-action="bug-report"]');
   if (!(await page.isVisible("dialog.bugreport[open]"))) failures.push(`${label}: Fehler-melden-Dialog öffnet im Menü nicht`);
+  // the menu dialogs share the .routepick base (review PR #95): box in the hall colours, dimmed backdrop
+  const look = await page.evaluate(() => {
+    const d = document.querySelector("dialog.bugreport[open]");
+    const cs = getComputedStyle(d);
+    return { cls: d.classList.contains("routepick"), bg: cs.backgroundColor, radius: cs.borderTopLeftRadius, backdrop: getComputedStyle(d, "::backdrop").backgroundColor, width: d.getBoundingClientRect().width };
+  });
+  if (!look.cls || look.bg !== "rgb(46, 58, 53)" || look.radius !== "8px" || !/rgba\(10, 14, 12, 0\.72\)/.test(look.backdrop) || look.width > 720)
+    failures.push(`${label}: Fehler-melden-Dialog ungestylt (${JSON.stringify(look)})`);
   await page.click('dialog.bugreport [data-action="cancel"]');
   await whatsNew(page, label);
   await page.click('a[href="#settings"]:visible');
@@ -256,6 +264,13 @@ async function wizard(label, viewport, touch) {
   await page.click('.wizard [data-nav="next"]');
   await checkStep(4);
   await page.screenshot({ path: join(outDir, `smoke-${label}-wizard-step4.png`) });
+  // sticky footer (review PR #95): "Losfahren" in view without scrolling the cheat sheet
+  const foot = await page.evaluate(() => {
+    const r = document.querySelector('.wizard [data-nav="next"]').getBoundingClientRect();
+    const d = document.querySelector(".wizard[open]");
+    return { bottom: Math.round(r.bottom), top: Math.round(r.top), vh: window.innerHeight, scrolls: d.scrollHeight > d.clientHeight };
+  });
+  if (foot.bottom > foot.vh || foot.top < 0) failures.push(`${label}: „Losfahren“ außerhalb des Bildschirms (${JSON.stringify(foot)})`);
   const go = (await page.textContent('.wizard [data-nav="next"]'))?.trim();
   if (go !== "Losfahren") failures.push(`${label}: Schritt 4 ohne „Losfahren“ („${go}“)`);
   await page.click('.wizard [data-nav="next"]');
@@ -271,6 +286,47 @@ async function wizard(label, viewport, touch) {
   const want = { hash: "#sandbox", car: "car-vw-golf7-gti", terrain: "alps", engine: "ref-vw-ea888-gen3-chhb", mode: "vehicle" };
   if (JSON.stringify(st) !== JSON.stringify(want)) failures.push(`${label}: Assistent übernimmt Fahrzeug/Strecke nicht (${JSON.stringify(st)})`);
   console.log(`${label}: Assistent ${JSON.stringify(st)}`);
+
+  // own vehicle survives a reload (review PR #95): build one, reload, it is back; the form is prefilled
+  await page.mouse.click(2, 2);
+  await page.keyboard.press("Escape");
+  await page.waitForSelector('[data-screen="menu"]:not([hidden])');
+  await page.click('a.door[href="#sandbox"]');
+  await page.click('.wizard [data-kind="custom"]');
+  await page.fill('.wizard [data-c="massKg"]', "1.300");
+  await page.fill('.wizard [data-c="cw"]', "0,28");
+  await page.fill('.wizard [data-c="tyre"]', "205/55 R16");
+  await page.selectOption('.wizard [data-c="drive"]', "rwd");
+  await page.click('.wizard [data-nav="next"]');
+  await page.click('.routepick__card:has(input[value="flat"])');
+  await page.click('.wizard [data-nav="next"]');
+  await page.click('.wizard [data-nav="next"]');
+  await page.waitForSelector(RPM_READOUT, { state: "visible" });
+  await page.waitForTimeout(400);
+  const ownState = () => page.evaluate(() => {
+    const a = window.__pruefzelle;
+    const v = a?.gearbox.drivetrain.vehicle;
+    return {
+      car: a?.gearbox.vehiclePanel.carId, mass: v?.massKg, cw: v?.dragCoefficient, drive: v?.driveLayout, engine: a?.cfg.id,
+      terrain: a?.gearbox.drivetrain.environment.terrain, mode: document.querySelector('select[data-control="mode"]')?.value,
+    };
+  });
+  const wantOwn = { car: "", mass: 1300, cw: 0.28, drive: "rwd", engine: "lib-vw-ea189-20tdi-103kw", terrain: "flat", mode: "vehicle" };
+  const before = await ownState();
+  if (JSON.stringify(before) !== JSON.stringify(wantOwn)) failures.push(`${label}: eigenes Fahrzeug nicht übernommen (${JSON.stringify(before)})`);
+  await page.reload({ waitUntil: "load" });
+  await page.waitForSelector(RPM_READOUT, { state: "visible" });
+  await page.waitForTimeout(400);
+  const after = await ownState();
+  if (JSON.stringify(after) !== JSON.stringify(wantOwn)) failures.push(`${label}: eigenes Fahrzeug nach Neuladen weg (${JSON.stringify(after)})`);
+  await page.mouse.click(2, 2);
+  await page.keyboard.press("Escape");
+  await page.waitForSelector('[data-screen="menu"]:not([hidden])');
+  await page.click('a.door[href="#sandbox"]');
+  await page.click('.wizard [data-kind="custom"]');
+  const pre = await page.evaluate(() => ({ mass: document.querySelector('.wizard [data-c="massKg"]').value, tyre: document.querySelector('.wizard [data-c="tyre"]').value }));
+  if (pre.mass !== "1300" || pre.tyre !== "205/55 R16") failures.push(`${label}: Formular nicht mit dem eigenen Fahrzeug vorbelegt (${JSON.stringify(pre)})`);
+  console.log(`${label}: eigenes Fahrzeug nach Neuladen ${JSON.stringify(after)}`);
   await page.close();
 }
 

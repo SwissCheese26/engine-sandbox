@@ -4,10 +4,12 @@ import { VEHICLES, isCommercialKind, isMotorcycleKind, tyreRadii } from "../../s
 import { ENGINE_LIBRARY } from "../../src/data/engine-library.ts";
 import { VEHICLE_LIBRARY } from "../../src/data/vehicle-library.ts";
 import {
-  CUSTOM_LIMITS, buildSetup, customSetup, defaultCustom, enginesFor, gearboxesFor, setPendingSetup, takePendingSetup,
-  validateCustom, vehicleFacts, vehiclesOf, type CustomBase,
+  CUSTOM_LIMITS, OWN_VEHICLE_KEY, buildSetup, customSetup, defaultCustom, enginesFor, gearboxesFor, loadOwnVehicle, parseDecimal,
+  parseOwnVehicle, saveOwnVehicle, setOwnVehicleActive, setPendingSetup, takePendingSetup, validateCustom, vehicleFacts, vehiclesOf,
+  type CustomBase,
 } from "../../src/ui/sandbox-setup.ts";
 import { DEFAULT_SETTINGS, validateSettings } from "../../src/ui/settings.ts";
+import { VehiclePanel } from "../../src/ui/vehicle-panel.ts";
 
 describe("vehicle filter by kind", () => {
   test("every library vehicle is in exactly one group", () => {
@@ -141,4 +143,68 @@ test("setting \"Kurz erklärt\" (Nicht mehr anzeigen) is validated", () => {
   expect(validateSettings({}).sandboxIntro).toBe(true);
   expect(validateSettings({ sandboxIntro: false }).sandboxIntro).toBe(false);
   for (const junk of ["no", 0, 1, null, {}]) expect(validateSettings({ sandboxIntro: junk }).sandboxIntro).toBe(true);
+});
+
+describe("review PR #95", () => {
+  test("decimal parsing: thousands dot, decimal comma, ambiguous input rejected", () => {
+    expect(parseDecimal("1.500")).toBe(1500);
+    expect(parseDecimal("12.500")).toBe(12500);
+    expect(parseDecimal("40.000")).toBe(40000);
+    expect(parseDecimal("1.500,5")).toBe(1500.5);
+    expect(parseDecimal("1,5")).toBe(1.5);
+    expect(parseDecimal("0,29")).toBe(0.29);
+    expect(parseDecimal("0.29")).toBe(0.29);
+    expect(parseDecimal(" 1350 ")).toBe(1350);
+    for (const bad of ["1.2.3", "1,5,0", "1,500.5", "1.50,5", "abc", "", "1e3", "12.5.000"]) expect(parseDecimal(bad)).toBeNaN();
+    const r = validateCustom({ ...defaultCustom("car"), massKg: "1.500", cw: "0,3" });
+    expect(r.ok && r.value.massKg).toBe(1500);
+  });
+
+  test("bike minimum mass equals the vehicle panel (150 kg)", () => {
+    expect(CUSTOM_LIMITS.bike.massKg.min).toBe(150);
+    expect(validateCustom({ ...defaultCustom("bike"), massKg: 149 }).ok).toBe(false);
+    expect(validateCustom({ ...defaultCustom("bike"), massKg: 150 }).ok).toBe(true);
+  });
+
+  test("wheel radius limit per type", () => {
+    // R22.5 truck tyre on a car, 155/65 R14 on a truck, car tyre too big for a bike
+    expect(validateCustom({ ...defaultCustom("car"), tyre: "315/70 R22.5" }).ok).toBe(false);
+    expect(validateCustom({ ...defaultCustom("truck"), tyre: "155/65 R14" }).ok).toBe(false);
+    const r = validateCustom({ ...defaultCustom("bike"), tyre: "285/60 R20" });
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.errors.tyre).toContain("Radius");
+    // every library vehicle's tyre fits its own type
+    for (const c of VEHICLE_LIBRARY) {
+      const base = isMotorcycleKind(c.setup.kind ?? "car") ? "bike" : isCommercialKind(c.setup.kind ?? "car") ? "truck" : "car";
+      const rad = tyreRadii(c.setup.tyre.size).dynamicM;
+      expect(rad).toBeGreaterThanOrEqual(CUSTOM_LIMITS[base].radiusM.min);
+      expect(rad).toBeLessThanOrEqual(CUSTOM_LIMITS[base].radiusM.max);
+    }
+  });
+
+  test("applyOwn guard: the panel's own limits", () => {
+    expect(VehiclePanel.withinLimits(customSetup(defaultCustom("bike")))).toBe(true);
+    const light = customSetup(defaultCustom("bike"));
+    light.vehicle = { ...light.vehicle, massKg: 120 };
+    expect(VehiclePanel.withinLimits(light)).toBe(false);
+  });
+
+  test("own vehicle is stored validated and comes back", () => {
+    const mem = new Map<string, string>();
+    const st = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v) };
+    expect(loadOwnVehicle(st)).toBeNull();
+    const c = { ...defaultCustom("car"), massKg: 1300 };
+    saveOwnVehicle(c, true, st);
+    expect(mem.has(OWN_VEHICLE_KEY)).toBe(true);
+    expect(loadOwnVehicle(st)).toEqual({ custom: c, active: true });
+    setOwnVehicleActive(false, st);
+    expect(loadOwnVehicle(st)).toEqual({ custom: c, active: false });
+    // invalid values are neither stored nor loaded
+    saveOwnVehicle({ ...c, massKg: 5 }, true, st);
+    expect(loadOwnVehicle(st)!.custom.massKg).toBe(1300);
+    expect(parseOwnVehicle({ custom: { ...c, cw: 7 }, active: true })).toBeNull();
+    for (const junk of [null, 1, "x", {}, { custom: null }]) expect(parseOwnVehicle(junk)).toBeNull();
+    mem.set(OWN_VEHICLE_KEY, "{broken");
+    expect(loadOwnVehicle(st)).toBeNull();
+  });
 });
