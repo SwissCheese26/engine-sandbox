@@ -8,7 +8,7 @@ import { REFERENCE_ENGINES, type ReferenceEngine } from "./reference-engines.ts"
  * rated torque/power are manufacturer data (sources per entry). Construction details without published values
  * (conrod length, cam profile, inducer size, boost target, radiator …) are estimates [S]; the boost target of
  * the turbo engines was fitted so that the model meets the rated power (tests/core/engine-library.test.ts).
- * Exception RB26DETT (issue #38): stock turbo hardware and stock boost, the remaining excess is a known model gap.
+ * Exception RB26DETT (issues #38, #89): stock turbo hardware and stock boost, nothing fitted (petrol.md §7a).
  */
 export interface LibraryEngine extends ReferenceEngine {
   maker: string;
@@ -98,18 +98,18 @@ const EXTRA: LibraryEngine[] = [
       // Issue #38, stock hardware (docs/research/petrol.md §7a): twin T25/T28-class ceramic chargers, wastegate 0.69 bar
       // (Wikipedia „Nissan RB engine“). Twin parallel: compressorInducerMm is the equivalent single inducer of BOTH
       // chargers (turbo.ts chargerUnit: two of D/√2) → 2 × ≈ 44 mm gives 62 mm [S, T25/T28 family 43 … 46 mm]; turbine
-      // A/R 0.64 [S]. Cams 240°/236°, 8.58/8.28 mm lift (Wikipedia) → mild, camProfile 0.3 [S]. The boost is NOT fitted:
-      // with stock hardware the model makes ≈ 244 kW @ 7000 (+19 % over the JAMA-limited 206 kW rating, ≈ +4 % over
-      // the ≈ 235 kW Wikipedia reports for late engines), torque peak ≈ 5200 instead of 4400 rpm – listed in KNOWN of
-      // tests/core/engine-library.test.ts, model issue see petrol.md §7a.
-      head: { valvetrain: "dohc", valvesPerCylinder: 4, camProfile: 0.3, variableTiming: "none" },
+      // A/R 0.64 [S]. Boost is NOT fitted.
+      // Issue #89: Nissan valve timing (R32: IVO 7° BTDC, IVC 53° ABDC, EVO 63° BBDC, EVC 7° BTDC; R34: 3/57/59/3°) =
+      // 240° seat duration with zero overlap, a mild turbo cam below a typical stock cam (0.4) → camProfile 0.1 [S,
+      // RB26-specific estimate, no general rule; petrol.md §3.2e/§7a]. The old 0.3 [S] put the VE peak at ≈ 5300 rpm.
+      head: { valvetrain: "dohc", valvesPerCylinder: 4, camProfile: 0.1, variableTiming: "none" },
       induction: { aspiration: "twin-turbo-parallel", compressorInducerMm: 62, turbineAR: 0.64, variableGeometry: false, boostTargetBar: 0.69, intercooler: "air-to-air", intakeRunnerLengthMm: 250, individualThrottleBodies: true },
       fuelSystem: { kind: "petrol", mixture: "port-injection", fuel: "ron98", fullLoadLambda: 0.82, ignitionAdvanceOffsetDeg: 0 },
       exhaust: { manifold: "cast-log", egr: false, catalyst: true, particulateFilter: false, scr: false },
       cooling: { radiatorCapacityKw: 190, thermostatOpenC: 82, oilCooler: true }, revLimitRpm: 8000, idleRpm: 900,
     },
     expected: { peakTorqueNm: 392, peakTorqueRpm: 4400, peakPowerKw: 206, peakPowerRpm: 6800 },
-    source: "Wikipedia „Nissan RB engine“ (RB26DETT: 86 × 73,7 mm, 206 kW @ 6800, 392 Nm @ 4400 späte Serie; T25/T28-Keramiklader, Wastegate 0,69 bar, Nocken 240°/236°); ε 8,5 [S]",
+    source: "Wikipedia „Nissan RB engine“ (RB26DETT: 86 × 73,7 mm, 206 kW @ 6800, 392 Nm @ 4400 späte Serie; T25/T28-Keramiklader, Wastegate 0,69 bar, Nocken 240°/236°); ε 8,5 [S]; Steuerzeiten R32/R34 nach Nissan-Werksdaten (SAU-Forum „Stock RB26 and 26 stats for Dyno2000“)",
   },
   {
     maker: "Subaru", cars: "Impreza WRX STI (GD/GR)", years: "2004–2014",
