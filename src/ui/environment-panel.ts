@@ -75,7 +75,7 @@ const ASSISTS: { key: keyof AssistSettings; label: string; hint: string }[] = [
   { key: "abs", label: "ABS", hint: "Regelt den Bremsschlupf, die Räder blockieren nicht." },
   { key: "asr", label: "ASR", hint: "Nimmt Motormoment weg, wenn die Antriebsräder durchdrehen." },
   { key: "esp", label: "ESP", hint: "Überwacht ASR und ABS, regelt das Schleppmoment. Aus: ASR sportlich mit mehr Schlupf." },
-  { key: "launchControl", label: "Launch Control", hint: "Im Stand Bremse und Vollgas: hält die Startdrehzahl, Bremse lösen startet." },
+  { key: "launchControl", label: "Launch Control", hint: "Im Stand Bremse und Vollgas: Ein zweiter Begrenzer hält die Startdrehzahl bei offener Drosselklappe, Turbos bauen Ladedruck auf. Bremse lösen startet." },
 ];
 
 // ISO 2575 style symbols, simplified (stroke drawings, colour from currentColor)

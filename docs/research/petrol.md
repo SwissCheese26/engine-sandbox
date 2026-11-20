@@ -81,6 +81,11 @@ const veRes = 0.06 * Math.exp(-r * r)                // Hauptresonanz +6 %
 const etaL = Math.min(1.15, vePeak * veCam + veRes);
 ```
 
+**e) Hinweis zu `camProfile` (Issue #89)**
+`camProfile` ist ein abstrakter Wert auf der Skala aus §1 (0 Ökonomie, 0,4 Serie, 0,7 Sport, 1 Rennnocke). Eine
+belegte allgemeine Umrechnung von Steuerzeiten auf diese Skala gibt es im Modell **nicht**. Wo Steuerzeiten
+vorliegen, ist die Einordnung eine Schätzung pro Motor [S], derzeit nur beim RB26DETT (§7a).
+
 ### 3.3 Drosselklappe → Saugrohrdruck
 Physikalisch: Massenbilanz Saugrohr (Füll-/Entleermodell), echtzeitfähig mit explizitem Euler:
 ```ts
@@ -322,7 +327,13 @@ Hinweise:
 **RB26DETT** (Bibliotheksmotor, Skyline GT-R)
 - Quelle: Wikipedia „Nissan RB engine“ (https://en.wikipedia.org/wiki/Nissan_RB_engine): zwei parallele Keramiklader der T25-Bauart (R34: kugelgelagerte T28), die Wastegate begrenzt auf 0,69 bar (10 psi). Nocken 240°/236°, Hub 8,58/8,28 mm. Die Angabe von 280 PS folgt dem „Gentlemen's Agreement“. Späte Motoren werden auf etwa 320 PS (235 kW) geschätzt.
 - Modell: Bei `twin-turbo-parallel` ist `compressorInducerMm` der Ersatz-Inducer beider Lader (turbo.ts, zwei Lader mit D/√2). Ein Lader mit etwa 44 mm (T25/T28-Familie 43 … 46 mm [S]) ergibt 62 mm. Die alten 40 mm entsprachen zwei Ladern mit je 28 mm, die bei etwa 0,17 kg/s stopften (178 kW @ 4600).
-- Ergebnis mit Serienhardware und 0,69 bar: 244 kW @ 7000, 395 Nm @ 5200. Das sind +19 % gegenüber 206 kW und etwa +4 % gegenüber den geschätzten 235 kW. Unterhalb von etwa 3500 1/min fehlt Ladedruck. **Offene Modelllücke:** Das Drehmomentmaximum liegt zu spät, weil die Lage des VE-Maximums über die mittlere Kolbengeschwindigkeit bestimmt wird (§3.2b) und der Kurzhuber dadurch spät landet. Außerdem fehlt Low-End-Drehmoment und der bmep pro bar Ladedruck ist zu hoch. Deshalb steht der Motor in `KNOWN` der Bibliothekstests, und der R34 bleibt ein 0–100-Ausreißer (5,80 s gegenüber 5,0 s).
+- Steuerzeiten (Nissan-Werksdaten, zitiert im SAU-Forum „Stock RB26 and 26 stats for Dyno2000“, https://sau.com.au/forums/topic/41149-stock-rb26-and-26-stats-for-dyno2000): R32 Einlass öffnet 7° v. OT, schließt 53° n. UT, Auslass öffnet 63° v. UT, schließt 7° v. OT. Beim R34 sind es 3°/57°/59°/3°. Das ergibt 240° Öffnungsdauer und **keine Überschneidung**, also eine milde Turbo-Nocke. Ventile 34,5/30,0 mm.
+- Einordnung auf der Skala [S, RB26-spezifische Schätzung, keine allgemeine Regel]: 240° ohne Überschneidung liegt unter einer typischen Serien-Nocke (0,4), also nahe „Ökonomie“. Die Anhaltswerte von etwa 235° für Ökonomie und etwa 260° für Serie sind geschätzt und nicht belegt. Gewählt ist 0,1. Der alte Wert 0,3 war ebenfalls geschätzt.
+- Bis #86 (camProfile 0,3 [S]): 244 kW @ 7000, 395 Nm @ 5200. Das VE-Maximum lag bei cm 13 m/s ≈ 5300 1/min (§3.2b), und die Leistung lag 19 % über 206 kW.
+- **Seit #89** (camProfile 0,1, Schätzung [S] siehe nächster Punkt, sonst unverändert, kein Ladedruck angepasst): **216 kW @ 6000, 386 Nm @ 4700**. Bei 4400 1/min liegen 384 Nm an, das sind 99,5 % des Maximums, das Plateau reicht von 3500 bis 5000 1/min. Voller Ladedruck liegt ab 3500 1/min an. Die Leistung liegt 5 % über der JAMA-Angabe und 8 % unter den geschätzten 235 kW.
+- Befunde aus #89, die sich nicht bestätigt haben: (1) „bmep pro bar Ladedruck zu hoch“: Die Werksangabe 392 Nm bei 0,69 bar entspricht selbst 19,2 bar bmep, das Modell liegt also richtig. (2) „Low-End-Defizit durch spätes Ansprechen“: Voller Ladedruck ab 3500 1/min passt zum Serienmotor, der erst über 4000 1/min richtig zieht (EngineLabs, „No More Lag – Redefining Torque And Response With Nissan's RB26DETT“, https://www.enginelabs.com/?p=6371). An der Turbinenbilanz ändert sich daher nichts.
+- Verbleibende Lücke: Das Leistungsmaximum liegt bei 6000 statt 6800 1/min, bei 6800 liegen ≈ 210 kW an (97 % des Maximums). Der R34 braucht im Testfahrer von 0 auf 100 km/h 6,07 s statt bisher 5,80 s, weil er bei 8000 1/min schaltet und oben weniger Leistung hat. Die 5,0 s der Fachpresse kommen von Starts mit hoher Drehzahl. Mit Launch Control (vehicle.md §9) braucht das Modell 5,37 s (+7 %).
+- Muster für spätere Arbeit: EJ257 (4950 statt 4000 1/min) und 2JZ-GTE (4700 statt 4000 1/min) haben ihr Drehmomentmaximum ebenfalls zu spät. Für beide fehlen belegte Steuerzeiten, deshalb bleiben sie unverändert.
 
 **LS3** (Referenzmotor)
 - Quelle: LSX Magazine, „LS3 x 3 – Comparing Three Performance Cams on the Engine Dyno“ (https://www.lsxmag.com/tech-stories/ls3-x-3-comparing-three-performance-cams-on-the-engine-dyno/). Serien-Nocke 204°/211°, Hub 0,551"/0,525", LSA 117°. Für einen Serien-Stoßstangen-V8 ist das scharf, daher camProfile 0,55 [S]. Das Saugrohr ist mit 280 mm auf das Drehmomentmaximum bei 4600 1/min abgestimmt [S].

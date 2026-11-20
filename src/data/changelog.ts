@@ -21,13 +21,15 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     date: "2026-11-20",
-    title: "Nutzfahrzeug-Cockpit, Zusatzinstrumente und Getriebeöltemperatur",
+    title: "Nutzfahrzeug-Cockpit, Getriebeöltemperatur und echte Launch Control",
     items: [
       { kind: "neu", text: "Cockpit-Design „Nutzfahrzeug“: Tacho bis 125 km/h mit Markierung des Begrenzers, Drehzahlmesser mit grünem Bereich (Drehmomentplateau) und Anzeige der Motorbremse. Mit „Automatisch“ erscheint es bei Lkw und Bus von selbst.", refs: [83, 106] },
       { kind: "neu", text: "Zusatzinstrumente wie im Tuning-Auto: Ladedruck, Öldruck, Öltemperatur, Lambda und Abgastemperatur, als Rundinstrumente oder Balken, unter „+ Zusatzanzeigen“ im Cockpit.", refs: [83, 106] },
       { kind: "neu", text: "Tuning-Leiste: Ladedruck Soll und Ist, Zündung bzw. Förderbeginn gegenüber dem Kennfeld, Vollast-λ bzw. Rauchgrenze, Klopfen und die Leistungsgrenze des Steuergeräts, mit Hinweis, wenn sie greift.", refs: [83, 106] },
       { kind: "neu", text: "Das Getriebe hat jetzt eine eigene Öltemperatur. Sie steigt unter Last, beim Anfahren am Berg und mit schleifender Kupplung, und der Fahrtwind kühlt. Kaltes Öl ist zäh und kostet etwas Leistung. Zu sehen ist sie im Getriebe-Pult und als Feld „Getriebeöl“ im Digital-Cockpit.", refs: [53, 102] },
       { kind: "neu", text: "Wird das Getriebe zu heiß, leuchtet die Lampe „Getriebe heiß“. DSG und Automatik gehen in den Notlauf und begrenzen die Leistung. Mit „Realistisch“ kann das Getriebe Schaden nehmen, mit „Sandbox“ nicht.", refs: [53, 102] },
+      { kind: "geändert", text: "Launch Control arbeitet jetzt wie im echten Auto: Die Drosselklappe bleibt offen, ein zweiter Drehzahlbegrenzer hält die Startdrehzahl, und Turbomotoren bauen mit Spätzündung schon im Stand Ladedruck auf. Der Skyline GT-R R34 schafft damit 0–100 in etwa 5,4 s.", refs: [38, 101, 103] },
+      { kind: "behoben", text: "Nissan RB26DETT (Skyline GT-R): Die Nockenwelle ist jetzt anhand der Werks-Steuerzeiten als milde Turbo-Nocke eingeschätzt. Das Drehmoment liegt früher an (386 Nm, Plateau ab 3500 1/min) und die Leistung realistisch bei 216 kW statt 244 kW.", refs: [89, 103] },
     ],
   },
   {

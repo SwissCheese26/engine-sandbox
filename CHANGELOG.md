@@ -4,7 +4,7 @@ Alle sichtbaren Änderungen an der Prüfzelle, neueste zuerst. Aufbau nach [Keep
 
 _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `bun scripts/changelog.ts` ausführen._
 
-## 2026-11-20 – Nutzfahrzeug-Cockpit, Zusatzinstrumente und Getriebeöltemperatur
+## 2026-11-20 – Nutzfahrzeug-Cockpit, Getriebeöltemperatur und echte Launch Control
 
 ### Neu
 
@@ -13,6 +13,14 @@ _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `
 - Tuning-Leiste: Ladedruck Soll und Ist, Zündung bzw. Förderbeginn gegenüber dem Kennfeld, Vollast-λ bzw. Rauchgrenze, Klopfen und die Leistungsgrenze des Steuergeräts, mit Hinweis, wenn sie greift. ([#83](https://github.com/SwissCheese26/engine-sandbox/issues/83), [#106](https://github.com/SwissCheese26/engine-sandbox/issues/106))
 - Das Getriebe hat jetzt eine eigene Öltemperatur. Sie steigt unter Last, beim Anfahren am Berg und mit schleifender Kupplung, und der Fahrtwind kühlt. Kaltes Öl ist zäh und kostet etwas Leistung. Zu sehen ist sie im Getriebe-Pult und als Feld „Getriebeöl“ im Digital-Cockpit. ([#53](https://github.com/SwissCheese26/engine-sandbox/issues/53), [#102](https://github.com/SwissCheese26/engine-sandbox/issues/102))
 - Wird das Getriebe zu heiß, leuchtet die Lampe „Getriebe heiß“. DSG und Automatik gehen in den Notlauf und begrenzen die Leistung. Mit „Realistisch“ kann das Getriebe Schaden nehmen, mit „Sandbox“ nicht. ([#53](https://github.com/SwissCheese26/engine-sandbox/issues/53), [#102](https://github.com/SwissCheese26/engine-sandbox/issues/102))
+
+### Geändert
+
+- Launch Control arbeitet jetzt wie im echten Auto: Die Drosselklappe bleibt offen, ein zweiter Drehzahlbegrenzer hält die Startdrehzahl, und Turbomotoren bauen mit Spätzündung schon im Stand Ladedruck auf. Der Skyline GT-R R34 schafft damit 0–100 in etwa 5,4 s. ([#38](https://github.com/SwissCheese26/engine-sandbox/issues/38), [#101](https://github.com/SwissCheese26/engine-sandbox/issues/101), [#103](https://github.com/SwissCheese26/engine-sandbox/issues/103))
+
+### Behoben
+
+- Nissan RB26DETT (Skyline GT-R): Die Nockenwelle ist jetzt anhand der Werks-Steuerzeiten als milde Turbo-Nocke eingeschätzt. Das Drehmoment liegt früher an (386 Nm, Plateau ab 3500 1/min) und die Leistung realistisch bei 216 kW statt 244 kW. ([#89](https://github.com/SwissCheese26/engine-sandbox/issues/89), [#103](https://github.com/SwissCheese26/engine-sandbox/issues/103))
 
 ## 2026-11-16 – Geführter Start, einfachere Ansichten und Credits
 
