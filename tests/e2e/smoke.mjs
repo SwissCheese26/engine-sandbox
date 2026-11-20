@@ -16,6 +16,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { extname, join, normalize, resolve } from "node:path";
+import { builderChecks } from "./builder.mjs";
 
 const require = createRequire(import.meta.url);
 let playwright;
@@ -863,6 +864,8 @@ try {
   if (!skipped) await run("mobile", { width: 390, height: 844 });
   // smallest common phone width (review PR #90)
   if (!skipped) await run("small", { width: 360, height: 740 });
+  // Engine Builder (#72): full build, save, rev, drive (tests/e2e/builder.mjs)
+  for (const [label, viewport] of [["desktop", { width: 1440, height: 900 }], ["small", { width: 360, height: 740 }]]) if (!skipped) await builderChecks({ browser, base, outDir, failures, errors, label, viewport });
 } catch (e) {
   failures.push(`Ausnahme: ${e?.stack ?? e}`);
 } finally {
