@@ -1,11 +1,11 @@
 // Hash router of the main menu (#42, stage 1). Pure functions, no DOM, so the mapping is unit-tested.
 // A hash router works under any base path (GitHub Pages serves the game under /engine-sandbox/).
 
-export type Route = "menu" | "sandbox" | "settings";
+export type Route = "menu" | "sandbox" | "settings" | "builder";
 
-export const ROUTES: readonly Route[] = ["menu", "sandbox", "settings"];
+export const ROUTES: readonly Route[] = ["menu", "sandbox", "settings", "builder"];
 
-/** "#sandbox" → "sandbox". Empty, unknown or not yet built modes (#builder, #career) open the menu. */
+/** "#sandbox" → "sandbox". Empty, unknown or not yet built modes (#career) open the menu. */
 export function parseRoute(hash: string): Route {
   const id = hash.replace(/^#\/?/, "").split(/[?/]/)[0]!.toLowerCase();
   return (ROUTES as readonly string[]).includes(id) ? (id as Route) : "menu";
@@ -19,6 +19,7 @@ export const TITLES: Record<Route, string> = {
   menu: "Prüfzelle – Hauptmenü",
   sandbox: "Prüfzelle – Sandbox",
   settings: "Prüfzelle – Einstellungen",
+  builder: "Prüfzelle – Engine Builder",
 };
 
 /** Esc leads back to the menu, except while typing: text fields, number fields, selects, editable text. */

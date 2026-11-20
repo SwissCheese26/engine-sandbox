@@ -1,0 +1,665 @@
+/* Engine Builder (#72): the fourth roller door and the step-by-step assistant. Tokens in tokens.css.
+   Gelb heißt Grenze: only blockers and limit values use --signal. */
+
+/* ── Hallenfront: four doors (Sandbox, Engine Builder, Car Builder, Karriere) ──
+   restates the breakpoints of menu.css, which this file follows in the cascade */
+.hall__doors {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(150px, 0.6fr);
+}
+@media (max-width: 1099px) {
+  .hall__doors {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 700px) {
+  .hall__doors {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Screen ──────────────────────────────────────────────────────────── */
+.screen--builder {
+  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--hammer);
+  color: var(--alu);
+}
+.eb__body {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: var(--space-5) var(--space-5) var(--space-7);
+}
+.eb__big {
+  min-height: 44px;
+  white-space: normal;
+  text-align: left;
+}
+.eb .btn {
+  min-height: 44px;
+}
+/* buttons on an aluminium plate: engraved instead of light-on-dark */
+.eb .plate .btn {
+  color: var(--engrave);
+  border-color: var(--engrave);
+}
+.eb .plate .btn--primary,
+.eb .plate .btn[aria-pressed="true"],
+.eb .plate .btn.is-held {
+  background: var(--engrave);
+  color: var(--alu);
+}
+.eb .plate .btn:hover {
+  background: rgba(35, 41, 42, 0.1);
+}
+.eb .plate .btn--primary:hover {
+  background: var(--hammer-deep);
+}
+
+/* ── Garage: start and own engines ──────────────────────────────────── */
+.eb__garage {
+  display: grid;
+  gap: var(--space-4);
+}
+.eb__intro-plate {
+  padding: var(--space-5);
+}
+.eb__start {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding-left: var(--space-2);
+  margin-top: var(--space-2);
+}
+.eb__h {
+  font-size: var(--fs-25);
+  font-weight: 600;
+  margin-top: var(--space-4);
+}
+.eb__empty {
+  color: var(--alu-shade);
+}
+.eb__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 360px), 1fr));
+  gap: var(--space-4);
+}
+.eb__engine {
+  display: grid;
+  gap: var(--space-3);
+  align-content: start;
+}
+.eb__ename {
+  display: grid;
+  gap: var(--space-1);
+  padding-left: var(--space-2);
+  min-width: 0;
+}
+.eb__etitle {
+  font-size: var(--fs-20);
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.eb__efacts {
+  font-size: var(--fs-14);
+  color: #4a5250;
+}
+.eb__ename input {
+  min-height: 44px;
+  width: 100%;
+  padding: 4px 8px;
+  border: 1px solid #9ea39a;
+  border-radius: 2px;
+  background: #e6e8e2;
+  color: var(--engrave);
+  font-size: var(--fs-16);
+}
+.eb__ename input[aria-invalid="true"] {
+  border: 2px solid var(--ink-torque);
+}
+.eb__err {
+  color: var(--ink-torque);
+  font-weight: 600;
+}
+.eb__eactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.eb__confirm {
+  flex-basis: 100%;
+  font-weight: 600;
+}
+.eb .plate .eb__danger {
+  border-width: 2px;
+  border-color: var(--ink-torque);
+  color: var(--ink-torque);
+}
+
+/* ── Build: steps, content, summary ─────────────────────────────────── */
+.eb__build {
+  display: grid;
+  gap: var(--space-4);
+}
+.eb__steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+  gap: var(--space-1);
+}
+.eb__stepbtn {
+  width: 100%;
+  min-height: 44px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: var(--space-1);
+  border: 1px solid var(--alu-shade);
+  border-radius: var(--radius-plate);
+  background: transparent;
+  color: var(--alu);
+  font: inherit;
+  cursor: pointer;
+}
+.eb__no {
+  font-weight: 700;
+  font-size: var(--fs-16);
+}
+.eb__slabel {
+  font-size: var(--fs-12);
+  line-height: 1.15;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+.eb__stepbtn[data-state="current"] {
+  background: var(--alu);
+  color: var(--engrave);
+  border-color: var(--alu);
+  font-weight: 700;
+}
+.eb__stepbtn[data-state="done"] {
+  background: var(--hammer-deep);
+}
+.eb__stepbtn:disabled {
+  opacity: 0.45;
+  cursor: default;
+  border-style: dashed;
+}
+.eb__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: var(--space-5);
+  align-items: start;
+}
+.eb__step {
+  display: grid;
+  gap: var(--space-3);
+  min-width: 0;
+}
+.eb__progress {
+  font-size: var(--fs-14);
+  color: var(--alu-shade);
+}
+.eb__title {
+  font-size: var(--fs-31);
+  font-weight: 600;
+  line-height: 1.1;
+}
+.eb__lead {
+  max-width: 65ch;
+  color: var(--alu);
+}
+.eb__basis,
+.eb__savename {
+  display: grid;
+  gap: var(--space-2);
+}
+.eb .field--text input,
+.eb .field select {
+  min-height: 44px;
+  font-size: var(--fs-16);
+}
+.eb__fuel {
+  border: 0;
+  margin: 0;
+  padding: var(--space-2);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr));
+  gap: var(--space-2);
+  min-width: 0;
+}
+.eb__fuel legend {
+  padding: 0;
+  margin-bottom: var(--space-2);
+}
+.eb__card {
+  display: flex;
+  gap: var(--space-2);
+  align-items: flex-start;
+  min-height: 44px;
+  padding: var(--space-3);
+  border: 1px solid #9ea39a;
+  border-radius: var(--radius-plate);
+  background: #e6e8e2;
+  cursor: pointer;
+  font-size: var(--fs-14);
+}
+.eb__card b {
+  display: block;
+  font-size: var(--fs-16);
+}
+.eb__card input {
+  width: 20px;
+  height: 20px;
+  margin-top: 2px;
+  flex: none;
+  accent-color: var(--engrave);
+}
+.eb__card:has(input:checked) {
+  border: 2px solid var(--engrave);
+  padding: calc(var(--space-3) - 1px);
+}
+.eb__note {
+  font-size: var(--fs-14);
+  padding-left: var(--space-2);
+}
+.eb__note:empty {
+  display: none;
+}
+
+/* the workbench plates of one step */
+/* in the builder the bench is part of the page, never the sandbox's slide-in drawer (app.css, phones) */
+.eb__workbench.bench {
+  position: static;
+  width: auto;
+  transform: none;
+  visibility: visible;
+  box-shadow: none;
+  background: none;
+  border: 0;
+  padding: 0;
+  overflow: visible;
+}
+.eb .field input[type="range"] {
+  min-height: 44px;
+}
+.eb .seg__opt span {
+  min-width: 44px;
+  min-height: 44px;
+  display: grid;
+  place-items: center;
+}
+.eb .field--toggle .field__label {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+}
+.eb .switch {
+  width: 52px;
+  height: 30px;
+  border-radius: 15px;
+}
+.eb .switch::after {
+  width: 26px;
+  height: 26px;
+}
+.eb .switch:checked::after {
+  left: 24px;
+}
+.eb .field__num {
+  min-height: 44px;
+}
+.field__info {
+  grid-column: 1 / -1;
+  font-size: var(--fs-14);
+  line-height: 1.4;
+  color: var(--engrave);
+  background: rgba(255, 255, 255, 0.4);
+  border-left: 3px solid var(--engrave);
+  padding: var(--space-1) var(--space-2);
+  margin-top: 2px;
+}
+
+/* blockers: what keeps "Weiter" back (yellow = limit) */
+.eb__blockers {
+  background: var(--signal);
+  color: var(--signal-ink);
+  border-radius: var(--radius-plate);
+  padding: var(--space-3) var(--space-4);
+}
+.eb__blockers-h {
+  font-weight: 700;
+  margin-bottom: var(--space-2);
+}
+.eb__blockers ul {
+  margin: 0;
+  padding-left: var(--space-4);
+  display: grid;
+  gap: var(--space-2);
+}
+.eb__blockers .btn {
+  color: var(--signal-ink);
+  border-color: var(--signal-ink);
+  margin-top: var(--space-1);
+}
+
+/* saved: what to do next */
+.eb__saved {
+  background: var(--hammer-deep);
+  border-left: 6px solid var(--ok);
+  border-radius: var(--radius-plate);
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-2);
+}
+.eb__saved-h {
+  font-size: var(--fs-20);
+  font-weight: 700;
+}
+.eb__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* finish: curve, nameplate, findings */
+.eb__finish {
+  display: grid;
+  gap: var(--space-4);
+}
+.eb__curve {
+  margin: var(--space-2) 0 0;
+}
+.eb__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  background: var(--paper);
+  border-radius: 2px;
+}
+.eb__svg path {
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+}
+.eb__torque {
+  stroke: var(--ink-torque);
+}
+.eb__power {
+  stroke: var(--ink-power);
+}
+.eb__grid-line {
+  stroke: var(--paper-grid);
+}
+.eb__axis {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--fs-12);
+  color: #4a5250;
+  margin-top: 2px;
+}
+.eb__curve figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  font-size: var(--fs-14);
+  font-weight: 600;
+  margin-top: var(--space-1);
+}
+.eb__key::before {
+  content: "";
+  display: inline-block;
+  width: 16px;
+  height: 3px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+.eb__key--torque::before {
+  background: var(--ink-torque);
+}
+.eb__key--power::before {
+  background: var(--ink-power);
+}
+.eb__warnlist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-2);
+}
+.eb__warnlist .note {
+  color: var(--engrave);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-2);
+}
+.eb__warnlist .note--critical {
+  border-left: 6px solid var(--ink-torque);
+}
+.note--ok {
+  border-left-color: var(--ok);
+}
+.eb__plate-slot .nameplate {
+  max-width: 100%;
+}
+
+/* live summary */
+.eb__sum {
+  position: sticky;
+  top: 64px;
+  background: var(--hammer-deep);
+  border-radius: var(--radius-plate);
+  padding: var(--space-4);
+  display: grid;
+  gap: var(--space-2);
+}
+.eb__sum-h {
+  font-size: var(--fs-20);
+  font-weight: 600;
+}
+.eb__sum-name {
+  font-size: var(--fs-14);
+  color: var(--alu-shade);
+  overflow-wrap: anywhere;
+}
+.eb__figures {
+  margin: 0;
+  display: grid;
+  gap: var(--space-1);
+}
+.eb__figures > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-3);
+  padding: var(--space-1) 0;
+  border-bottom: 1px solid #3d4a44;
+}
+.eb__figures dt {
+  font-size: var(--fs-14);
+  color: var(--alu-shade);
+}
+.eb__figures dt small {
+  display: block;
+  font-size: var(--fs-12);
+}
+.eb__figures dd {
+  margin: 0;
+  font-weight: 600;
+  text-align: right;
+}
+.eb__figures .is-limit,
+.eb__figures .is-critical {
+  color: var(--signal);
+  font-weight: 700;
+}
+
+/* footer: always reachable */
+.eb__foot {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2) 0;
+  background: var(--hammer);
+  border-top: 1px solid var(--hammer-deep);
+}
+.eb__spacer {
+  flex: 1;
+}
+
+/* ── Rev stand ──────────────────────────────────────────────────────── */
+.revstand {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  max-width: 820px;
+  margin: 0 auto;
+}
+.revstand__rpm {
+  font-family: var(--font-num);
+  font-size: var(--fs-39);
+  font-weight: 700;
+  line-height: 1;
+  padding-left: var(--space-2);
+}
+.revstand__unit {
+  font-size: var(--fs-16);
+  font-weight: 500;
+}
+.revstand__bar {
+  position: relative;
+  height: 20px;
+  margin-top: var(--space-2);
+  background: var(--engrave);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.revstand__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  background: var(--ok);
+}
+.revstand__bar.is-limit .revstand__fill {
+  background: var(--signal);
+}
+.revstand__red {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--ink-torque);
+}
+.revstand__values {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 140px), 1fr));
+  gap: var(--space-2);
+}
+.revstand__values > div {
+  background: #e6e8e2;
+  border-radius: 2px;
+  padding: var(--space-2);
+}
+.revstand__values dt {
+  font-size: var(--fs-12);
+  color: #4a5250;
+}
+.revstand__values dd {
+  margin: 0;
+  font-size: var(--fs-20);
+  font-weight: 700;
+}
+.revstand__status {
+  min-height: 1.5em;
+  font-weight: 600;
+  padding-left: var(--space-2);
+}
+.revstand__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  align-items: center;
+}
+.revstand__btn {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.revstand__lever {
+  flex: 1 1 220px;
+  display: grid;
+  gap: 2px;
+  font-weight: 600;
+}
+.revstand__lever input {
+  width: 100%;
+  min-height: 44px;
+  accent-color: var(--engrave);
+}
+.revstand__hint {
+  flex-basis: 100%;
+  font-size: var(--fs-12);
+  color: #4a5250;
+}
+
+/* ── Phones ─────────────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .eb__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .eb__sum {
+    position: static;
+  }
+}
+@media (max-width: 700px) {
+  .eb__body {
+    padding: var(--space-4) 16px var(--space-6);
+  }
+  .eb .office__top {
+    padding: var(--space-2) 16px;
+  }
+  .eb__steps {
+    grid-template-columns: repeat(auto-fill, minmax(44px, 1fr));
+  }
+  /* numbers only; the full name is the step title below (and stays in the accessible name) */
+  .eb__slabel {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+  }
+  .eb__title {
+    font-size: var(--fs-25);
+  }
+  .eb__intro-plate,
+  .revstand {
+    padding: var(--space-4) var(--space-3);
+  }
+  .revstand__rpm {
+    font-size: var(--fs-31);
+  }
+  .eb__foot .btn {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+  .eb__spacer {
+    display: none;
+  }
+}

@@ -9,6 +9,7 @@ import type { CarSetup, DriveLayout, GearboxType, Terrain, VehicleKind } from ".
 import { ENGINE_LIBRARY, type LibraryEngine } from "../data/engine-library.ts";
 import { VEHICLE_LIBRARY, type LibraryCar } from "../data/vehicle-library.ts";
 import { isListed, migrateTyreSize } from "./tyre-size-picker.ts";
+import { findMyEngine, isMyEngineId } from "./my-engines.ts";
 
 /** Library groups of step 1 (Auto, Lkw & Bus, Motorrad). */
 export type VehicleGroup = "car" | "commercial" | "bike";
@@ -212,7 +213,9 @@ export function validateCustom(raw: Partial<Record<keyof CustomVehicle, unknown>
   const gearbox = raw.gearbox as GearboxType;
   if (!gearboxesFor(base).includes(gearbox)) errors.gearbox = "Dieses Getriebe passt nicht zum Fahrzeugtyp.";
   const engineId = typeof raw.engineId === "string" ? raw.engineId : "";
-  if (!enginesFor(base).some((e) => e.config.id === engineId)) errors.engineId = "Bitte einen Motor aus der Bibliothek wählen.";
+  // own engines from the Engine Builder (#72) fit every vehicle type
+  const own = isMyEngineId(engineId) && !!findMyEngine(engineId);
+  if (!own && !enginesFor(base).some((e) => e.config.id === engineId)) errors.engineId = "Bitte einen Motor aus der Bibliothek oder einen eigenen Motor wählen.";
   if (Object.keys(errors).length) return { ok: false, errors };
   return { ok: true, value: { base, massKg, cw, areaM2, tyre: formatTyreSize(parseTyreSize(tyre)!), drive, gearbox, tankL, engineId } };
 }
@@ -252,9 +255,12 @@ export interface PendingSetup {
   route: Terrain | null;
 }
 
-/** Builds the pending setup from the wizard's choices; null when something is missing. */
-export function buildSetup(kind: SetupKind, choice: { vehicleId?: string; custom?: CustomVehicle; route?: Terrain }): PendingSetup | null {
-  if (kind === "engine") return { kind, route: null };
+/**
+ * Builds the pending setup from the wizard's choices; null when something is missing. `engineId` (Engine Builder,
+ * #72) replaces the engine of a library vehicle and is loaded on the engine dyno too.
+ */
+export function buildSetup(kind: SetupKind, choice: { vehicleId?: string; custom?: CustomVehicle; route?: Terrain; engineId?: string }): PendingSetup | null {
+  if (kind === "engine") return choice.engineId ? { kind, engineId: choice.engineId, route: null } : { kind, route: null };
   if (!choice.route) return null;
   if (kind === "custom") {
     if (!choice.custom) return null;
@@ -262,7 +268,7 @@ export function buildSetup(kind: SetupKind, choice: { vehicleId?: string; custom
   }
   const car = vehiclesOf(kind).find((c) => c.id === choice.vehicleId);
   if (!car) return null;
-  return { kind, vehicleId: car.id, engineId: car.engineId, route: choice.route };
+  return { kind, vehicleId: car.id, engineId: choice.engineId ?? car.engineId, route: choice.route };
 }
 
 // --- own vehicle across reloads (#93 review) ------------------------------------------------------------------------

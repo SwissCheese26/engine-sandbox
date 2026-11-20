@@ -2,6 +2,7 @@
 // The sandbox (App) is mounted the first time it is entered and only paused when it is left (loop stopped,
 // keys ignored, sound muted), so the engine, the measured runs and the bench survive a visit to the menu.
 import { App, mountApp } from "./app.ts";
+import { EngineBuilderScreen } from "./engine-builder.ts";
 import { MainMenu } from "./menu.ts";
 import { TITLES, hrefOf, isTypingTarget, parseRoute, type Route } from "./router.ts";
 import { SettingsScreen } from "./settings-screen.ts";
@@ -9,6 +10,7 @@ import { SettingsScreen } from "./settings-screen.ts";
 export class Shell {
   private menu = new MainMenu();
   private settings = new SettingsScreen();
+  private builder = new EngineBuilderScreen();
   private sandboxRoot: HTMLElement;
   private screens: Record<Route, HTMLElement>;
   private app: App | null = null;
@@ -29,8 +31,12 @@ export class Shell {
       menu: wrap("menu", this.menu.el),
       settings: wrap("settings", this.settings.el),
       sandbox: wrap("sandbox", this.sandboxRoot),
+      builder: wrap("builder", this.builder.el),
     };
-    root.replaceChildren(this.screens.menu, this.screens.settings, this.screens.sandbox);
+    root.replaceChildren(this.screens.menu, this.screens.settings, this.screens.sandbox, this.screens.builder);
+    // one guided start for menu and Engine Builder (#72): outside the screens, so it opens from either
+    root.append(this.menu.picker.el);
+    this.builder.onDrive = (engineId) => this.menu.picker.open({ engineId });
     const signal = this.abort.signal;
     window.addEventListener("hashchange", () => this.show(parseRoute(location.hash), true), { signal });
     // on window, so handlers inside the sandbox (closing the bench drawer) run first and can preventDefault
@@ -39,6 +45,8 @@ export class Shell {
       (e) => {
         if (e.key !== "Escape" || e.defaultPrevented || e.repeat || this.route === "menu") return;
         if (isTypingTarget(e.target as HTMLElement | null)) return;
+        // Esc in an open dialog closes only the dialog (guided start opened from the Engine Builder, #72)
+        if (document.querySelector("dialog[open]")) return;
         e.preventDefault();
         this.go("menu");
       },
@@ -58,6 +66,7 @@ export class Shell {
     this.route = route;
     if (from === "sandbox") this.app?.pause();
     if (from === "settings") this.settings.leave();
+    if (from === "builder") this.builder.leave();
     for (const r of Object.keys(this.screens) as Route[]) this.screens[r].hidden = r !== route;
     document.title = TITLES[route];
     document.documentElement.dataset.screen = route;
@@ -66,6 +75,7 @@ export class Shell {
       else this.app.resume();
     }
     if (route === "settings") this.settings.sync();
+    if (route === "builder") this.builder.enter();
     if (!moveFocus) return;
     window.scrollTo(0, 0);
     if (route === "menu") {
@@ -74,6 +84,8 @@ export class Shell {
       (back ?? this.menu.heading).focus();
     } else if (route === "settings") {
       this.settings.heading.focus();
+    } else if (route === "builder") {
+      this.builder.focusTarget().focus();
     } else {
       this.sandboxRoot.querySelector<HTMLElement>(".cell__title")?.setAttribute("tabindex", "-1");
       this.sandboxRoot.querySelector<HTMLElement>(".cell__title")?.focus();

@@ -1,5 +1,5 @@
-// Hauptmenü (#42, stage 1): the front of the workshop hall. Three roller doors lead to the modes, a
-// narrow side door to the settings. Only the sandbox door opens for now; Car Builder and Karriere are shown
+// Hauptmenü (#42, stage 1): the front of the workshop hall. Four roller doors lead to the modes, a
+// narrow side door to the settings. Sandbox and Engine Builder (#72) open; Car Builder and Karriere are shown
 // closed with "kommt bald". No engine sound here (planned later).
 import { SandboxWizard } from "./sandbox-wizard.ts";
 import { bugButton } from "./bug-dialog.ts";
@@ -15,13 +15,16 @@ interface Door {
 
 const DOORS: Door[] = [
   { no: "Tor 1", title: "Sandbox", text: "Alles frei: Motor bauen, Prüfstand, Rollenprüfstand, Bibliothek.", href: "#sandbox" },
-  { no: "Tor 2", title: "Car Builder", text: "Schritt für Schritt vom Karosserietyp zum fertigen Auto." },
-  { no: "Tor 3", title: "Karriere", text: "Mit der Schrottkarre anfangen, Rennen fahren, aufsteigen." },
+  { no: "Tor 2", title: "Engine Builder", text: "Motor Schritt für Schritt bauen, speichern, hochdrehen und fahren.", href: "#builder" },
+  { no: "Tor 3", title: "Car Builder", text: "Schritt für Schritt vom Karosserietyp zum fertigen Auto." },
+  { no: "Tor 4", title: "Karriere", text: "Mit der Schrottkarre anfangen, Rennen fahren, aufsteigen." },
 ];
 
 export class MainMenu {
   readonly el: HTMLElement;
   readonly heading: HTMLElement;
+  /** Guided start of the Sandbox (#93); the Engine Builder (#72) opens it too, with its engine preselected. */
+  readonly picker = new SandboxWizard();
 
   constructor() {
     const el = document.createElement("div");
@@ -63,7 +66,7 @@ export class MainMenu {
     const credits = new CreditsDialog();
     el.querySelector(".hall__credit")!.parentElement!.append(credits.button, credits.el);
     // the Sandbox door leads through the guided start first (#93): kind, vehicle, route, cheat sheet
-    const picker = new SandboxWizard();
+    const picker = this.picker;
     el.append(picker.el);
     el.querySelector<HTMLAnchorElement>('a.door[data-mode="sandbox"]')?.addEventListener("click", (e) => {
       e.preventDefault();
@@ -84,7 +87,7 @@ export class MainMenu {
           ${d.href ? `<span class="door__open">Tor offen</span>` : `<span class="door__soon">kommt bald</span>`}
         </span>`;
     return d.href
-      ? `<li class="hall__bay"><a class="door" href="${d.href}" data-mode="${d.title.toLowerCase()}">${inner}</a></li>`
+      ? `<li class="hall__bay"><a class="door" href="${d.href}" data-mode="${d.href.slice(1)}">${inner}</a></li>`
       // locked bays stay focusable (aria-disabled, not disabled), so keyboard and screen reader users find
       // them; "kommt bald" is part of the accessible name
       : `<li class="hall__bay"><button type="button" class="door is-closed" aria-disabled="true">${inner}</button></li>`;

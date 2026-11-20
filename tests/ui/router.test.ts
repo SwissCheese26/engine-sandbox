@@ -12,7 +12,7 @@ test("hash maps to a screen, menu is the default", () => {
   expect(parseRoute("#SANDBOX")).toBe("sandbox");
   expect(parseRoute("#sandbox?x=1")).toBe("sandbox");
   // modes that do not exist yet open the menu
-  expect(parseRoute("#builder")).toBe("menu");
+  expect(parseRoute("#builder")).toBe("builder"); // Engine Builder (#72)
   expect(parseRoute("#career")).toBe("menu");
   expect(parseRoute("#unsinn")).toBe("menu");
   expect(hrefOf("settings")).toBe("#settings");
