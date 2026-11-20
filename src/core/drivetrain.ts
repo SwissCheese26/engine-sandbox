@@ -16,6 +16,8 @@
  * via applyCar), per-car gear ratios (gearbox spec override).
  * Environment and driver assistance (issue #23): weather/surface, outside temperature, altitude, gradient
  * (environment.ts) and ABS / ASR / ESP / launch control (assists.ts), lamps in DrivetrainState.
+ * Gearbox oil temperature (issue #53, gearbox-thermal.ts, docs/research/vehicle.md §8): heat from the gear losses and
+ * the clutch/converter slip, cold-oil drag, warning, TCU protection mode and damage per realism level.
  * Pure TypeScript, no DOM.
  */
 import { CruiseControl } from "./cruise.ts";
@@ -29,11 +31,12 @@ import type { Environment } from "./environment.ts";
 import { DEFAULT_TYRE, TYRE_TYPES, aquaplaningFactor, compoundFactor, speedRatingKmh, stepTyreTemp, tyreGrip, tyreRadii } from "./tyres.ts";
 import type { RoadSurface, TyreSetup } from "./tyres.ts";
 import { drivenAxleLoadN, wheelieLimitN } from "./vehicle.ts";
-import { converterK } from "./converter.ts";
+import { converterK, converterTorques } from "./converter.ts";
+import { GEARBOX_HYST_K, GEARBOX_THERMAL, GEARBOX_WARM_C, gearboxDragPenalty, gearboxThermalKind, gearboxWearRate, stepGearboxOil } from "./gearbox-thermal.ts";
 import { dynoSweep } from "./dyno.ts";
 import { AUTO_HOLD_MAX_KMH, HOLD_RELEASE_PEDAL, autoHoldEngages } from "./parking-brake.ts";
 import type { ConverterSpec } from "./converter.ts";
-import type { ConverterCoupling, EngineConfig, EngineState, EngineSummary, VehicleCoupling, VehicleParams } from "./types.ts";
+import type { ConverterCoupling, EngineConfig, EngineState, EngineSummary, SimInputs, VehicleCoupling, VehicleParams } from "./types.ts";
 
 export type GearboxType = "manual" | "dsg" | "cvt" | "sequential" | "automatic";
 
@@ -309,7 +312,20 @@ export interface DrivetrainState {
    */
   parkingBrake?: boolean;
   autoHold?: boolean;
+  /**
+   * Issue #53 (optional for older consumers; the Drivetrain always sets them): gearbox oil temperature °C (motorcycle:
+   * shared sump = engine oil), above the warning threshold, TCU protection mode (pedal limited), oil ageing / damage
+   * 0 … 1 and gearbox failed (realism "real" only: no drive until reset). docs/research/vehicle.md §8.
+   */
+  gearboxOilC?: number;
+  gearboxOilWarn?: boolean;
+  gearboxProtect?: boolean;
+  gearboxWear?: number;
+  gearboxFailed?: boolean;
 }
+
+/** Pedal cap of the TCU protection mode at gearbox oil overtemperature (vehicle.md §8) [S]. */
+const GEARBOX_PROTECT_PEDAL = 0.5;
 
 /** A complete vehicle setup (issue #22, src/data/vehicle-library.ts): kind, body, tyre, gearbox, governor. */
 export interface CarSetup {
@@ -416,6 +432,14 @@ export class Drivetrain {
   /** Released by hand: Auto-Hold waits for a fresh brake press, drive-away or > AUTO_HOLD_MAX_KMH. */
   private holdSuppressed = false;
   private lastBrake = 0;
+  /** Gearbox oil (issue #53): temperature (NaN = not yet initialised after a reset), wear, flags, settings. */
+  private gbOilC = Number.NaN;
+  private gbWear = 0;
+  private gbWarn = false;
+  private gbProtect = false;
+  private gbFailed = false;
+  private gbCooler = true;
+  private damageLevel: NonNullable<SimInputs["damage"]> = "real";
 
   constructor(
     private cfg: EngineConfig,
@@ -440,6 +464,8 @@ export class Drivetrain {
       assists: { ...this.assistSet }, absActive: false, asrActive: false, espActive: false, launchArmed: false,
       iceWarning: iceWarning(this.env.ambientC), aquaplaning: false, cruise: this.cc.state,
       parkingBrake: false, autoHold: this.autoHoldOn,
+      gearboxOilC: Number.isFinite(this.gbOilC) ? this.gbOilC : this.env.ambientC, gearboxOilWarn: this.gbWarn,
+      gearboxProtect: this.gbProtect, gearboxWear: this.gbWear, gearboxFailed: this.gbFailed,
     };
   }
 
@@ -455,6 +481,7 @@ export class Drivetrain {
 
   setType(type: GearboxType) {
     this.clearTransient();
+    this.resetGearboxOil();
     this.spec = GEARBOXES[type];
     Object.assign(this.st, this.fresh(type, GEARBOXES[type].finalDrive, this.st.speedLimitKmh));
   }
@@ -663,6 +690,7 @@ export class Drivetrain {
     if (this.fullKg !== null) this.vehicle.massKg = this.emptyKg + this.loadSh * (this.fullKg - this.emptyKg);
     this.tyreT = this.env.ambientC;
     this.clearTransient();
+    this.resetGearboxOil();
     this.spec = car.gearboxSpec ? { ...car.gearboxSpec, ratios: [...car.gearboxSpec.ratios] } : GEARBOXES[car.gearbox];
     Object.assign(this.st, this.fresh(car.gearbox, this.spec.finalDrive, car.speedLimitKmh), { maxSpeedKmh: 0, t0to100S: null });
   }
@@ -722,9 +750,99 @@ export class Drivetrain {
   reset() {
     const keep = { maxSpeedKmh: this.st.maxSpeedKmh, t0to100S: this.st.t0to100S, maxSpeedLimited: this.st.maxSpeedLimited };
     this.clearTransient();
+    this.resetGearboxOil();
     Object.assign(this.st, this.fresh(this.st.type, this.st.finalDrive, this.st.speedLimitKmh), keep);
     this.positionM = 0;
     this.updateRoad();
+  }
+
+  /**
+   * Gearbox oil back to its start (issue #53): the temperature is set on the first frame the engine has run after
+   * this, warm (GEARBOX_WARM_C, at most the coolant) when the engine started warm ("Motor warm starten"), otherwise
+   * at the outside temperature (vehicle.md §8). Wear and failure are cleared.
+   */
+  private resetGearboxOil() {
+    this.gbOilC = Number.NaN;
+    this.gbWear = 0;
+    this.gbWarn = false;
+    this.gbProtect = false;
+    this.gbFailed = false;
+  }
+
+  /** Realism level of the damage model (issue #53, same levels as SimInputs.damage, issue #66). */
+  setDamageLevel(level: SimInputs["damage"]) {
+    this.damageLevel = level ?? "real";
+    if (this.damageLevel === "off") this.gbProtect = false;
+    if (this.damageLevel !== "real") this.gbFailed = false;
+    if (this.damageLevel === "lenient") this.gbWear = Math.min(this.gbWear, 0.99);
+  }
+
+  /** Optional gearbox oil cooler (issue #53): on by default; only gearboxes with one in their spec are affected. */
+  setGearboxCooler(on: boolean) {
+    this.gbCooler = on;
+  }
+
+  get gearboxCooler(): boolean {
+    return this.gbCooler;
+  }
+
+  /**
+   * Gearbox oil temperature, warning, protection mode and damage (issue #53, gearbox-thermal.ts, vehicle.md §8).
+   * Heat from (1 − η)·P through the gear set, churning, clutch slip (wet: all, dry: share) and converter slip
+   * T_P·ω_P − T_T·ω_T (vehicle.md §4).
+   */
+  private stepGearboxOil(dt: number, engine: EngineState, clutch: number, inputRpm: number, outputRpm: number, converter: ConverterCoupling | undefined, vRoad: number) {
+    const s = this.st;
+    const spec = GEARBOX_THERMAL[gearboxThermalKind(s.type, this.kind)];
+    const ambient = this.env.ambientC;
+    if (spec.sharedSump) {
+      // motorcycle: the gearbox runs in the engine oil; the engine's own limits and warnings cover it
+      this.gbOilC = Number.isFinite(engine.oilC) ? engine.oilC : ambient;
+      Object.assign(s, { gearboxOilC: this.gbOilC, gearboxOilWarn: false, gearboxProtect: false, gearboxWear: 0, gearboxFailed: false });
+      return;
+    }
+    if (!Number.isFinite(this.gbOilC)) {
+      // the simulator applies "Motor warm starten" on its first step after a reset (SimInputs.startWarm)
+      if (!(engine.t > 0)) {
+        s.gearboxOilC = ambient;
+        return;
+      }
+      this.gbOilC = engine.oilC >= 60 ? Math.max(ambient, Math.min(GEARBOX_WARM_C, engine.coolantC)) : ambient;
+    }
+    const rads = Math.PI / 30;
+    const wE = Math.max(0, engine.rpm) * rads;
+    const wIn = Math.max(0, inputRpm) * rads;
+    const te = Number.isFinite(engine.torqueNm) ? engine.torqueNm : 0;
+    const cap = Math.max(250, this.summary.peakTorqueNm * 1.6);
+    let clutchSlipW = 0;
+    let converterSlipW = 0;
+    let coupled = false;
+    if (converter && s.gear > 0) {
+      coupled = true;
+      const t = converterTorques(converter, engine.rpm, inputRpm);
+      const lu = Math.min(1, Math.max(0, clutch));
+      // the converter carries what the lock-up clutch does not; a slipping lock-up clutch is wet (in the ATF)
+      converterSlipW = (1 - lu) * Math.max(0, t.pumpNm * wE - t.turbineNm * wIn) + Math.min(Math.abs(te), lu * cap) * Math.abs(wE - wIn);
+    } else if (s.gear > 0 && clutch > 0) {
+      coupled = true;
+      clutchSlipW = Math.min(Math.abs(te), clutch * cap) * Math.abs(wE - wIn);
+    }
+    const pIn = coupled ? te * wE : 0;
+    const powerW = Math.sign(pIn) * Math.max(0, Math.abs(pIn) - clutchSlipW - converterSlipW);
+    this.gbOilC = stepGearboxOil(spec, this.gbOilC, dt, {
+      powerW, efficiency: this.spec.efficiency, clutchSlipW, converterSlipW, shaftRpm: Math.max(inputRpm, outputRpm),
+      airSpeedMs: vRoad, ambientC: ambient, coolantC: Number.isFinite(engine.coolantC) ? engine.coolantC : ambient, cooler: this.gbCooler,
+    });
+    const T = this.gbOilC;
+    this.gbWarn = this.gbWarn ? T >= spec.warnC - GEARBOX_HYST_K : T >= spec.warnC;
+    // TCU protection mode (DSG, automatic, CVT, commercial): torque reduction like the real "Notlauf"; not in the sandbox
+    const pc = spec.protectC;
+    this.gbProtect = pc !== null && this.damageLevel !== "off" && (this.gbProtect ? T >= pc - GEARBOX_HYST_K : T >= pc);
+    if (this.damageLevel !== "off") {
+      this.gbWear = Math.min(this.damageLevel === "lenient" ? 0.99 : 1, this.gbWear + gearboxWearRate(spec, T) * dt);
+      if (this.damageLevel === "real" && this.gbWear >= 1) this.gbFailed = true;
+    }
+    Object.assign(s, { gearboxOilC: T, gearboxOilWarn: this.gbWarn, gearboxProtect: this.gbProtect, gearboxWear: this.gbWear, gearboxFailed: this.gbFailed });
   }
 
   /** Shift timer, pending gear and launch-clutch memory back to rest (review #19). */
@@ -1000,7 +1118,7 @@ export class Drivetrain {
     } else if (this.assistSet.launchControl && brake > 0.05 && pedal > 0.5 && vRoad < 0.5 && s.type !== "sequential") {
       // launch control (issue #23): at standstill with brake and throttle the clutch stays open; releasing the brake
       // starts the traction-dosed launch of the next branch [S]. Issue #38: the throttle stays wide open and the
-      // engine's secondary rev limiter holds the launch speed (VehicleCoupling.launchLimitRpm, docs/research/vehicle.md §8)
+      // engine's secondary rev limiter holds the launch speed (VehicleCoupling.launchLimitRpm, docs/research/vehicle.md §9)
       this.holdLaunch = 0;
       clutch = 0;
       launchLimitRpm = this.launchRpm(pedal);
@@ -1069,6 +1187,8 @@ export class Drivetrain {
       const capNm = Math.max(250, this.summary.peakTorqueNm * 1.6);
       if (Number.isFinite(n)) clutch = Math.min(clutch, (0.97 * s.grip * n * this.vehicle.wheelRadiusM) / (ratio * s.finalDrive * g.efficiency) / capNm);
     }
+    // gearbox failed (issue #53, realism "real"): no drive until reset
+    if (this.gbFailed) clutch = 0;
     s.clutch = clutch;
     // launch speed hold: above the launch speed the pedal is taken back (clutch dosed by traction)
     this.launchCap = launchHoldRpm > 0 && rpm > launchHoldRpm ? Math.max(0.2, 1 - (rpm - launchHoldRpm) / 800) : 1;
@@ -1133,11 +1253,15 @@ export class Drivetrain {
       }
     }
 
-    const converter = conv && s.gear > 0 && engine.running ? this.converterCoupling() : undefined;
+    const converter = conv && s.gear > 0 && engine.running && !this.gbFailed ? this.converterCoupling() : undefined;
+    // gearbox oil (issue #53): the output shaft turns with the wheels also in N
+    const outputRpm = (v / this.vehicle.wheelRadiusM) * s.finalDrive * RAD_TO_RPM;
+    this.stepGearboxOil(dt, engine, clutch, inputRpm, outputRpm, converter, Number.isFinite(vRoad) ? vRoad : 0);
     return {
       vehicle: this.vehicle,
       totalRatio: ratio * s.finalDrive,
-      efficiency: g.efficiency,
+      // cold, viscous oil costs efficiency (issue #53, vehicle.md §8); not on the shared motorcycle sump
+      efficiency: g.efficiency - (s.type === "sequential" ? 0 : gearboxDragPenalty(this.gbOilC)),
       clutch,
       clutchCapacityNm: Math.max(250, this.summary.peakTorqueNm * 1.6),
       brake,
@@ -1197,8 +1321,8 @@ export class Drivetrain {
       const target = this.rpmInGear(this.pendingGear, this.lastSpeedMs);
       return this.lastRpm < target - 100 ? Math.min(0.6, 0.15 + (target - this.lastRpm) / 3000) : 0;
     }
-    // ASR pedal cap and MSR pedal floor (issue #23)
-    const p = Math.max(Math.min(pedal, this.launchCap, this.tcOut.pedalCap), this.tcOut.pedalFloor);
+    // ASR pedal cap and MSR pedal floor (issue #23); TCU protection mode at gearbox overtemperature (issue #53)
+    const p = Math.max(Math.min(pedal, this.launchCap, this.tcOut.pedalCap, this.gbProtect ? GEARBOX_PROTECT_PEDAL : 1), this.tcOut.pedalFloor);
     this.lastEffPedal = this.govActive ? Math.min(p, this.govCap) : p;
     return this.lastEffPedal;
   }

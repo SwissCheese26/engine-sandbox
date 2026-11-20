@@ -299,7 +299,7 @@ describe("launch control (issue #23)", () => {
 
 /**
  * Issue #38 (contract #101): launch control is a secondary rev limiter with the throttle wide open, petrol turbo
- * engines retard the spark so the charger pre-spools (Haltech, "How Launch Control Works"; vehicle.md §8).
+ * engines retard the spark so the charger pre-spools (Haltech, "How Launch Control Works"; vehicle.md §9).
  */
 describe("launch control as a secondary rev limiter (issue #38)", () => {
   /** Arms launch control for `seconds`, then launches with full throttle; manual cars shift at the limiter. */
@@ -352,6 +352,47 @@ describe("launch control as a secondary rev limiter (issue #38)", () => {
     expect(on.boost).toBe(0);
     expect(on.rpmMax).toBeLessThan(on.limit + 250);
     expect(on.t100).toBeLessThan(off.t100);
+  }, 30000);
+
+  test("brake held: armed only while the brake is held at full pedal; half pedal or released brake does not arm", () => {
+    const r = assistRig(GTI, { assists: { launchControl: true } });
+    const frame = (pedal: number, brake: number) => {
+      const vehicle = r.dt.inputs(r.h, r.sim.state, pedal, brake);
+      r.sim.step(r.h, { ...defaultsFor(r), vehicle, pedal: r.dt.effectivePedal(pedal) });
+      return vehicle.launchLimitRpm ?? 0;
+    };
+    let lim = 0;
+    for (let i = 0; i < 60; i++) lim = frame(0.4, 1);
+    expect(lim).toBe(0);
+    expect(r.dt.state.launchArmed).toBe(false);
+    for (let i = 0; i < 120; i++) lim = frame(1, 1);
+    expect(lim).toBeGreaterThan(2500);
+    expect(r.sim.state.vehicleSpeedMs ?? 0).toBeLessThan(0.05);
+    // brake released: the limiter goes away at once, the car drives off
+    lim = frame(1, 0);
+    expect(lim).toBe(0);
+    for (let i = 0; i < 60; i++) frame(1, 0);
+    expect(r.sim.state.vehicleSpeedMs ?? 0).toBeGreaterThan(1);
+  });
+
+  test("converter automatic (530d Steptronic): launch control is not offered, brake + throttle behave exactly as without it", () => {
+    // Haltech: spark retard hurts with a converter (it loads the engine itself) → the model has no converter launch
+    const on = launchRun("car-bmw-530d-e60", true, 2);
+    const off = launchRun("car-bmw-530d-e60", false, 2);
+    expect(on.limit).toBe(0);
+    expect(on.speed).toBeLessThan(0.05);
+    expect(on.rpmMax).toBeCloseTo(off.rpmMax, 0);
+    expect(on.boost).toBeCloseTo(off.boost, 3);
+  }, 30000);
+
+  test("diesel with clutch (Golf 6 TDI): limiter holds the launch speed by fuel cut, throttle-free, no stall", () => {
+    const on = launchRun("car-vw-golf6-tdi", true);
+    expect(on.limit).toBeGreaterThan(1500);
+    expect(on.pedalEff).toBe(1);
+    expect(on.speed).toBeLessThan(0.05);
+    expect(on.rpmMax).toBeLessThan(on.limit + 300);
+    expect(on.rpmMin).toBeGreaterThan(on.limit - 500);
+    expect(on.t100).toBeLessThan(20);
   }, 30000);
 
   test("Skyline R34: with launch control the 0–100 lands within ±12 % of the press value 5.0 s (#38, #89)", () => {

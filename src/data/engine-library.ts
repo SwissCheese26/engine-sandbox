@@ -100,8 +100,8 @@ const EXTRA: LibraryEngine[] = [
       // chargers (turbo.ts chargerUnit: two of D/√2) → 2 × ≈ 44 mm gives 62 mm [S, T25/T28 family 43 … 46 mm]; turbine
       // A/R 0.64 [S]. Boost is NOT fitted.
       // Issue #89: Nissan valve timing (R32: IVO 7° BTDC, IVC 53° ABDC, EVO 63° BBDC, EVC 7° BTDC; R34: 3/57/59/3°) =
-      // 240° seat duration with zero overlap, a mild turbo cam. camProfile from the duration rule of petrol.md §3.2e:
-      // (240 − 235)/60 ≈ 0.08 → 0.1 (was 0.3 [S], which put the VE peak at 13 m/s ≈ 5300 rpm).
+      // 240° seat duration with zero overlap, a mild turbo cam below a typical stock cam (0.4) → camProfile 0.1 [S,
+      // RB26-specific estimate, no general rule; petrol.md §3.2e/§7a]. The old 0.3 [S] put the VE peak at ≈ 5300 rpm.
       head: { valvetrain: "dohc", valvesPerCylinder: 4, camProfile: 0.1, variableTiming: "none" },
       induction: { aspiration: "twin-turbo-parallel", compressorInducerMm: 62, turbineAR: 0.64, variableGeometry: false, boostTargetBar: 0.69, intercooler: "air-to-air", intakeRunnerLengthMm: 250, individualThrottleBodies: true },
       fuelSystem: { kind: "petrol", mixture: "port-injection", fuel: "ron98", fullLoadLambda: 0.82, ignitionAdvanceOffsetDeg: 0 },

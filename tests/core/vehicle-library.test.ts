@@ -13,7 +13,7 @@ import { driveCar } from "./vehicle-run.ts";
  *  - Skyline R34: 6.07 / 6.05 / 6.05 s vs 5.0 – not traction (AWD). Since #89 the RB26DETT has its sourced mild cam
  *    (216 kW @ 6000, 386 Nm @ 4700 instead of 244 kW @ 7000): more low end, less top end, and this driver shifts at
  *    8000 rpm, so the run got slower (5.80 → 6.07 s). The press times come from high-rpm launches; with launch
- *    control (pre-spooled turbos) the model needs ≈ 5.4 s, see "launch control" below (petrol.md §7a, vehicle.md §8).
+ *    control (pre-spooled turbos) the model needs ≈ 5.4 s, see "launch control" below (petrol.md §7a, vehicle.md §9).
  *  - Corvette C6: 5.17 / 4.85 / 4.78 s vs 4.4 – traction explains only part (grip ×1.15 → −6 %, ×1.3 still +8.6 %);
  *    the rest is open (gearing / torque curve: 1st gear to ≈ 86 km/h, 1→2 shift just below 100 km/h). The LS3 is at
  *    its rated 316 kW since #38 (+9 % power gained only 2 %).

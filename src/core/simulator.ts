@@ -257,7 +257,7 @@ export class EngineSimulator {
     let ebAny = false;
     const pops = m.p && cfg.exhaust.overrunPops && cfg.exhaust.overrunPops !== "off" ? POPS[cfg.exhaust.overrunPops] : null;
     // launch control armed (issue #38, contract #101): secondary limiter; petrol turbo engines with an ECU (not a
-    // carburettor) retard the spark so the exhaust carries the energy into the turbine (pre-spool), vehicle.md §8
+    // carburettor) retard the spark so the exhaust carries the energy into the turbine (pre-spool), vehicle.md §9
     const vLaunch = input.dynoMode === "vehicle" ? fin(input.vehicle?.launchLimitRpm ?? 0, 0) : 0;
     const launchRpm = vLaunch > idle ? vLaunch : 0;
     const launchRetard = launchRpm > 0 && m.p && m.exhaustDriven && m.p.fs.mixture !== "carburettor" ? LAUNCH_RETARD_DEG : 0;
@@ -269,7 +269,7 @@ export class EngineSimulator {
       if (combust && m.p) combust = rpm > 80;
       // --- rev limiter: petrol hard cut with hysteresis (stutter), diesel governor ramp + hard cut safeguard.
       // Launch control (issue #38): secondary limiter at the launch speed, same cut logic (Haltech, "How Launch
-      // Control Works": the launch rev limit cuts fuel and/or ignition, docs/research/vehicle.md §8)
+      // Control Works": the launch rev limit cuts fuel and/or ignition, docs/research/vehicle.md §9)
       const lim = launchRpm > 0 ? Math.min(cfg.revLimitRpm, launchRpm) : cfg.revLimitRpm;
       if (m.fuel === "petrol") {
         if (rpm > lim) x.limiterCut = true;

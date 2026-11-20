@@ -2448,3 +2448,7 @@ kbd {
 .gearbox__tank .is-low {
   color: var(--signal);
 }
+/* gearbox oil above the warning threshold (issue #53), "Gelb heißt Grenze" */
+.gearbox__readouts [data-out="gear-oil"].is-low {
+  color: var(--signal);
+}
