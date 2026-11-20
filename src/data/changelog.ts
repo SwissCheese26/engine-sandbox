@@ -21,8 +21,10 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     date: "2026-11-20",
-    title: "Getriebeöltemperatur",
+    title: "Getriebeöltemperatur und Engine Builder",
     items: [
+      { kind: "neu", text: "Engine Builder im Hauptmenü (Tor 2): Motor Schritt für Schritt bauen, von Kraftstoff und Block über Zylinderkopf, Gemisch, Turbo, Abgas und Kühlung bis zu Begrenzer und Steuergerät. Zu jeder Wahl steht dabei, was sie bewirkt, daneben siehst du Hubraum, Leistung, Drehmoment und Gewicht live. Unbaubare Werte halten „Weiter“ auf.", refs: [72, 107] },
+      { kind: "neu", text: "Eigene Motoren speichern, umbenennen und löschen. Ein fertiger Motor lässt sich direkt im Stand hochdrehen (Zündung, Starter, Handgas, Ton) oder in der Sandbox fahren. Er steht auch in der Werkbank und bei „Eigenes Fahrzeug“ zur Wahl.", refs: [72, 107] },
       { kind: "neu", text: "Das Getriebe hat jetzt eine eigene Öltemperatur. Sie steigt unter Last, beim Anfahren am Berg und mit schleifender Kupplung, und der Fahrtwind kühlt. Kaltes Öl ist zäh und kostet etwas Leistung. Zu sehen ist sie im Getriebe-Pult und als Feld „Getriebeöl“ im Digital-Cockpit.", refs: [53, 102] },
       { kind: "neu", text: "Wird das Getriebe zu heiß, leuchtet die Lampe „Getriebe heiß“. DSG und Automatik gehen in den Notlauf und begrenzen die Leistung. Mit „Realistisch“ kann das Getriebe Schaden nehmen, mit „Sandbox“ nicht.", refs: [53, 102] },
     ],

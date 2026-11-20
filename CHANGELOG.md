@@ -4,10 +4,12 @@ Alle sichtbaren Änderungen an der Prüfzelle, neueste zuerst. Aufbau nach [Keep
 
 _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `bun scripts/changelog.ts` ausführen._
 
-## 2026-11-20 – Getriebeöltemperatur
+## 2026-11-20 – Getriebeöltemperatur und Engine Builder
 
 ### Neu
 
+- Engine Builder im Hauptmenü (Tor 2): Motor Schritt für Schritt bauen, von Kraftstoff und Block über Zylinderkopf, Gemisch, Turbo, Abgas und Kühlung bis zu Begrenzer und Steuergerät. Zu jeder Wahl steht dabei, was sie bewirkt, daneben siehst du Hubraum, Leistung, Drehmoment und Gewicht live. Unbaubare Werte halten „Weiter“ auf. ([#72](https://github.com/SwissCheese26/engine-sandbox/issues/72), [#107](https://github.com/SwissCheese26/engine-sandbox/issues/107))
+- Eigene Motoren speichern, umbenennen und löschen. Ein fertiger Motor lässt sich direkt im Stand hochdrehen (Zündung, Starter, Handgas, Ton) oder in der Sandbox fahren. Er steht auch in der Werkbank und bei „Eigenes Fahrzeug“ zur Wahl. ([#72](https://github.com/SwissCheese26/engine-sandbox/issues/72), [#107](https://github.com/SwissCheese26/engine-sandbox/issues/107))
 - Das Getriebe hat jetzt eine eigene Öltemperatur. Sie steigt unter Last, beim Anfahren am Berg und mit schleifender Kupplung, und der Fahrtwind kühlt. Kaltes Öl ist zäh und kostet etwas Leistung. Zu sehen ist sie im Getriebe-Pult und als Feld „Getriebeöl“ im Digital-Cockpit. ([#53](https://github.com/SwissCheese26/engine-sandbox/issues/53), [#102](https://github.com/SwissCheese26/engine-sandbox/issues/102))
 - Wird das Getriebe zu heiß, leuchtet die Lampe „Getriebe heiß“. DSG und Automatik gehen in den Notlauf und begrenzen die Leistung. Mit „Realistisch“ kann das Getriebe Schaden nehmen, mit „Sandbox“ nicht. ([#53](https://github.com/SwissCheese26/engine-sandbox/issues/53), [#102](https://github.com/SwissCheese26/engine-sandbox/issues/102))
 
