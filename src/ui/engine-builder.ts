@@ -196,7 +196,7 @@ export class EngineBuilderScreen {
       this.next();
     });
     this.q("[data-nav=back]").addEventListener("click", () => this.go(this.step - 1));
-    this.q("[data-nav=cancel]").addEventListener("click", () => this.showGarage(this.q("[data-action=resume]")));
+    this.q("[data-nav=cancel]").addEventListener("click", () => this.showGarage(this.q<HTMLElement>("[data-action=resume]")));
     this.el.querySelectorAll<HTMLButtonElement>("[data-goto]").forEach((b) =>
       b.addEventListener("click", () => {
         const i = Number(b.dataset.goto);
@@ -232,7 +232,7 @@ export class EngineBuilderScreen {
     // after saving
     this.q("[data-action=rev]").addEventListener("click", (e) => this.openRev(this.savedId ? findMyEngine(this.savedId)?.config ?? this.cfg : this.cfg, "build", e.currentTarget as HTMLElement));
     this.q("[data-action=drive]").addEventListener("click", () => this.savedId && this.onDrive(this.savedId));
-    this.q("[data-action=to-garage]").addEventListener("click", () => this.showGarage(this.q("[data-action=new]")));
+    this.q("[data-action=to-garage]").addEventListener("click", () => this.showGarage(this.q<HTMLElement>("[data-action=new]")));
     this.stand.onClose = () => {
       this.stand.close();
       this.setView(this.revFrom.view);
