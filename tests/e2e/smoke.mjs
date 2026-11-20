@@ -841,6 +841,14 @@ async function autoTruck(page, label) {
   const eb = await page.evaluate(() => ({ v: document.querySelector('.ck [data-ck="eb"]')?.textContent, st: document.querySelector('.ck [data-ck="eb-row"]')?.dataset.state }));
   if (eb.st === "none" || !eb.v) failures.push(`${label}: Motorbremsen-Anzeige beim Lkw fehlt (${JSON.stringify(eb)})`);
   await page.locator(".ck").screenshot({ path: join(outDir, `smoke-${label}-design-truck-auto.png`) });
+  // #91 in the truck design: braked to a stop, Auto-Hold applies the parking brake and the red (P) lamp lights
+  await page.keyboard.down("s");
+  await page.waitForTimeout(3000);
+  await page.keyboard.up("s");
+  await page.waitForTimeout(400);
+  const park = await page.evaluate(() => ({ design: document.querySelector(".ck")?.dataset.design, lamp: document.querySelector('.ck [data-lamp="park"]')?.dataset.state }));
+  if (park.design !== "truck" || park.lamp !== "on") failures.push(`${label}: Nutzfahrzeug-Design ohne (P)-Leuchte bei Feststellbremse (${JSON.stringify(park)})`);
+  if (!(await page.isVisible('.ck [data-lamp="park"]'))) failures.push(`${label}: (P)-Leuchte im Nutzfahrzeug-Design nicht sichtbar`);
 }
 
 // "Fehler melden" in the sandbox header (#55): dialog opens, the link targets the issue form with the diagnosis,

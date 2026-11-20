@@ -74,7 +74,7 @@ export function dialTheme(id: CockpitDesignId): DialTheme {
 
 /** Values the three fields of the digital design can show, in cycling order. */
 export const FIELD_IDS = [
-  "coolant", "oilT", "oilP", "boost", "egt", "fuelNow", "range", "power", "torque", "lambda", "road", "sprint", "ambient",
+  "coolant", "oilT", "gearOil", "oilP", "boost", "egt", "fuelNow", "range", "power", "torque", "lambda", "road", "sprint", "ambient",
   // intake air (#83): offered only once the core reports the charge-air temperature (see fields-logic.ts)
   "intake",
 ] as const;

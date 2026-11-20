@@ -1,7 +1,7 @@
 // Toast strip below the sandbox header: draws what ToastQueue decides (toast-queue.ts). It floats over the stage
 // (position absolute), so a toast never changes the height of the control bar. One polite live region: each new
 // toast is announced once, leaving toasts are not.
-import type { EngineState } from "../core/index.ts";
+import type { DrivetrainState, EngineState } from "../core/index.ts";
 import { ToastQueue, type Toast, type ToastInput } from "./toast-queue.ts";
 
 /** What the sandbox reports for the toasts this frame. */
@@ -9,16 +9,33 @@ export interface ToastSources {
   state: EngineState;
   /** The engine stalled because the tank ran dry (latched until it runs again). */
   outOfFuel: boolean;
+  /** Gearbox oil (issue #53), chassis dyno only. */
+  gearbox?: Pick<DrivetrainState, "gearboxOilWarn" | "gearboxProtect" | "gearboxFailed">;
+}
+
+/** Gearbox oil message (issue #53) for the Getriebe-Pult note and the toast; "" = none. */
+export function gearboxOilNote(s: Pick<DrivetrainState, "gearboxOilWarn" | "gearboxProtect" | "gearboxFailed">): string {
+  if (s.gearboxFailed) return "Getriebeschaden durch Überhitzung: Es wird keine Kraft mehr übertragen. Zurücksetzen hilft.";
+  if (s.gearboxProtect) return "Getriebe überhitzt: Notlauf, die Leistung ist begrenzt. Gas wegnehmen oder rollen lassen.";
+  if (s.gearboxOilWarn) return "Getriebeöl heiß: Last zurücknehmen, Fahrtwind kühlt.";
+  return "";
 }
 
 /** Turns the engine state into toast conditions (pure, tested). */
-export function toastInputs({ state: s, outOfFuel }: ToastSources): ToastInput[] {
+export function toastInputs({ state: s, outOfFuel, gearbox }: ToastSources): ToastInput[] {
   const out: ToastInput[] = [];
   if (s.destroyed) {
     const fatal = [...s.damage].reverse().find((d) => d.fatal);
     out.push({ key: "destroyed", severity: "critical", always: true, text: fatal ? `Motor zerstört. ${fatal.message}` : "Motor zerstört." });
   }
   if (outOfFuel) out.push({ key: "fuel-empty", severity: "critical", always: true, text: "Tank leer: Der Motor ist ausgegangen." });
+  // gearbox oil (issue #53): failure and protection mode always, the plain warning only with the setting (calm)
+  if (gearbox) {
+    const text = gearboxOilNote(gearbox);
+    if (gearbox.gearboxFailed) out.push({ key: "gearbox-failed", severity: "critical", always: true, text });
+    else if (gearbox.gearboxProtect) out.push({ key: "gearbox-protect", severity: "critical", always: true, text });
+    else if (gearbox.gearboxOilWarn) out.push({ key: "gearbox-hot", severity: "warning", text });
+  }
   // engine damage and critical warnings are shown in any case; only the limit approach waits for the setting
   for (const d of s.damage.slice(-3)) {
     if (!d.fatal) out.push({ key: `d:${d.code}:${d.t.toFixed(1)}`, severity: "warning", always: true, text: `Schaden: ${d.message}` });

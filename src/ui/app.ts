@@ -94,6 +94,7 @@ export class App {
     this.gearbox = new GearboxPanel(this.cfg, this.summary);
     this.info = new DriveInfo(this.cfg, this.gearbox.drivetrain);
     this.gearbox.drivetrain.setAutoHold(getSettings().autoHold);
+    this.gearbox.drivetrain.setDamageLevel(getSettings().realism);
     this.announcer = document.createElement("p");
     this.announcer.className = "sr-only";
     this.announcer.setAttribute("aria-live", "polite");
@@ -106,6 +107,7 @@ export class App {
     this.unsubscribeSettings = onSettingsChange((st) => {
       if (st.layout !== this.layoutId) this.setLayout(st.layout);
       this.inputs.damage = st.realism;
+      this.gearbox.drivetrain.setDamageLevel(st.realism);
       this.gearbox.drivetrain.setAutoHold(st.autoHold);
       this.console.syncSettings(st);
       this.recorder.syncSettings(st);
@@ -512,7 +514,7 @@ export class App {
       if (this.wasRunning && !s.running && tankEmpty) this.fuelStall = true;
       if (s.running || !tankEmpty) this.fuelStall = false;
       this.wasRunning = s.running;
-      this.toasts.update({ state: s, outOfFuel: this.fuelStall }, now, getSettings().limitHints === "toast");
+      this.toasts.update({ state: s, outOfFuel: this.fuelStall, gearbox: this.inputs.dynoMode === "vehicle" ? this.gearbox.drivetrain.state : undefined }, now, getSettings().limitHints === "toast");
       if (this.inputs.dynoMode === "vehicle") this.gearbox.update(this.console.brakeHeld);
       {
         const ds = this.gearbox.drivetrain.state;
