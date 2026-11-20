@@ -75,3 +75,8 @@ export {
   AUTO_HOLD_MAX_KMH, AUTO_HOLD_STOP_KMH, HOLD_ENGAGE_PEDAL, HOLD_RELEASE_PEDAL, PARK_BRAKE_HOLD_PCT, AUTO_HOLD_HYDRAULIC_G, HOLD_ROLL_G, autoHoldEngages, holdCapN, parkBrakeCapN,
 } from "./parking-brake.ts";
 export type { AutoHoldInput } from "./parking-brake.ts";
+// issue #53: gearbox oil temperature
+export {
+  GEARBOX_THERMAL, GEARBOX_WARM_C, GEARBOX_HYST_K, gearboxThermalKind, stepGearboxOil, gearboxHeatW, gearboxViscosityFactor, gearboxDragPenalty, gearboxWearRate,
+} from "./gearbox-thermal.ts";
+export type { GearboxOilInput, GearboxThermalKind, GearboxThermalSpec } from "./gearbox-thermal.ts";
