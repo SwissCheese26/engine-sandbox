@@ -3,15 +3,17 @@
 // Issue #22: Fahrzeug-Platte (vehicle-panel.ts), wheel-spin / locked-wheel indicator, tyre warning from the
 // fitted tyre's speed index.
 // Issue #23: Umwelt- und Assistenz-Platte (environment-panel.ts) and the warning-lamp strip under the gear indicator.
+// Issue #53: gearbox oil temperature readout (amber from the warning threshold) and a note on overheat / protection mode.
 import { TripPanel } from "./trip-panel.ts";
 import { Drivetrain, FuelTank, GEARBOXES, VEHICLES, theoreticalVmax, dynoSweep, SPEED_LIMIT_OPTIONS, isAutomaticType, isCommercialKind } from "../core/index.ts";
-import type { EngineConfig, EngineSummary, GearboxType, VehicleKind } from "../core/index.ts";
+import type { DrivetrainState, EngineConfig, EngineSummary, GearboxType, VehicleKind } from "../core/index.ts";
 import { EnvironmentPanel, WarningLamps } from "./environment-panel.ts";
 import { VehiclePanel } from "./vehicle-panel.ts";
 import { GearPlate } from "./gear-plate.ts";
 import { CruisePanel } from "./cruise-panel.ts";
 import { prefs } from "./settings.ts";
 import { toUnit } from "./units.ts";
+import { gearboxOilNote } from "./toasts.ts";
 
 const TYPE_LABEL: Record<GearboxType, string> = {
   manual: "Handschalter, 6 Gänge",
@@ -103,7 +105,9 @@ export class GearboxPanel {
   }
   private cfg: EngineConfig;
   private summary: EngineSummary;
-  private last = { gear: "", speed: "", vmax: "", t100: "", vmaxNote: false, gov: false, tyre: false, wheelie: false, spin: false, locked: false, tyreRating: 0 };
+  private last = { gear: "", speed: "", vmax: "", t100: "", vmaxNote: false, gov: false, tyre: false, wheelie: false, spin: false, locked: false, tyreRating: 0, oil: "", oilNote: "" };
+  private oilEl!: HTMLElement;
+  private oilNoteEl!: HTMLElement;
   private moving = false;
   /** 0–60 mph stopwatch, measured here from the drivetrain's running 0–100 timer (UI only, #24). */
   private sprint = { running: false, done: false, t60: null as number | null };
@@ -157,6 +161,7 @@ export class GearboxPanel {
         <div><dt>Tempo</dt><dd class="num"><span data-out="speed">0</span> <span data-unit="speed">km/h</span></dd></div>
         <div><dt>Vmax gemessen</dt><dd class="num"><span data-out="vmax">0</span> <span data-unit="speed">km/h</span><small class="gearbox__vmax-note" hidden> (abgeregelt)</small></dd></div>
         <div><dt data-out="sprint-label">0–100 km/h</dt><dd class="num"><span data-out="t100">–</span> s</dd></div>
+        <div><dt>Getriebeöl</dt><dd class="num"><span data-out="gear-oil">–</span></dd></div>
         <div class="gearbox__tank"><dt>Tank</dt><dd class="num"><span data-out="tank">–</span>
           <button type="button" class="btn btn--small" data-control="refuel">Volltanken</button></dd></div>
       </dl>
@@ -164,6 +169,7 @@ export class GearboxPanel {
       <div class="gearbox__notes" aria-live="polite">
         <p class="note note--info" data-out="governor" hidden>Abgeregelt: Der Vmax-Begrenzer nimmt das Gas zurück.</p>
         <p class="note note--warning" data-out="tyre" hidden></p>
+        <p class="note note--warning" data-out="gearbox-oil" hidden></p>
       </div>
       </div>`;
     this.el = el;
@@ -202,6 +208,8 @@ export class GearboxPanel {
     this.autoBtn = q("[data-control=shift-auto]");
     this.spinEl = q("[data-out=wheelspin]");
     this.lockEl = q("[data-out=wheels-locked]");
+    this.oilEl = q("[data-out=gear-oil]");
+    this.oilNoteEl = q("[data-out=gearbox-oil]");
     this.vehiclePanel = new VehiclePanel(this.drivetrain);
     // the tank level of the last visit, if it was the same vehicle (library id, or the own vehicle), else full
     this.restoreTank();
@@ -278,7 +286,7 @@ export class GearboxPanel {
     for (const o of this.limitSel.options) {
       if (o.value !== "off") o.textContent = `${fmt0(toUnit("speed", Number(o.value), u))} ${u}`;
     }
-    this.last.speed = this.last.vmax = this.last.t100 = "";
+    this.last.speed = this.last.vmax = this.last.t100 = this.last.oil = "";
     this.last.tyreRating = -1;
     this.syncSetup();
     this.trip.syncUnits();
@@ -407,6 +415,24 @@ export class GearboxPanel {
     return sp.t60;
   }
 
+  /** Gearbox oil temperature in the chosen unit, amber from the warning threshold, and its note (issue #53). */
+  private updateGearboxOil(s: DrivetrainState) {
+    const u = prefs().temp;
+    const c = s.gearboxOilC;
+    const text = c === undefined || !Number.isFinite(c) ? "–" : `${fmt0(toUnit("temp", c, u))} ${u}`;
+    if (text !== this.last.oil) {
+      this.last.oil = text;
+      this.oilEl.textContent = text;
+    }
+    this.oilEl.classList.toggle("is-low", !!s.gearboxOilWarn);
+    const note = gearboxOilNote(s);
+    if (note !== this.last.oilNote) {
+      this.last.oilNote = note;
+      this.oilNoteEl.textContent = note;
+      this.oilNoteEl.hidden = !note;
+    }
+  }
+
   /** Per frame: returns the pedal the engine should get (manual shifts lift off). */
   update(braking = false): void {
     const d = this.drivetrain;
@@ -452,6 +478,7 @@ export class GearboxPanel {
     if (s.wheelie !== this.last.wheelie) this.wheelieEl.hidden = !(this.last.wheelie = s.wheelie);
     if (s.wheelSpin !== this.last.spin) this.spinEl.hidden = !(this.last.spin = s.wheelSpin);
     if (s.wheelsLocked !== this.last.locked) this.lockEl.hidden = !(this.last.locked = s.wheelsLocked);
+    this.updateGearboxOil(s);
     this.vehiclePanel.update();
     this.gears.update();
     this.lamps.update(d);

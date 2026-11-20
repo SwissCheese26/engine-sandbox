@@ -17,6 +17,8 @@ export const ICON2 = {
   coolant: `<svg viewBox="0 0 40 28" aria-hidden="true"><path ${S} d="M20 3v13M20 8h4M20 12h4"/><circle cx="20" cy="18.5" r="3" fill="currentColor"/><path ${S} d="M7 23c3-2 5 2 8 0M25 23c3-2 5 2 8 0"/></svg>`,
   /** Glow plug coil: diesel pre-glow. */
   glow: `<svg viewBox="0 0 40 28" aria-hidden="true"><path ${S} d="M6 10c0-4 4-5 6-3M34 10c0-4-4-5-6-3M10 13c2 0 2 4 4 4s2-4 4-4 2 4 4 4 2-4 4-4 2 4 4 4M6 21h28"/></svg>`,
+  /** Gear wheel with thermometer: gearbox oil temperature (#53). */
+  gearbox: `<svg viewBox="0 0 40 28" aria-hidden="true"><circle cx="15" cy="14" r="6" ${S}/><path ${S} d="M15 4v3M15 21v3M5 14h3M22 14h3M8 7l2 2M20 19l2 2M8 21l2-2M20 9l2-2"/><path ${S} d="M31 4v13"/><circle cx="31" cy="20.5" r="3" fill="currentColor"/></svg>`,
   /** Speedometer with arrow: cruise control (#30). */
   cruise: `<svg viewBox="0 0 40 28" aria-hidden="true"><path ${S} d="M8 20a12 12 0 1 1 24 0M20 20l6-7"/></svg>`,
 } as const;

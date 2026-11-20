@@ -4,6 +4,13 @@ Alle sichtbaren Änderungen an der Prüfzelle, neueste zuerst. Aufbau nach [Keep
 
 _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `bun scripts/changelog.ts` ausführen._
 
+## 2026-11-20 – Getriebeöltemperatur
+
+### Neu
+
+- Das Getriebe hat jetzt eine eigene Öltemperatur. Sie steigt unter Last, beim Anfahren am Berg und mit schleifender Kupplung, und der Fahrtwind kühlt. Kaltes Öl ist zäh und kostet etwas Leistung. Zu sehen ist sie im Getriebe-Pult und als Feld „Getriebeöl“ im Digital-Cockpit. ([#53](https://github.com/SwissCheese26/engine-sandbox/issues/53), [#102](https://github.com/SwissCheese26/engine-sandbox/issues/102))
+- Wird das Getriebe zu heiß, leuchtet die Lampe „Getriebe heiß“. DSG und Automatik gehen in den Notlauf und begrenzen die Leistung. Mit „Realistisch“ kann das Getriebe Schaden nehmen, mit „Sandbox“ nicht. ([#53](https://github.com/SwissCheese26/engine-sandbox/issues/53), [#102](https://github.com/SwissCheese26/engine-sandbox/issues/102))
+
 ## 2026-11-16 – Geführter Start, einfachere Ansichten und Credits
 
 ### Neu
