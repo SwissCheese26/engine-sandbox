@@ -8,7 +8,8 @@ import type { LibraryEngine } from "../data/engine-library.ts";
 import { STAGE_LABELS, applyTuningStage, tuningWarnings } from "../data/tuning.ts";
 import type { TuningStage } from "../data/tuning.ts";
 import { FIELDS, GROUPS, getPath, isVisible, setPath } from "./fields.ts";
-import type { Field } from "./fields.ts";
+import type { Field, GroupId } from "./fields.ts";
+import { loadMyEngines, onMyEnginesChange, resolveEngine } from "./my-engines.ts";
 import { clamp, fmt, parseNumber, snap } from "./format.ts";
 import { autoName } from "./names.ts";
 import { prefs, type Quantity } from "./settings.ts";
@@ -32,6 +33,16 @@ function view(f: { unit: string; decimals: number; scale?: number; q?: Quantity 
 }
 
 type Listener = (cfg: EngineConfig) => void;
+
+/** Workbench options. The Engine Builder (#72) shows the plates of one step only, without head and tuning. */
+export interface WorkbenchOptions {
+  /** Only these groups (default: all). Can be changed later with setGroups(). */
+  groups?: GroupId[];
+  /** Field paths that are not shown (the builder asks for the name on its own). */
+  omit?: string[];
+  /** Plates only: no title, fuel switch, library and tuning. */
+  embedded?: boolean;
+}
 
 let uid = 0;
 
@@ -59,12 +70,19 @@ export class Workbench {
   /** One-shot hint after a stage change discarded manual edits. */
   private discardNote = "";
   private tuning!: HTMLElement;
+  private groups: GroupId[] | null;
+  private omit: Set<string>;
+  private platePrefix: string;
 
-  constructor(initial: EngineConfig) {
+  constructor(initial: EngineConfig, opts: WorkbenchOptions = {}) {
+    this.groups = opts.groups ?? null;
+    this.omit = new Set(opts.omit ?? []);
     this.cfg = structuredClone(initial);
     this.el = document.createElement("aside");
     this.el.className = "bench";
-    this.el.id = "werkbank";
+    // the builder's bench (#72) lives next to the sandbox's one: no second #werkbank, own plate ids
+    if (!opts.embedded) this.el.id = "werkbank";
+    this.platePrefix = opts.embedded ? `eb${++uid}-` : "";
     this.el.setAttribute("aria-label", "Werkbank");
     const head = document.createElement("div");
     head.className = "bench__head";
@@ -80,7 +98,7 @@ export class Workbench {
         <button type="button" class="btn btn--small" data-action="preset">Grundausstattung laden</button>
       </div>
       <label class="bench__library"><span>Serienmotor laden</span>
-        <select data-action="library"><option value="">Motor wählen …</option>${([["Diesel", (e: LibraryEngine) => (e.category ?? "car") === "car" && e.config.fuel === "diesel"], ["Benziner", (e: LibraryEngine) => (e.category ?? "car") === "car" && e.config.fuel === "petrol"], ["Lkw & Bus", (e: LibraryEngine) => e.category === "commercial"], ["Motorrad", (e: LibraryEngine) => e.category === "motorcycle"]] as const).map(([label, pick]) => `<optgroup label="${label}">${ENGINE_LIBRARY.filter(pick).map((e) => `<option value="${e.config.id}">${e.config.name}${e.cars ? ` – ${e.cars}` : ""}</option>`).join("")}</optgroup>`).join("")}</select>
+        <select data-action="library"><option value="">Motor wählen …</option><optgroup label="Eigene Motoren" data-out="my-engines" hidden></optgroup>${([["Diesel", (e: LibraryEngine) => (e.category ?? "car") === "car" && e.config.fuel === "diesel"], ["Benziner", (e: LibraryEngine) => (e.category ?? "car") === "car" && e.config.fuel === "petrol"], ["Lkw & Bus", (e: LibraryEngine) => e.category === "commercial"], ["Motorrad", (e: LibraryEngine) => e.category === "motorcycle"]] as const).map(([label, pick]) => `<optgroup label="${label}">${ENGINE_LIBRARY.filter(pick).map((e) => `<option value="${e.config.id}">${e.config.name}${e.cars ? ` – ${e.cars}` : ""}</option>`).join("")}</optgroup>`).join("")}</select>
       </label>
       <p class="bench__libinfo" hidden></p>
       <p class="bench__lock" role="status" aria-live="polite" hidden>Zum Umbauen Motor abstellen: Zündung aus<span class="kbd-only"> mit <kbd>I</kbd></span>.</p>
@@ -96,7 +114,26 @@ export class Workbench {
     head.querySelector('[data-action="preset"]')!.addEventListener("click", () => this.loadPreset(this.cfg.fuel));
     const lib = head.querySelector<HTMLSelectElement>('[data-action="library"]')!;
     const libInfo = head.querySelector<HTMLElement>(".bench__libinfo")!;
+    // own engines from the Engine Builder (#72): refreshed whenever they change
+    const mine = head.querySelector<HTMLElement>('[data-out="my-engines"]')!;
+    const fillMine = () => {
+      const list = loadMyEngines();
+      mine.replaceChildren(...list.map((m) => Object.assign(document.createElement("option"), { value: m.id, textContent: m.name })));
+      mine.hidden = list.length === 0;
+    };
+    fillMine();
+    onMyEnginesChange(fillMine);
+    lib.addEventListener("focus", fillMine);
     lib.addEventListener("change", () => {
+      const own = loadMyEngines().find((m) => m.id === lib.value);
+      if (own && !this.locked) {
+        this.loadLibrary(own.id);
+        this.onLibraryLoad(own.id);
+        libInfo.textContent = `Eigener Motor „${own.name}“ aus dem Engine Builder. Alle Werte sind danach frei veränderbar.`;
+        libInfo.hidden = false;
+        lib.value = "";
+        return;
+      }
       const e = ENGINE_LIBRARY.find((x) => x.config.id === lib.value);
       if (!e || this.locked) {
         lib.value = "";
@@ -111,7 +148,8 @@ export class Workbench {
     this.body = document.createElement("div");
     this.body.className = "bench__plates";
     this.tuning = this.buildTuning();
-    this.el.append(head, this.tuning, this.body);
+    if (opts.embedded) this.el.append(this.body);
+    else this.el.append(head, this.tuning, this.body);
     this.cfg.name = autoName(this.cfg);
     this.render();
   }
@@ -142,12 +180,27 @@ export class Workbench {
     return this.locked;
   }
 
-  /** Loads a production engine from the library (#15); its name is kept until the player renames it. */
+  /** Loads a production engine from the library (#15) or an own engine (#72); its name is kept until the player renames it. */
   loadLibrary(id: string) {
     if (this.locked) return;
     this.customName = true;
     this.resetTuning();
-    this.apply(libraryConfig(id));
+    this.apply(resolveEngine(id) ?? libraryConfig(id));
+  }
+
+  /** Puts a config on the bench as it is (Engine Builder draft, #72). `customName` false lets the name follow the config. */
+  load(cfg: EngineConfig, customName = true) {
+    if (this.locked) return;
+    this.customName = customName;
+    this.resetTuning();
+    this.apply(structuredClone(cfg));
+  }
+
+  /** Shows only these groups (null = all), e.g. one step of the Engine Builder. */
+  setGroups(groups: GroupId[] | null) {
+    this.groups = groups;
+    this.signature = "";
+    this.render();
   }
 
   loadPreset(fuel: FuelKind) {
@@ -184,7 +237,7 @@ export class Workbench {
   }
 
   private sig(): string {
-    return FIELDS.filter((f) => isVisible(f, this.cfg))
+    return FIELDS.filter((f) => this.shows(f))
       .map((f) => {
         if (f.kind === "select") return f.path + ":" + f.options(this.cfg).map((o) => o.value).join("|");
         if (f.kind === "choice-number") return f.path + ":" + f.values(this.cfg).join("|");
@@ -195,6 +248,10 @@ export class Workbench {
         return f.path;
       })
       .join(";");
+  }
+
+  private shows(f: Field): boolean {
+    return isVisible(f, this.cfg) && !this.omit.has(f.path) && (!this.groups || this.groups.includes(f.group));
   }
 
   /** Global unit setting changed (#24): rebuild the plates so units, ranges and values follow. */
@@ -223,12 +280,12 @@ export class Workbench {
   private build() {
     this.body.replaceChildren();
     for (const g of GROUPS) {
-      const fields = FIELDS.filter((f) => f.group === g.id && isVisible(f, this.cfg));
+      const fields = FIELDS.filter((f) => f.group === g.id && this.shows(f));
       if (fields.length === 0) continue;
       const plate = document.createElement("section");
       plate.className = "plate";
       plate.dataset.group = g.id;
-      const hid = `plate-${g.id}`;
+      const hid = `${this.platePrefix}plate-${g.id}`;
       plate.setAttribute("aria-labelledby", hid);
       plate.innerHTML = `<span class="screw screw--tl" aria-hidden="true"></span><span class="screw screw--tr" aria-hidden="true"></span><span class="screw screw--bl" aria-hidden="true"></span><span class="screw screw--br" aria-hidden="true"></span>`;
       const h = document.createElement("h3");

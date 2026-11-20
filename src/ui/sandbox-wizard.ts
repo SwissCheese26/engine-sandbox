@@ -11,6 +11,7 @@ import {
 } from "./sandbox-setup.ts";
 import { getSettings, setSettings } from "./settings.ts";
 import { TyreSizePicker } from "./tyre-size-picker.ts";
+import { findMyEngine, loadMyEngines } from "./my-engines.ts";
 
 /** "+ Neues erstellen" in a library list: the own-vehicle form starts with the matching base type. */
 const BASE_OF_KIND: Partial<Record<SetupKind, CustomBase>> = { car: "car", commercial: "truck", bike: "bike" };
@@ -102,6 +103,8 @@ export class SandboxWizard {
   /** Set while the own-vehicle form was opened from a library list ("+ Neues erstellen"); Zurück returns there. */
   private createdFrom: SetupKind | null = null;
   private route: Terrain = "static";
+  /** Engine from the Engine Builder (#72) that replaces the vehicle's engine in this run. */
+  private engineId: string | null = null;
   private q = <T extends Element>(s: string) => this.el.querySelector<T>(s)!;
 
   constructor() {
@@ -117,6 +120,7 @@ export class SandboxWizard {
 
         <section class="wizard__step" data-step="1" aria-labelledby="wiz-h1">
           <h2 id="wiz-h1" class="wizard__title" tabindex="-1">Womit willst du fahren?</h2>
+          <p class="wizard__lead wizard__engine-note" data-out="engine-note" hidden></p>
           <ul class="wizard__kinds">
             ${kinds.map((k) => `
               <li><button type="button" class="wizard__kind${k === "engine" ? " wizard__kind--plain" : ""}" data-kind="${k}" ${k === "engine" ? 'data-pick="engine"' : ""} aria-pressed="false">
@@ -244,8 +248,17 @@ export class SandboxWizard {
     return defaultCustom(base ?? "car");
   }
 
-  open() {
+  /** Opens at step 1. `engineId` (Engine Builder, #72): this engine goes into whatever vehicle is chosen. */
+  open(opts: { engineId?: string } = {}) {
     if (this.el.open) return;
+    const own = opts.engineId ? findMyEngine(opts.engineId) : undefined;
+    this.engineId = own?.id ?? null;
+    const note = this.q<HTMLElement>("[data-out=engine-note]");
+    note.textContent = own ? `Mit deinem Motor „${own.name}“: Er kommt in das Fahrzeug, das du jetzt wählst.` : "";
+    note.hidden = !own;
+    // the own-vehicle form lists the current own engines and starts with the chosen one
+    this.fillCustom(SandboxWizard.startValues());
+    this.renderVehicles();
     if (typeof this.el.showModal !== "function") {
       // very old browsers without <dialog>: go straight in, as it was
       location.hash = "#sandbox";
@@ -360,7 +373,7 @@ export class SandboxWizard {
     this.q("#wiz-h2").textContent = isCustom ? "Eigenes Fahrzeug" : `${k ? KIND_LABEL[k] : ""} wählen`;
     lead.textContent = isCustom
       ? "Startwerte passen zum Fahrzeugtyp. Der Motor kommt aus der Bibliothek."
-      : "Der passende Serienmotor wird gleich mitgeladen.";
+      : this.engineName ? `Statt des Serienmotors fährt dein Motor „${this.engineName}“.` : "Der passende Serienmotor wird gleich mitgeladen.";
     list.querySelectorAll("label").forEach((l) => l.remove());
     if (k === "car" || k === "commercial" || k === "bike") {
       const cars = vehiclesOf(k);
@@ -397,9 +410,22 @@ export class SandboxWizard {
     sel("drive").disabled = drives.length < 2;
     sel("gearbox").innerHTML = gearboxesFor(c.base).map((g: GearboxType) => `<option value="${g}">${c.base === "truck" && g === "dsg" ? "Automatisiert (AMT), 12 Gänge" : GEARBOX_SHORT[g]}</option>`).join("");
     sel("gearbox").value = c.gearbox;
-    sel("engineId").innerHTML = enginesFor(c.base)
-      .map((e) => `<option value="${e.config.id}">${e.config.name} · ${fmtDe(e.expected.peakPowerKw * PS_PER_KW)} PS</option>`).join("");
-    sel("engineId").value = c.engineId;
+    // own engines (#72) first, then the library engines that fit the vehicle type
+    const engines = sel("engineId");
+    engines.replaceChildren();
+    const mine = loadMyEngines();
+    if (mine.length) {
+      const g = document.createElement("optgroup");
+      g.label = "Eigene Motoren";
+      g.append(...mine.map((m) => Object.assign(document.createElement("option"), { value: m.id, textContent: m.name })));
+      engines.append(g);
+    }
+    const lib = document.createElement("optgroup");
+    lib.label = "Bibliothek";
+    lib.append(...enginesFor(c.base).map((e) => Object.assign(document.createElement("option"), { value: e.config.id, textContent: `${e.config.name} · ${fmtDe(e.expected.peakPowerKw * PS_PER_KW)} PS` })));
+    engines.append(lib);
+    engines.value = this.engineId ?? c.engineId;
+    if (!engines.value) engines.selectedIndex = mine.length;
     for (const k of ["massKg", "cw", "areaM2", "tankL", "tyre", "drive", "gearbox", "engineId"] as CustomField[]) this.markError(k, "");
   }
 
@@ -434,15 +460,21 @@ export class SandboxWizard {
 
   private setup(): PendingSetup | null {
     if (!this.kind) return null;
-    return buildSetup(this.kind, { vehicleId: this.vehicleId, custom: this.customValue ?? undefined, route: this.route });
+    return buildSetup(this.kind, { vehicleId: this.vehicleId, custom: this.customValue ?? undefined, route: this.route, engineId: this.engineId ?? undefined });
   }
 
   private summary(): string {
     const p = this.setup();
     if (!p) return "";
-    if (p.kind === "engine") return "Motorprüfstand ohne Fahrzeug.";
+    const own = p.engineId ? findMyEngine(p.engineId) : undefined;
+    const withEngine = own ? ` Motor: „${own.name}“.` : "";
+    if (p.kind === "engine") return `Motorprüfstand ohne Fahrzeug.${withEngine}`;
     const name = p.kind === "custom" ? `Eigenes Fahrzeug (${CUSTOM_BASE_LABEL[p.custom!.base]})` : vehiclesOf(p.kind).find((c) => c.id === p.vehicleId)?.name;
-    return `${name} auf ${p.route === "static" ? "dem ebenen Prüfstand" : `der Strecke ${TERRAIN_LABELS[p.route!]}`}.`;
+    return `${name} auf ${p.route === "static" ? "dem ebenen Prüfstand" : `der Strecke ${TERRAIN_LABELS[p.route!]}`}.${withEngine}`;
+  }
+
+  private get engineName(): string {
+    return this.engineId ? (findMyEngine(this.engineId)?.name ?? "") : "";
   }
 
   /** "Losfahren": remember "Nicht mehr anzeigen", hand the setup to the sandbox. */

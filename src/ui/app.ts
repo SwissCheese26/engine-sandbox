@@ -3,6 +3,7 @@
 import { EngineSimulator, TERRAIN_LABELS, defaultInputs, summarize } from "../core/index.ts";
 import { customSetup, loadOwnVehicle, saveOwnVehicle, setOwnVehicleActive, takePendingSetup, type PendingSetup } from "./sandbox-setup.ts";
 import { ShiftPad } from "./shift-pad.ts";
+import { isMyEngineId } from "./my-engines.ts";
 import type { EngineConfig, EngineState, EngineSummary } from "../core/index.ts";
 import { defaultConfig } from "../data/presets.ts";
 import { ControlPanel } from "./controls.ts";
@@ -570,7 +571,8 @@ export class App {
    * Returns true when the swap had to wait.
    */
   private loadEngine(id: string): boolean {
-    if (id === this.cfg.id && !this.pendingEngineId) return false;
+    // own engines (#72) are reloaded every time: they may have been edited under the same id
+    if (id === this.cfg.id && !this.pendingEngineId && !isMyEngineId(id)) return false;
     if (App.turning(this.sim.state) || this.bench.isLocked) {
       this.console.switchOff();
       this.pendingEngineId = id;
@@ -595,6 +597,8 @@ export class App {
     if (p.kind === "engine" || !p.route) {
       setOwnVehicleActive(false);
       this.setMode("free");
+      // an engine from the Engine Builder (#72) comes onto the engine dyno
+      if (p.engineId) this.loadEngine(p.engineId);
       return;
     }
     // engine first (or the order to swap it once the running engine is off), then the vehicle
