@@ -2,7 +2,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   AQUAPLANING_KMH, ICE_WARNING_C, PEAK_SLIP, TractionControl, DEFAULT_ASSISTS, airDensity, altitudeToKpa, aquaplaningFactor, compoundFactor,
-  iceWarning, tyreGrip, weatherSurface,
+  defaultInputs, iceWarning, tyreGrip, weatherSurface,
 } from "../../src/core/index.ts";
 import { assistRig, brakeTest } from "./assist-rig.ts";
 
@@ -295,4 +295,70 @@ describe("launch control (issue #23)", () => {
     for (let i = 0; i < 60; i++) r.step(1, 1);
     expect(r.dt.state.launchArmed).toBe(false);
   });
+});
+
+/**
+ * Issue #38 (contract #101): launch control is a secondary rev limiter with the throttle wide open, petrol turbo
+ * engines retard the spark so the charger pre-spools (Haltech, "How Launch Control Works"; vehicle.md §8).
+ */
+describe("launch control as a secondary rev limiter (issue #38)", () => {
+  /** Arms launch control for `seconds`, then launches with full throttle; manual cars shift at the limiter. */
+  const launchRun = (carId: string, lc: boolean, armS = 3) => {
+    const r = assistRig(carId, { assists: { launchControl: lc } });
+    let limit = 0;
+    let pedalEff = 0;
+    let rpmMin = Infinity;
+    let rpmMax = 0;
+    for (let i = 0; i < armS * 60; i++) {
+      const vehicle = r.dt.inputs(r.h, r.sim.state, 1, 1);
+      limit = vehicle.launchLimitRpm ?? 0;
+      pedalEff = r.dt.effectivePedal(1);
+      const s = r.sim.step(r.h, { ...defaultsFor(r), vehicle, pedal: pedalEff });
+      if (i > armS * 30) {
+        rpmMin = Math.min(rpmMin, s.rpm);
+        rpmMax = Math.max(rpmMax, s.rpm);
+      }
+    }
+    const armed = { limit, pedalEff, rpmMin, rpmMax, boost: r.sim.state.boostBar ?? 0, speed: r.sim.state.vehicleSpeedMs ?? 0 };
+    let t100 = Infinity;
+    for (let i = 0; i < 900 && t100 === Infinity; i++) {
+      const d = r.dt.state;
+      if (d.type === "manual" && r.sim.state.rpm > r.cfg.revLimitRpm - 120 && !d.shifting && d.clutch > 0.95 && d.gear < d.gearCount) r.dt.shift(1);
+      if ((r.step(1, 0).vehicleSpeedMs ?? 0) * 3.6 >= 100) t100 = i / 60;
+    }
+    return { ...armed, t100 };
+  };
+  const defaultsFor = (r: ReturnType<typeof assistRig>) => ({ ...defaultInputs(), ...r.dt.simInputs(), ignition: true, dynoMode: "vehicle" as const });
+
+  test("armed: throttle stays open, the limiter holds the launch speed, the turbo builds boost at standstill", () => {
+    const on = launchRun(GTI, true);
+    expect(on.limit).toBeGreaterThan(2500);
+    expect(on.pedalEff).toBe(1);
+    expect(on.speed).toBeLessThan(0.05);
+    expect(on.rpmMax).toBeLessThan(on.limit + 250);
+    expect(on.rpmMin).toBeGreaterThan(on.limit - 400);
+    // pre-spool: with the old pedal-cap hold the turbo stayed near 0 bar
+    expect(on.boost).toBeGreaterThan(0.5);
+  });
+
+  test("not armed (assist off): no secondary limiter is sent", () => {
+    const off = launchRun(GTI, false, 1);
+    expect(off.limit).toBe(0);
+  });
+
+  test("naturally aspirated (458): limiter only, no boost, faster than the plain full-throttle launch", () => {
+    const on = launchRun("car-ferrari-458", true);
+    const off = launchRun("car-ferrari-458", false, 0);
+    expect(on.boost).toBe(0);
+    expect(on.rpmMax).toBeLessThan(on.limit + 250);
+    expect(on.t100).toBeLessThan(off.t100);
+  }, 30000);
+
+  test("Skyline R34: with launch control the 0–100 lands within ±12 % of the press value 5.0 s (#38, #89)", () => {
+    const on = launchRun("car-nissan-skyline-r34", true);
+    const off = launchRun("car-nissan-skyline-r34", false, 0);
+    expect(on.boost).toBeGreaterThan(0.3);
+    expect(on.t100).toBeLessThan(off.t100 - 0.4);
+    expect(Math.abs(on.t100 / 5.0 - 1)).toBeLessThan(0.12);
+  }, 30000);
 });

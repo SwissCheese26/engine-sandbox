@@ -102,3 +102,16 @@ Die Gänge lassen sich aus der Übersetzung des 1. und des höchsten Gangs berec
 - [B9] Haken, K.-L.: Grundlagen der Kraftfahrzeugtechnik, Hanser, Kap. „Zugkraftdiagramm, Getriebeauslegung“.
 - [B10] UN ECE Regelung Nr. 13-H (Bremsen von Personenkraftwagen), Abs. 5.2.2.3: Feststellbremse hält das Fahrzeug auf 20 % Steigung bzw. Gefälle.
 - [B11] StVZO §41 (Bremsen und Unterlegkeile); für Pkw über die Typgenehmigung nach UN ECE R13-H.
+
+## 8. Launch Control als Sekundärbegrenzer (#38, Vertrag #101)
+
+Echte Launch Control hält die Startdrehzahl nicht über das Gaspedal. Die Drosselklappe bleibt voll offen, und ein **zweiter Drehzahlbegrenzer** schneidet auf der Startdrehzahl Zündung und/oder Einspritzung [B12]. Turbo-Benziner mit Kupplung ziehen zusätzlich die Zündung stark auf spät (etwa 20° n. OT oder später). Die Verbrennung läuft dann in den Auslass, die Abgasenergie treibt die Turbine, und der Lader baut im Stand Ladedruck auf („Launch Anti-Lag“, ohne Lufteinblasung) [B12]. Mit Wandlerautomat schadet die Spätzündung, weil der Wandler selbst Last liefert [B12]. Deshalb gibt es im Modell keine Launch Control mit Wandler, wie schon seit #23.
+
+Modell:
+- `Drivetrain`: Launch Control ist scharf, wenn das Fahrzeug steht, die Bremse getreten ist und das Pedal über 50 % liegt (#23). Die Kupplung ist offen. Statt die Drehzahl wie bisher über das Pedal zu begrenzen (`launchCap`), sendet der Drivetrain `VehicleCoupling.launchLimitRpm` mit der Startdrehzahl (≈ 45 % des Begrenzers bei Vollgas, #22).
+- `simulator.ts`: Der Begrenzer greift bei `min(revLimitRpm, launchLimitRpm)` mit derselben Schnitt-Hysterese wie der Hauptbegrenzer. Turbo-Benziner (nicht Vergaser) bekommen 35 °KW Spätzündung [S: etwa 20° n. OT gegenüber rund 15° v. OT bei Volllast]. Daraus folgen über petrol.md §3.5 (η_Zündung) und §3.10 (höhere Abgastemperatur bei Spätzündung) weniger Moment und mehr Turbinenenergie. Die Ladedruckanforderung folgt dem Pedal, die Wastegate bleibt also zu.
+- Nach dem Lösen der Bremse folgt der bisherige, nach Traktion dosierte Start (#37).
+
+Ergebnisse (0–100 mit Launch Control, 3 s scharf): Golf 7 GTI baut im Stand ≈ 1,1 bar auf, Skyline R34 ≈ 0,45 bar und kommt auf 5,37 s statt 6,07 s (Fachpresse 5,0 s). Der Ferrari 458 als Sauger hat keine Vorspannung und kommt auf 3,75 s statt 4,0 s (Werk 3,4 s mit LC).
+
+- [B12] Haltech: „How Launch Control Works“, https://support.haltech.com/portal/en/kb/articles/how-launch-control-works

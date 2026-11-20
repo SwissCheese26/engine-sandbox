@@ -26,6 +26,12 @@ const RPM_PER_RADS = 30 / Math.PI;
 const H = 0.001; // internal step [s]
 /** Largest dt handled per call; longer frames (tab in background) are clamped. */
 const MAX_DT = 0.25;
+/**
+ * Ignition retard of an armed launch control on petrol turbo engines, °CA from the calibrated spark [S]: Haltech
+ * ("How Launch Control Works") fires at ≈ 20° ATDC or later; full-load spark is ≈ 15° BTDC → ≈ 35° retard.
+ * petrol.md §3.5 (η_ign) and §3.10 (EGT rises with late spark) turn it into less torque and more turbine energy.
+ */
+const LAUNCH_RETARD_DEG = 35;
 
 /**
  * Overrun afterfire calibrations (issue #16) [S, tuner maps]: fuel share of the stoichiometric air charge and the
@@ -250,19 +256,27 @@ export class EngineSimulator {
     let limitedAny = false;
     let ebAny = false;
     const pops = m.p && cfg.exhaust.overrunPops && cfg.exhaust.overrunPops !== "off" ? POPS[cfg.exhaust.overrunPops] : null;
+    // launch control armed (issue #38, contract #101): secondary limiter; petrol turbo engines with an ECU (not a
+    // carburettor) retard the spark so the exhaust carries the energy into the turbine (pre-spool), vehicle.md §8
+    const vLaunch = input.dynoMode === "vehicle" ? fin(input.vehicle?.launchLimitRpm ?? 0, 0) : 0;
+    const launchRpm = vLaunch > idle ? vLaunch : 0;
+    const launchRetard = launchRpm > 0 && m.p && m.exhaustDriven && m.p.fs.mixture !== "carburettor" ? LAUNCH_RETARD_DEG : 0;
     for (let i = 0; i < nSub; i++) {
       const rpm = x.rpm;
       // --- combustion permission
       let combust = ignition && x.armed && !x.stalled;
       if (combust && m.d) combust = dieselFires(m.d, rpm, TManK, x.thermal.coolantC);
       if (combust && m.p) combust = rpm > 80;
-      // --- rev limiter: petrol hard cut with hysteresis (stutter), diesel governor ramp + hard cut safeguard
+      // --- rev limiter: petrol hard cut with hysteresis (stutter), diesel governor ramp + hard cut safeguard.
+      // Launch control (issue #38): secondary limiter at the launch speed, same cut logic (Haltech, "How Launch
+      // Control Works": the launch rev limit cuts fuel and/or ignition, docs/research/vehicle.md §8)
+      const lim = launchRpm > 0 ? Math.min(cfg.revLimitRpm, launchRpm) : cfg.revLimitRpm;
       if (m.fuel === "petrol") {
-        if (rpm > cfg.revLimitRpm) x.limiterCut = true;
-        else if (rpm < cfg.revLimitRpm - 150) x.limiterCut = false;
+        if (rpm > lim) x.limiterCut = true;
+        else if (rpm < lim - 150) x.limiterCut = false;
       } else {
-        if (rpm > cfg.revLimitRpm + 150) x.limiterCut = true;
-        else if (rpm < cfg.revLimitRpm) x.limiterCut = false;
+        if (rpm > lim + 150) x.limiterCut = true;
+        else if (rpm < lim) x.limiterCut = false;
       }
       // overrun fuel cut (petrol.md §3.4), diesel: zero quantity anyway at zero pedal above idle
       const overrun = pedal < 0.01 && rpm > idle + 300 && x.running;
@@ -279,7 +293,7 @@ export class EngineSimulator {
       // petrol idle torque reserve (review #17 B3) [S]: the ECU idles ≈ 15 °CA retarded from MBT so that
       // spark advance can catch load steps instantly; fades out over 300 rpm above idle / with pedal.
       const reserve = m.p && x.running ? 15 * clamp(1 - pedal / 0.05, 0, 1) * clamp(1 - (rpm - idle) / 300, 0, 1) : 0;
-      op.knockRetardDeg = x.knockRetard + reserve;
+      op.knockRetardDeg = x.knockRetard + reserve + launchRetard;
       op.combust = combust;
       op.fuelCut = x.limiterCut || (overrun && m.fuel === "petrol") || input.fuelEmpty === true;
       // pops & bangs (issue #16): in overrun (pedal 0, rpm > idle + 500) a little fuel with very late spark instead
@@ -403,6 +417,8 @@ export class EngineSimulator {
       boostReq = m.fuel === "diesel"
         ? clamp(fuelCycSum / nSub / Math.max(1e-9, out.mFuelMax), 0, 1)
         : Math.min(pedal, clamp(1.1 * x.load, 0, 1));
+      // launch control: the ECU closes the wastegate with the pedal (boost is built against the launch limiter)
+      if (launchRpm > 0) boostReq = Math.max(boostReq, pedal);
       // ECU torque limit (issue #18): the boost target follows the manifold pressure cap (+3 % throttle reserve)
       const capP = torqueLimitCaps(m, rpm).pManKpa;
       if (m.p && m.exhaustDriven && Number.isFinite(capP) && cfg.induction.boostTargetBar > 0) {
