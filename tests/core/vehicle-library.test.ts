@@ -10,9 +10,10 @@ import { driveCar } from "./vehicle-run.ts";
  * Test driver: vehicle-run.ts (full throttle, shifts at the limiter, traction-control stand-in on ≈ 10 % slip).
  * Known 0–100 outliers are pinned to their own narrow band around the measured value (so a model change shows up),
  * not a widened tolerance (review PR #37). Numbers from issue #38 probes (driveCar, grip factor 1 / 1.15 / 1.3):
- *  - Skyline R34: 5.80 / 5.80 / 5.78 s vs 5.0 – not traction (AWD). RB26DETT with stock turbos and 0.69 bar has its
- *    torque peak at ≈ 5200 instead of 4400 rpm and full boost only from ≈ 3500 rpm (low-end deficit), although
- *    peak power is +19 % (engine-library KNOWN, docs/research/petrol.md §7a).
+ *  - Skyline R34: 6.07 / 6.05 / 6.05 s vs 5.0 – not traction (AWD). Since #89 the RB26DETT has its sourced mild cam
+ *    (216 kW @ 6000, 386 Nm @ 4700 instead of 244 kW @ 7000): more low end, less top end, and this driver shifts at
+ *    8000 rpm, so the run got slower (5.80 → 6.07 s). The press times come from high-rpm launches; with launch
+ *    control (pre-spooled turbos) the model needs ≈ 5.4 s, see "launch control" below (petrol.md §7a, vehicle.md §8).
  *  - Corvette C6: 5.17 / 4.85 / 4.78 s vs 4.4 – traction explains only part (grip ×1.15 → −6 %, ×1.3 still +8.6 %);
  *    the rest is open (gearing / torque curve: 1st gear to ≈ 86 km/h, 1→2 shift just below 100 km/h). The LS3 is at
  *    its rated 316 kW since #38 (+9 % power gained only 2 %).
@@ -21,7 +22,7 @@ import { driveCar } from "./vehicle-run.ts";
  */
 const TOL = 0.12;
 const KNOWN_0_100_OUTLIERS: Record<string, { expected: number; band: number; reason: string }> = {
-  "car-nissan-skyline-r34": { expected: 0.16, band: 0.06, reason: "RB26 torque peak too late / too little low-end torque (#38)" },
+  "car-nissan-skyline-r34": { expected: 0.21, band: 0.06, reason: "press time with a high-rpm launch; with launch control within ±12 % (#38, #89)" },
   "car-chevrolet-corvette-c6": { expected: 0.175, band: 0.06, reason: "RWD traction (part) + open gearing/torque-curve rest (#38)" },
   "car-ferrari-458": { expected: 0.19, band: 0.06, reason: "traction / factory with launch control (engine −7 %, not the cause, #38)" },
 };
