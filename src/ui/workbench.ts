@@ -73,6 +73,7 @@ export class Workbench {
   private groups: GroupId[] | null;
   private omit: Set<string>;
   private platePrefix: string;
+  private unsubscribeMine: () => void = () => {};
 
   constructor(initial: EngineConfig, opts: WorkbenchOptions = {}) {
     this.groups = opts.groups ?? null;
@@ -122,7 +123,8 @@ export class Workbench {
       mine.hidden = list.length === 0;
     };
     fillMine();
-    onMyEnginesChange(fillMine);
+    // the embedded bench (Engine Builder) shows no engine selection: nothing to keep in sync
+    if (!opts.embedded) this.unsubscribeMine = onMyEnginesChange(fillMine);
     lib.addEventListener("focus", fillMine);
     lib.addEventListener("change", () => {
       const own = loadMyEngines().find((m) => m.id === lib.value);
@@ -174,6 +176,12 @@ export class Workbench {
     for (const c of this.el.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>("input, select, button")) {
       c.disabled = locked || c.dataset.fixedDisabled === "1";
     }
+  }
+
+  /** Removes the global listener on own engines (App.dispose). */
+  dispose() {
+    this.unsubscribeMine();
+    this.unsubscribeMine = () => {};
   }
 
   get isLocked(): boolean {

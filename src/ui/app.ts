@@ -654,6 +654,7 @@ export class App {
 
   /** Stops the loop, removes all global listeners and silences the sound (tests, hot reload). */
   dispose() {
+    this.bench.dispose();
     this.recorder.dispose();
     this.gearbox.trip.dispose();
     this.gearbox.disposeTank();
