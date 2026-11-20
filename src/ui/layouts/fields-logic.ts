@@ -31,6 +31,9 @@ export interface FieldInputs {
   ambientC: number;
   /** Air-cooled engines read their cylinder-head temperature in the coolant field. */
   airCooled: boolean;
+  /** Gearbox oil temperature (issue #53, chassis dyno; NaN/unset on the engine dyno) and its warning. */
+  gearboxOilC?: number;
+  gearboxOilWarn?: boolean;
 }
 
 /** What the engine and the dyno can deliver; fields that cannot show anything are skipped while cycling. */
@@ -44,6 +47,7 @@ export function fieldAvailable(id: FieldId, c: FieldContext): boolean {
     case "boost": return c.turbo;
     case "range":
     case "road":
+    case "gearOil":
     case "sprint": return c.vehicle;
     default: return true;
   }
@@ -79,7 +83,7 @@ export interface FieldText {
 }
 
 const NAMES: Record<FieldId, string> = {
-  coolant: "Kühlmittel", oilT: "Öltemperatur", oilP: "Öldruck", boost: "Ladedruck", egt: "Abgastemperatur",
+  coolant: "Kühlmittel", oilT: "Öltemperatur", gearOil: "Getriebeöl", oilP: "Öldruck", boost: "Ladedruck", egt: "Abgastemperatur",
   fuelNow: "Verbrauch", range: "Reichweite", power: "Leistung", torque: "Drehmoment", lambda: "Lambda", road: "Höhe/Steigung",
   sprint: "0–100 km/h", ambient: "Außentemperatur",
 };
@@ -104,6 +108,7 @@ export function formatField(id: FieldId, v: FieldInputs, u: UnitPrefs, lim?: Par
   switch (id) {
     case "coolant": return out(T(v.coolantC), u.temp, !v.airCooled && v.coolantC > (lim?.coolantMaxC ?? Infinity));
     case "oilT": return out(T(v.oilC), u.temp, v.oilC > (lim?.oilMaxC ?? Infinity));
+    case "gearOil": return out(T(v.gearboxOilC ?? Number.NaN), u.temp, !!v.gearboxOilWarn);
     case "oilP": return out(P(v.oilPressureBar), u.pressure, v.running && v.oilPressureBar < (lim?.oilPressureMinBar ?? -Infinity));
     case "boost": return out(P(Math.max(0, v.boostBar), u.pressure === "bar" ? 2 : 1), u.pressure, (lim?.boostMaxBar ?? 0) > 0 && v.boostBar > lim!.boostMaxBar!);
     case "egt": return out(T(v.egtC), u.temp, v.egtC > (lim?.egtMaxC ?? Infinity));

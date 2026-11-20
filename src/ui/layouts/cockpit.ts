@@ -30,6 +30,7 @@ const LAMPS: { k: LampKey; color: "red" | "amber" | "ice"; icon: string; on: str
   { k: "espOff", color: "amber", icon: BASE_ICON.esp, on: "ESP OFF", text: "OFF" },
   { k: "ice", color: "ice", icon: BASE_ICON.ice, on: "Glättegefahr" },
   { k: "fuel", color: "amber", icon: ICON2.fuel, on: "Tankreserve" },
+  { k: "gearbox", color: "amber", icon: ICON2.gearbox, on: "Getriebe heiß" },
 ];
 
 /** Shift-light LEDs of the head-up and motorcycle displays (#83). */
@@ -544,6 +545,7 @@ export class CockpitView implements LayoutView {
       altitudeM: (d.environment.terrain ?? "static") === "static" ? Number.NaN : ds.roadAltitudeM ?? Number.NaN,
       gradePct: ds.roadGradePct ?? d.environment.gradePct, t0to100S: ds.t0to100S, t0to100Running: ds.t0to100Running,
       ambientC: d.environment.ambientC, airCooled: airCooled(this.cfg),
+      gearboxOilC: vehicle ? ds.gearboxOilC ?? Number.NaN : Number.NaN, gearboxOilWarn: !!ds.gearboxOilWarn,
     };
     stored.forEach((storedId: FieldId, i) => {
       const id = shownField(storedId, this.fieldCtx);
@@ -607,6 +609,7 @@ export class CockpitView implements LayoutView {
       ice: !!ds.iceWarning,
       fuelReserve: vehicle ? d.tank.reserve : undefined,
       parkingBrake: vehicle ? !!ds.parkingBrake : undefined,
+      gearbox: vehicle ? { hot: !!ds.gearboxOilWarn, protect: !!ds.gearboxProtect, failed: !!ds.gearboxFailed } : undefined,
     });
     const key = Object.values(set).join("|");
     if (key === this.lastLamps) return;
