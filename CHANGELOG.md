@@ -8,9 +8,9 @@ _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `
 
 ### Neu
 
-- Cockpit-Design „Nutzfahrzeug“: Tacho bis 125 km/h mit Markierung des Begrenzers, Drehzahlmesser mit grünem Bereich (Drehmomentplateau) und Anzeige der Motorbremse. Mit „Automatisch“ erscheint es bei Lkw und Bus von selbst. ([#83](https://github.com/SwissCheese26/engine-sandbox/issues/83))
-- Zusatzinstrumente wie im Tuning-Auto: Ladedruck, Öldruck, Öltemperatur, Lambda und Abgastemperatur, als Rundinstrumente oder Balken, unter „+ Zusatzanzeigen“ im Cockpit. ([#83](https://github.com/SwissCheese26/engine-sandbox/issues/83))
-- Tuning-Leiste: Ladedruck Soll und Ist, Zündung bzw. Förderbeginn gegenüber dem Kennfeld, Vollast-λ bzw. Rauchgrenze, Klopfen und die Leistungsgrenze des Steuergeräts, mit Hinweis, wenn sie greift. ([#83](https://github.com/SwissCheese26/engine-sandbox/issues/83))
+- Cockpit-Design „Nutzfahrzeug“: Tacho bis 125 km/h mit Markierung des Begrenzers, Drehzahlmesser mit grünem Bereich (Drehmomentplateau) und Anzeige der Motorbremse. Mit „Automatisch“ erscheint es bei Lkw und Bus von selbst. ([#83](https://github.com/SwissCheese26/engine-sandbox/issues/83), [#106](https://github.com/SwissCheese26/engine-sandbox/issues/106))
+- Zusatzinstrumente wie im Tuning-Auto: Ladedruck, Öldruck, Öltemperatur, Lambda und Abgastemperatur, als Rundinstrumente oder Balken, unter „+ Zusatzanzeigen“ im Cockpit. ([#83](https://github.com/SwissCheese26/engine-sandbox/issues/83), [#106](https://github.com/SwissCheese26/engine-sandbox/issues/106))
+- Tuning-Leiste: Ladedruck Soll und Ist, Zündung bzw. Förderbeginn gegenüber dem Kennfeld, Vollast-λ bzw. Rauchgrenze, Klopfen und die Leistungsgrenze des Steuergeräts, mit Hinweis, wenn sie greift. ([#83](https://github.com/SwissCheese26/engine-sandbox/issues/83), [#106](https://github.com/SwissCheese26/engine-sandbox/issues/106))
 
 ## 2026-11-16 – Geführter Start, einfachere Ansichten und Credits
 
