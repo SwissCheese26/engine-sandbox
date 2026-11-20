@@ -20,6 +20,14 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    date: "2026-11-20",
+    title: "Echte Launch Control und ein ehrlicherer RB26",
+    items: [
+      { kind: "geändert", text: "Launch Control arbeitet jetzt wie im echten Auto: Die Drosselklappe bleibt offen, ein zweiter Drehzahlbegrenzer hält die Startdrehzahl, und Turbomotoren bauen mit Spätzündung schon im Stand Ladedruck auf. Der Skyline GT-R R34 schafft damit 0–100 in etwa 5,4 s.", refs: [38, 101, 103] },
+      { kind: "behoben", text: "Nissan RB26DETT (Skyline GT-R): Die Nockenwelle entspricht jetzt den Werks-Steuerzeiten. Das Drehmoment liegt früher an (386 Nm, Plateau ab 3500 1/min) und die Leistung realistisch bei 216 kW statt 244 kW.", refs: [89, 103] },
+    ],
+  },
+  {
     date: "2026-11-16",
     title: "Geführter Start, einfachere Ansichten und Credits",
     items: [
