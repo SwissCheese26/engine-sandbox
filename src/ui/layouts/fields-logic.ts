@@ -34,12 +34,16 @@ export interface FieldInputs {
   /** Gearbox oil temperature (issue #53, chassis dyno; NaN/unset on the engine dyno) and its warning. */
   gearboxOilC?: number;
   gearboxOilWarn?: boolean;
+  /** Charge-air temperature in the intake manifold, °C, when the core reports it (#83); NaN/undefined = unknown. */
+  intakeAirC?: number;
 }
 
 /** What the engine and the dyno can deliver; fields that cannot show anything are skipped while cycling. */
 export interface FieldContext {
   turbo: boolean;
   vehicle: boolean;
+  /** The core reports the intake air temperature (#83). Until it does, the field is never offered (no faked value). */
+  intakeAir?: boolean;
 }
 
 export function fieldAvailable(id: FieldId, c: FieldContext): boolean {
@@ -49,6 +53,7 @@ export function fieldAvailable(id: FieldId, c: FieldContext): boolean {
     case "road":
     case "gearOil":
     case "sprint": return c.vehicle;
+    case "intake": return !!c.intakeAir;
     default: return true;
   }
 }
@@ -85,7 +90,7 @@ export interface FieldText {
 const NAMES: Record<FieldId, string> = {
   coolant: "Kühlmittel", oilT: "Öltemperatur", gearOil: "Getriebeöl", oilP: "Öldruck", boost: "Ladedruck", egt: "Abgastemperatur",
   fuelNow: "Verbrauch", range: "Reichweite", power: "Leistung", torque: "Drehmoment", lambda: "Lambda", road: "Höhe/Steigung",
-  sprint: "0–100 km/h", ambient: "Außentemperatur",
+  sprint: "0–100 km/h", ambient: "Außentemperatur", intake: "Ansaugluft",
 };
 
 /** Label of a field (no value), e.g. for the accessible name and the settings. */
@@ -113,6 +118,7 @@ export function formatField(id: FieldId, v: FieldInputs, u: UnitPrefs, lim?: Par
     case "boost": return out(P(Math.max(0, v.boostBar), u.pressure === "bar" ? 2 : 1), u.pressure, (lim?.boostMaxBar ?? 0) > 0 && v.boostBar > lim!.boostMaxBar!);
     case "egt": return out(T(v.egtC), u.temp, v.egtC > (lim?.egtMaxC ?? Infinity));
     case "ambient": return out(T(v.ambientC), u.temp);
+    case "intake": return out(T(v.intakeAirC ?? Number.NaN), u.temp);
     case "fuelNow": {
       // per distance while driving, per hour at standstill (like a real board computer)
       if (v.speedKmh > 5) {
@@ -147,4 +153,13 @@ export function fieldAriaLabel(slot: number, label: string): string {
 /** Drive-mode word of the sport-saloon display, from the gas response (#66): instant = Sport. */
 export function driveModeWord(gasRampS: number): string {
   return gasRampS === 0 ? "Sport" : gasRampS === 1 ? "Normal" : "Eco";
+}
+
+/**
+ * Intake air temperature from an engine state, °C, or NaN. The core computes the charge-air temperature internally
+ * (cycle.ts manifoldTempK) but does not report it yet; this reads `intakeAirC` once the contract carries it (#105).
+ */
+export function intakeAirOf(s: object): number {
+  const v = (s as { intakeAirC?: unknown }).intakeAirC;
+  return typeof v === "number" && Number.isFinite(v) ? v : Number.NaN;
 }

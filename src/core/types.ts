@@ -320,6 +320,12 @@ export interface VehicleCoupling {
    * (PARK_BRAKE_HOLD_PCT, at most μ·N of the rear axle); a car still rolling is braked to a stop.
    */
   parkingBrake?: boolean;
+  /**
+   * Launch control armed (issues #38, #101): secondary rev limiter at this engine speed with the throttle wide open.
+   * Petrol turbo engines additionally retard the ignition so the charger pre-spools; the boost request follows the
+   * pedal. Unset = normal limiter.
+   */
+  launchLimitRpm?: number;
 }
 
 /** Converter characteristic handed to the simulator (issue #14, docs/research/vehicle.md §4). */

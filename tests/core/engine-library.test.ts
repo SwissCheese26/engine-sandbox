@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { summarize, validateConfig } from "../../src/core/index.ts";
+import { dynoSweep, summarize, validateConfig } from "../../src/core/index.ts";
 import { ENGINE_LIBRARY } from "../../src/data/engine-library.ts";
 
 /**
@@ -7,10 +7,9 @@ import { ENGINE_LIBRARY } from "../../src/data/engine-library.ts";
  * engines have more estimated construction details, so they get ±15 %. Known larger deviations of the model
  * are listed in KNOWN (not hidden) as test.failing, so a fix shows up.
  */
-const KNOWN: Record<string, string> = {
-  // issue #38: stock turbos + stock 0.69 bar give ≈ 244 kW (+19 % vs the JAMA-limited 206 kW), docs/research/petrol.md §7a
-  "lib-nissan-rb26dett": "RB26DETT with stock hardware above the 280 PS rating, torque peak too late",
-};
+// Empty since #89: the RB26DETT with its sourced valve timing (camProfile 0.1) makes 216 kW @ 6000 / 386 Nm @ 4700
+// with stock turbos and stock boost (docs/research/petrol.md §7a).
+const KNOWN: Record<string, string> = {};
 
 describe("engine library", () => {
   test("ids are unique and every entry has maker, cars and source", () => {
@@ -31,4 +30,19 @@ describe("engine library", () => {
       expect(Math.abs(s.peakPowerKw / e.expected.peakPowerKw - 1)).toBeLessThan(0.15);
     });
   }
+
+  // Issue #89: shape of the RB26DETT curve with stock hardware (Nissan: 392 Nm @ 4400, 206 kW @ 6800). The peak rpm
+  // itself is ill-conditioned on a flat plateau, so the test checks the plateau like calibration.test.ts.
+  test("RB26DETT: torque plateau covers 4400 rpm, full boost by 3500 rpm, power not above the late-engine estimate", () => {
+    const e = ENGINE_LIBRARY.find((x) => x.config.id === "lib-nissan-rb26dett")!;
+    const pts = dynoSweep(e.config, { fromRpm: 2000, stepRpm: 100 });
+    const at = (rpm: number) => pts.find((p) => p.rpm === rpm)!;
+    const peak = Math.max(...pts.map((p) => p.torqueNm));
+    expect(at(4400).torqueNm).toBeGreaterThanOrEqual(0.98 * peak);
+    const peakRpm = pts.find((p) => p.torqueNm === peak)!.rpm;
+    expect(Math.abs(peakRpm / 4400 - 1)).toBeLessThan(0.12);
+    expect(at(3500).boostBar).toBeGreaterThan(0.65);
+    // ≈ 235 kW Wikipedia estimate for late engines is the upper bound; the old model made 244 kW
+    expect(Math.max(...pts.map((p) => p.powerKw))).toBeLessThan(235);
+  });
 });

@@ -1083,6 +1083,7 @@ export class Drivetrain {
     let clutch: number;
     let torqueRatio = 1;
     let launchHoldRpm = 0;
+    let launchLimitRpm = 0;
     s.launchArmed = false;
     let tractionLimited = false;
     // Engine not running (ignition off, stalled). Manual and sequential: a gear is engaged and the clutch pedal is
@@ -1115,11 +1116,12 @@ export class Drivetrain {
       // disengaged (no torque) while the quickshifter cuts the ignition
       clutch = s.type === "dsg" ? 0.85 : 0;
     } else if (this.assistSet.launchControl && brake > 0.05 && pedal > 0.5 && vRoad < 0.5 && s.type !== "sequential") {
-      // launch control (issue #23): at standstill with brake and throttle the clutch stays open and the ECU holds the
-      // launch speed (pedal cap below); releasing the brake starts the traction-dosed launch of the next branch [S]
+      // launch control (issue #23): at standstill with brake and throttle the clutch stays open; releasing the brake
+      // starts the traction-dosed launch of the next branch [S]. Issue #38: the throttle stays wide open and the
+      // engine's secondary rev limiter holds the launch speed (VehicleCoupling.launchLimitRpm, docs/research/vehicle.md §9)
       this.holdLaunch = 0;
       clutch = 0;
-      launchHoldRpm = this.launchRpm(pedal);
+      launchLimitRpm = this.launchRpm(pedal);
       s.launchArmed = true;
     } else if ((brake > 0.05 || held) && pedal < 0.02 && inputRpm < idle * 1.4) {
       // braking down to a stop (or held by the parking brake, issue #91): the automatic clutch opens before the engine is dragged below idle.
@@ -1272,6 +1274,7 @@ export class Drivetrain {
       ...(s.shifting ? { shifting: true } : {}),
       ...(converter ? { converter } : {}),
       ...(held ? { parkingBrake: true } : {}),
+      ...(launchLimitRpm > 0 ? { launchLimitRpm } : {}),
     };
   }
 

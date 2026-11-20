@@ -11,7 +11,7 @@ beforeEach(() => resetSettingsCache());
 
 const METRIC = PRESETS["metric-kw"].units;
 const IMPERIAL = PRESETS.imperial.units;
-const ALL = { turbo: true, vehicle: true };
+const ALL = { turbo: true, vehicle: true, intakeAir: true };
 
 const inputs = (o: Partial<FieldInputs> = {}): FieldInputs => ({
   coolantC: 92, oilC: 104, oilPressureBar: 3.4, boostBar: 1.25, egtC: 720, fuelFlowLh: 6, speedKmh: 100, running: true,
@@ -50,12 +50,15 @@ describe("settings: cockpit design and fields", () => {
     expect(new Set(COCKPIT_DESIGNS.map((d) => d.id)).size).toBe(COCKPIT_DESIGNS.length);
     expect(COCKPIT_DESIGNS.length).toBeGreaterThanOrEqual(5);
   });
-  test("auto: motorcycle display on a motorcycle, classic elsewhere; a fixed choice wins", () => {
+  test("auto: motorcycle display on a motorcycle, truck design on trucks and buses, classic elsewhere; a fixed choice wins", () => {
     expect(resolveDesign("auto", "superbike")).toBe("motorrad");
     expect(resolveDesign("auto", "tourer")).toBe("motorrad");
     expect(resolveDesign("auto", "car")).toBe("classic");
-    expect(resolveDesign("auto", "truck")).toBe("classic");
+    expect(resolveDesign("auto", "truck")).toBe("truck");
+    expect(resolveDesign("auto", "bus")).toBe("truck");
     expect(resolveDesign("digital", "superbike")).toBe("digital");
+    expect(resolveDesign("classic", "truck")).toBe("classic");
+    expect(resolveDesign("truck", "car")).toBe("truck");
   });
 });
 
@@ -82,13 +85,18 @@ describe("field cycling", () => {
     expect(fieldAvailable("range", na)).toBe(false);
     expect(fieldAvailable("coolant", na)).toBe(true);
   });
-  test("a stored field the engine cannot deliver shows the next available one; intake air is not offered", () => {
+  test("a stored field the engine cannot deliver shows the next available one; intake air only when the core reports it", () => {
     const na = { turbo: false, vehicle: true };
     expect(shownField("boost", na)).toBe("egt");
     expect(shownField("boost", ALL)).toBe("boost");
     expect(shownField("range", { turbo: true, vehicle: false })).toBe("power");
-    expect((FIELD_IDS as readonly string[]).includes("intake")).toBe(false);
-    expect(validateFields(["intake", "oilT", "egt"])[0]).toBe(DEFAULT_FIELDS[0]);
+    // the field exists and is stored, but without a value from the core it is skipped (no faked temperature)
+    expect(validateFields(["intake", "oilT", "egt"])[0]).toBe("intake");
+    expect(fieldAvailable("intake", { turbo: true, vehicle: true })).toBe(false);
+    expect(shownField("intake", { turbo: true, vehicle: true })).toBe("coolant");
+    expect(nextField("ambient", 1, { turbo: true, vehicle: true })).toBe("coolant");
+    expect(fieldAvailable("intake", ALL)).toBe(true);
+    expect(nextField("ambient", 1, ALL)).toBe("intake");
   });
 });
 

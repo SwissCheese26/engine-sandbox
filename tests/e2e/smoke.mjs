@@ -708,7 +708,7 @@ async function layouts(page, label) {
   if (!(await page.isVisible(RPM_READOUT))) failures.push(`${label}: zurück zur Prüfzelle fehlen die Instrumente`);
 }
 
-const DESIGNS = ["classic", "night-orange", "italian", "oldschool", "digital", "hud", "race", "motorrad"];
+const DESIGNS = ["classic", "night-orange", "italian", "oldschool", "digital", "hud", "race", "motorrad", "truck"];
 
 /**
  * Cockpit designs (#83): switch through every design with the select in the cockpit while driving, one screenshot of
@@ -732,6 +732,13 @@ async function cockpitDesigns(page, label) {
       }
     }
     if (id === "hud" && !(await page.isVisible('.ck [data-ck="hud-rpm"]'))) failures.push(`${label}: Head-up zeigt die Drehzahl nicht groß (Kompakt-Ersatz)`);
+    if (id === "truck") {
+      // #83 truck/bus design: engine brake and limiter in the centre display, (P) lamp, tank, both dials, no scale choice
+      for (const sel of ['.ck [data-ck="eb"]', '.ck [data-ck="gov"]', '.ck [data-lamp="park"]', '.ck .ck-mini[data-mini="tank"]', ".ck__dial--rpm canvas"]) {
+        if (!(await page.isVisible(sel))) failures.push(`${label}: Nutzfahrzeug-Design ohne ${sel}`);
+      }
+      if (await page.isVisible('.ck [data-ck-skala]')) failures.push(`${label}: Nutzfahrzeug-Design bietet die Tachoskala an (fest 125 km/h)`);
+    }
     await page.locator(".ck").screenshot({ path: join(outDir, `smoke-${label}-design-${id}.png`) });
     if (id === "digital") {
       const field = page.locator('.ck-field[data-field="0"]');
@@ -759,8 +766,90 @@ async function cockpitDesigns(page, label) {
   await page.waitForTimeout(200);
   const auto = await page.evaluate(() => document.querySelector(".ck")?.dataset.design);
   if (auto !== "classic") failures.push(`${label}: Automatisch nach Fahrzeug zeigt beim Pkw ${auto}`);
+  await cockpitExtras(page, label);
+  await autoTruck(page, label);
   await page.selectOption('select[data-control="ck-design"]', "classic");
   console.log(`${label}: ${DESIGNS.length} Cockpit-Designs geschaltet`);
+}
+
+/**
+ * #83 additional gauges and tuning bar: picked in "Zusatzanzeigen" under the cluster, round and as bars, stored;
+ * 44 px targets on touch layouts, no horizontal scroll, the control bar keeps its height.
+ */
+async function cockpitExtras(page, label) {
+  const deckH0 = await deckHeight(page);
+  await page.click(".ck__extras > summary");
+  for (const id of ["oilP", "oilT", "lambda", "egt"]) await page.check(`.ck__extras [data-gauge="${id}"]`);
+  await page.check('.ck__extras [data-control="ck-tune"]');
+  await page.waitForTimeout(250);
+  const pods = await page.$$eval(".ck-pod:not([hidden])", (n) => n.map((e) => e.dataset.pod));
+  if (pods.join("|") !== "oilP|oilT|lambda|egt") failures.push(`${label}: Zusatzinstrumente falsch (${pods.join(", ")})`);
+  if (!(await page.isVisible('.ck__tune [data-tune="limit"]'))) failures.push(`${label}: Tuning-Leiste ohne Leistungsgrenze`);
+  if (label !== "desktop") {
+    const minH = await page.$$eval(".ck__extras > summary, .ck__extras .ck-chk", (n) => Math.min(...n.map((e) => e.getBoundingClientRect().height)));
+    if (minH < 44) failures.push(`${label}: Zusatzanzeigen: Bedienelement unter 44 px (${minH})`);
+  }
+  await page.locator(".ck").screenshot({ path: join(outDir, `smoke-${label}-design-extras-round.png`) });
+  await page.check('.ck__extras input[name="ck-gstyle"][value="bar"]');
+  await page.click(".ck__extras > summary");
+  await page.selectOption('select[data-control="ck-design"]', "digital");
+  await page.waitForTimeout(300);
+  const bar = await page.evaluate(() => ({
+    style: document.querySelector(".ck__console")?.dataset.gstyle,
+    bars: [...document.querySelectorAll(".ck-pod:not([hidden]) .ck-pod__bar")].filter((b) => b.getBoundingClientRect().width > 40).length,
+    sw: document.documentElement.scrollWidth - window.innerWidth,
+    stored: JSON.parse(localStorage.getItem("pruefzelle.settings") ?? "{}"),
+  }));
+  if (bar.style !== "bar" || bar.bars !== 4) failures.push(`${label}: Balkenanzeigen fehlen (${JSON.stringify({ style: bar.style, bars: bar.bars })})`);
+  if (bar.sw > 0) failures.push(`${label}: Zusatzanzeigen scrollen horizontal (${bar.sw} px)`);
+  if (JSON.stringify(bar.stored.ckGauges) !== JSON.stringify(["oilP", "oilT", "lambda", "egt"]) || bar.stored.ckGaugeStyle !== "bar" || bar.stored.ckTuneBar !== true) {
+    failures.push(`${label}: Zusatzanzeigen nicht gespeichert (${JSON.stringify([bar.stored.ckGauges, bar.stored.ckGaugeStyle, bar.stored.ckTuneBar])})`);
+  }
+  await page.locator(".ck").screenshot({ path: join(outDir, `smoke-${label}-design-extras-bar.png`) });
+  await deckStaysStill(page, label, deckH0);
+  await page.selectOption('select[data-control="ck-design"]', "auto");
+}
+
+/** #83: "Automatisch nach Fahrzeug" shows the truck design after loading the truck (engine off, car stopped). */
+async function autoTruck(page, label) {
+  await page.keyboard.up("w");
+  await page.mouse.click(2, 300);
+  await page.keyboard.down("s");
+  await page.waitForTimeout(2500);
+  await page.keyboard.up("s");
+  await page.keyboard.press("i");
+  await page.waitForTimeout(1500);
+  await page.evaluate(() => {
+    const sel = document.querySelector('select[data-control="car"]');
+    sel.value = "truck-mercedes-actros-1845";
+    sel.dispatchEvent(new Event("change", { bubbles: true }));
+    document.querySelector('[data-control="load-car"]').click();
+  });
+  await page.waitForTimeout(600);
+  const st = await page.evaluate(() => ({ design: document.querySelector(".ck")?.dataset.design, sw: document.documentElement.scrollWidth - window.innerWidth }));
+  if (st.design !== "truck") failures.push(`${label}: Automatisch nach Fahrzeug zeigt beim Lkw ${st.design}`);
+  if (st.sw > 0) failures.push(`${label}: Nutzfahrzeug-Design scrollt horizontal (${st.sw} px)`);
+  // drive a little so the dials, the limiter mark and the engine brake show something
+  await page.keyboard.press("i");
+  await page.keyboard.down("a");
+  await page.waitForTimeout(1500);
+  await page.keyboard.up("a");
+  await page.keyboard.down("w");
+  await page.waitForTimeout(2500);
+  await page.keyboard.up("w");
+  await page.waitForTimeout(400);
+  // the Actros (OM 471) has a decompression brake: the indicator reads "bereit" or the braking power, not "nicht verbaut"
+  const eb = await page.evaluate(() => ({ v: document.querySelector('.ck [data-ck="eb"]')?.textContent, st: document.querySelector('.ck [data-ck="eb-row"]')?.dataset.state }));
+  if (eb.st === "none" || !eb.v) failures.push(`${label}: Motorbremsen-Anzeige beim Lkw fehlt (${JSON.stringify(eb)})`);
+  await page.locator(".ck").screenshot({ path: join(outDir, `smoke-${label}-design-truck-auto.png`) });
+  // #91 in the truck design: braked to a stop, Auto-Hold applies the parking brake and the red (P) lamp lights
+  await page.keyboard.down("s");
+  await page.waitForTimeout(3000);
+  await page.keyboard.up("s");
+  await page.waitForTimeout(400);
+  const park = await page.evaluate(() => ({ design: document.querySelector(".ck")?.dataset.design, lamp: document.querySelector('.ck [data-lamp="park"]')?.dataset.state }));
+  if (park.design !== "truck" || park.lamp !== "on") failures.push(`${label}: Nutzfahrzeug-Design ohne (P)-Leuchte bei Feststellbremse (${JSON.stringify(park)})`);
+  if (!(await page.isVisible('.ck [data-lamp="park"]'))) failures.push(`${label}: (P)-Leuchte im Nutzfahrzeug-Design nicht sichtbar`);
 }
 
 // "Fehler melden" in the sandbox header (#55): dialog opens, the link targets the issue form with the diagnosis,

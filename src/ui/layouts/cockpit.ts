@@ -11,7 +11,9 @@ import { GAS_RAMPS, getSettings, prefs, setSettings } from "../settings.ts";
 import { toUnit } from "../units.ts";
 import { Dial, type DialScale } from "./dial.ts";
 import { DESIGN_CHOICES, FIELD_PRESETS, dialTheme, isCockpitChoice, resolveDesign, type CockpitDesignId, type FieldId, type FieldSet } from "./designs.ts";
-import { driveModeWord, fieldAriaLabel, formatField, nextField, shownField, type FieldContext, type FieldInputs } from "./fields-logic.ts";
+import { driveModeWord, fieldAriaLabel, formatField, intakeAirOf, nextField, shownField, type FieldContext, type FieldInputs } from "./fields-logic.ts";
+import { CockpitExtras } from "./extras.ts";
+import { economyBand, engineBrakeInfo, truckSpeedScale, truckTachoScale } from "./extras-logic.ts";
 import { BASE_ICON, ICON2 } from "./icons.ts";
 import { ledColors, shiftLights, avgL100, clusterLamps, fuelScale, SPEEDO_SCALES, clampSpeedoKmh, isSpeedoScale, speedoScaleMax, speedoTicks, tachoMax, tachoZones, type Lamp, type LampSet } from "./logic.ts";
 import { RaceView } from "./race.ts";
@@ -91,6 +93,8 @@ export class CockpitView implements LayoutView {
   private flashing = false;
   private rpmMax = 8000;
   private zones = { warnFrom: 0, redFrom: 0 };
+  /** Additional gauges and tuning bar under the cluster (#83), in every design. */
+  private extras = new CockpitExtras();
   /** The Renn-Dash design (#94): created the first time it is chosen. */
   private race: RaceView | null = null;
   /** Set by the app: switches the console to the chassis dyno. */
@@ -147,6 +151,10 @@ export class CockpitView implements LayoutView {
             <div><dt data-ck="bike-cool-label">Kühlmittel</dt><dd data-ck="bike-cool">–</dd></div>
             <div><dt>Tank</dt><dd data-ck="bike-tank">–</dd></div>
             <div><dt>Trip</dt><dd data-ck="bike-trip">–</dd></div>
+          </dl>
+          <dl class="ck__truck num" aria-label="Nutzfahrzeug-Anzeigen">
+            <div data-ck="eb-row" data-state="none"><dt>Motorbremse</dt><dd data-ck="eb">–</dd></div>
+            <div data-ck="gov-row" data-state="off"><dt>Begrenzer</dt><dd data-ck="gov">–</dd></div>
           </dl>
           <dl class="ck__trip num">
             <div><dt>Außen</dt><dd><span data-ck="ambient">–</span></dd></div>
@@ -241,6 +249,7 @@ export class CockpitView implements LayoutView {
       return { id, dial, wrap, out: wrap.querySelector(".ck-mini__val")!, unit: wrap.querySelector(".ck-mini__unit")!, cap: wrap.querySelector(".ck-mini__cap")!, last: "" };
     };
     this.minis = { coolant: mk("coolant"), oilT: mk("oil-temp"), oilP: mk("oil-pressure"), boost: mk("boost"), fuel: mk("fuel"), tank: mk("tank") };
+    host.after(this.extras.el);
   }
 
   configure(cfg: EngineConfig, summary: EngineSummary, info: DriveInfo) {
@@ -248,15 +257,7 @@ export class CockpitView implements LayoutView {
     this.summary = summary;
     this.info = info;
     const rmax = tachoMax(cfg.revLimitRpm);
-    this.tacho.setScale({
-      min: 0, max: rmax, major: 1000, minor: rmax > 9000 ? 500 : 250, labelDiv: 1000,
-      // yellow pre-warning (Gelb heißt Grenze), red from the limiter on like in a real car (design.md "Cockpit-Layout")
-      ...(() => {
-        const z = tachoZones(cfg.revLimitRpm, summary.safeMaxRpm);
-        return { zone: { from: z.warnFrom, to: z.redFrom }, red: { from: z.redFrom, to: rmax } };
-      })(),
-      caption: "1/min × 1000",
-    });
+    this.scaleTacho();
     this.speedKey = "";
     // rev arc (digital) and rev bar (motorcycle): same zones as the rev counter
     this.rpmMax = rmax;
@@ -278,13 +279,45 @@ export class CockpitView implements LayoutView {
     this.fieldCtx = { ...this.fieldCtx, turbo: summary.limits.boostMaxBar > 0 };
     this.out["bike-cool-label"]!.textContent = airCooled(cfg) ? "Zyl.-Kopf" : "Kühlmittel";
     this.race?.configure(cfg, summary, info);
+    this.extras.configure(cfg, summary);
     this.syncUnits();
+  }
+
+  /**
+   * Rev counter scale: the car scale (× 1000) or, in the truck design, the commercial-vehicle scale (× 100) with the
+   * green economy band from the full-load curve (#83).
+   */
+  private scaleTacho() {
+    if (!this.cfg) return;
+    const cfg = this.cfg;
+    // yellow pre-warning (Gelb heißt Grenze), red from the limiter on like in a real car (design.md "Cockpit-Layout")
+    const z = tachoZones(cfg.revLimitRpm, this.summary.safeMaxRpm);
+    if (this.design === "truck") {
+      const t = truckTachoScale(cfg.revLimitRpm);
+      this.tacho.setScale({
+        min: 0, max: t.max, major: t.major, minor: t.minor, labelDiv: t.labelDiv,
+        zone: { from: z.warnFrom, to: z.redFrom }, red: { from: z.redFrom, to: t.max }, eco: economyBand(this.info.fullLoad) ?? undefined,
+        caption: "1/min × 100",
+      });
+      return;
+    }
+    const rmax = tachoMax(cfg.revLimitRpm);
+    this.tacho.setScale({
+      min: 0, max: rmax, major: 1000, minor: rmax > 9000 ? 500 : 250, labelDiv: 1000,
+      zone: { from: z.warnFrom, to: z.redFrom }, red: { from: z.redFrom, to: rmax },
+      caption: "1/min × 1000",
+    });
   }
 
   /** Puts the design on the root (CSS tokens and arrangement) and its drawing style on every dial (#83). */
   private applyDesign(id: CockpitDesignId) {
     if (id === this.design) return;
+    const truckChange = id === "truck" || this.design === "truck";
     this.design = id;
+    if (truckChange) {
+      this.scaleTacho();
+      this.speedKey = "";
+    }
     this.el.dataset.design = id;
     if (id === "race" && !this.race) {
       this.race = new RaceView();
@@ -293,6 +326,7 @@ export class CockpitView implements LayoutView {
     }
     const t = dialTheme(id);
     for (const d of [this.speedo, this.tacho, ...Object.values(this.minis).map((m) => m.dial)]) d.setTheme(t);
+    this.extras.setTheme(t);
     for (const k of Object.keys(this.last)) this.last[k] = "";
     this.redraw();
   }
@@ -327,6 +361,7 @@ export class CockpitView implements LayoutView {
     this.out["speed-unit"]!.textContent = this.out["speed-unit2"]!.textContent = u.speed;
     this.out["hud-power-unit"]!.textContent = u.power;
     this.race?.syncUnits();
+    this.extras.syncUnits();
     this.speedKey = "";
     for (const k of Object.keys(this.last)) this.last[k] = "";
     for (const m of Object.values(this.minis)) m.last = "";
@@ -346,6 +381,7 @@ export class CockpitView implements LayoutView {
       d.invalidate();
       d.draw(true);
     }
+    this.extras.redraw();
   }
 
   private put(k: string, v: string) {
@@ -378,12 +414,16 @@ export class CockpitView implements LayoutView {
     if (this.designSel.value !== st.cockpitDesign) this.designSel.value = st.cockpitDesign;
     this.applyDesign(resolveDesign(st.cockpitDesign, d.kind));
     const vmaxShown = toUnit("speed", this.info.vmaxKmh, u.speed);
-    const smax = speedoScaleMax(st.speedo, st.speedoCustomKmh, vmaxShown, u.speed);
-    const spKey = `${smax}|${u.speed}`;
+    const truck = this.design === "truck";
+    // truck design (#83): fixed 125 km/h scale with the vehicle's top-speed limiter (Directive 92/6/EEC) marked
+    const smax = truck ? truckSpeedScale(u.speed).max : speedoScaleMax(st.speedo, st.speedoCustomKmh, vmaxShown, u.speed);
+    const govShown = truck && ds.speedLimitKmh !== null ? toUnit("speed", ds.speedLimitKmh, u.speed) : Number.NaN;
+    const gov = govShown <= smax ? govShown : undefined;
+    const spKey = `${smax}|${u.speed}|${truck}|${gov}`;
     if (spKey !== this.speedKey) {
       this.speedKey = spKey;
-      const t = speedoTicks(smax, u.speed);
-      this.speedo.setScale({ min: 0, max: smax, major: t.major, minor: t.minor, caption: u.speed });
+      const t = truck ? truckSpeedScale(u.speed) : speedoTicks(smax, u.speed);
+      this.speedo.setScale({ min: 0, max: smax, major: t.major, minor: t.minor, caption: u.speed, stop: gov });
     }
     const speed = vehicle ? toUnit("speed", ds.speedKmh, u.speed) : 0;
     this.speedo.dimmed = !vehicle;
@@ -472,6 +512,7 @@ export class CockpitView implements LayoutView {
 
     this.updateLamps(f);
     this.updateRev(f);
+    this.extras.update(f);
     // design-specific readouts are only fed while their design is shown
     const design = this.design;
     if (design === "digital") this.updateFields(f, l100, u, st.ckFields);
@@ -487,6 +528,7 @@ export class CockpitView implements LayoutView {
         this.out.mode!.setAttribute("aria-label", `Fahrmodus: ${mode} – antippen zum Wechseln`);
       }
     }
+    if (design === "truck") this.updateTruck(f);
     if (design === "motorrad") {
       const bikeCool = formatField("coolant", { coolantC: s.coolantC, airCooled: airCooled(this.cfg) } as FieldInputs, u);
       this.put("bike-cool", `${bikeCool.value} ${bikeCool.unit}`);
@@ -494,6 +536,20 @@ export class CockpitView implements LayoutView {
       this.put("bike-tank", vehicle ? `${fmt(gal ? d.tank.levelL / 3.785411784 : d.tank.levelL, gal ? 1 : 0)} ${gal ? "gal" : "l"}` : "–");
       this.put("bike-trip", `${fmt(toUnit("distance", tripA.km, u.distance), 1)} ${u.distance}`);
     }
+  }
+
+  /** Engine brake and top-speed limiter of the truck design (#83). No retarder, air brake or AdBlue: not in the core. */
+  private updateTruck(f: Frame) {
+    const u = prefs();
+    const ds = f.drivetrain.state;
+    const eb = engineBrakeInfo(this.cfg, !!f.s.engineBrakeActive, f.s.powerKw, u);
+    this.put("eb", eb.value);
+    const row = this.out["eb-row"]!;
+    row.dataset.state = eb.state;
+    row.title = eb.kind ? `Motorbremse: ${eb.kind}` : "";
+    const lim = ds.speedLimitKmh;
+    this.put("gov", lim === null ? "aus" : `${fmt(toUnit("speed", lim, u.speed))} ${u.speed}${ds.limiting ? " · regelt" : ""}`);
+    this.out["gov-row"]!.dataset.state = lim === null ? "off" : ds.limiting ? "active" : "on";
   }
 
   /** Odometer as single digits: plain text in most designs, number drums in the oldschool one (CSS). */
@@ -535,7 +591,8 @@ export class CockpitView implements LayoutView {
     const d = f.drivetrain;
     const ds = d.state;
     const vehicle = f.mode === "vehicle";
-    this.fieldCtx = { ...this.fieldCtx, vehicle };
+    const intakeAirC = intakeAirOf(s);
+    this.fieldCtx = { ...this.fieldCtx, vehicle, intakeAir: Number.isFinite(intakeAirC) };
     const avg = avgL100(f.trip.tripA.km, f.trip.tripA.fuelL);
     const v: FieldInputs = {
       coolantC: s.coolantC, oilC: s.oilC, oilPressureBar: s.oilPressureBar, boostBar: s.boostBar, egtC: s.egtC,
@@ -544,7 +601,7 @@ export class CockpitView implements LayoutView {
       avgL100: Number.isFinite(avg) ? avg : l100Now, powerKw: s.powerKw, torqueNm: s.torqueNm, lambda: s.lambda,
       altitudeM: (d.environment.terrain ?? "static") === "static" ? Number.NaN : ds.roadAltitudeM ?? Number.NaN,
       gradePct: ds.roadGradePct ?? d.environment.gradePct, t0to100S: ds.t0to100S, t0to100Running: ds.t0to100Running,
-      ambientC: d.environment.ambientC, airCooled: airCooled(this.cfg),
+      ambientC: d.environment.ambientC, airCooled: airCooled(this.cfg), intakeAirC,
       gearboxOilC: vehicle ? ds.gearboxOilC ?? Number.NaN : Number.NaN, gearboxOilWarn: !!ds.gearboxOilWarn,
     };
     stored.forEach((storedId: FieldId, i) => {
