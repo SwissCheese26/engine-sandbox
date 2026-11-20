@@ -1,0 +1,296 @@
+/* Cockpit extras (#83): the console under the cluster (additional gauges, tuning bar, picker) and the truck/bus
+   design. Loaded after cockpit-designs.css. */
+
+/* ── console: in every design, its own grid row where the cluster is a grid ── */
+.ck__truck {
+  display: none;
+}
+.ck__console {
+  grid-area: console;
+  display: grid;
+  gap: var(--space-2);
+  width: 100%;
+  max-width: 760px;
+  margin: var(--space-3) auto 0;
+  min-width: 0;
+}
+@media (max-width: 899px) {
+  .ck:not([data-design="digital"], [data-design="hud"], [data-design="race"], [data-design="motorrad"]) {
+    grid-template-areas: "lamps lamps" "speed rpm" "minis minis" "mfd mfd" "console console" "cruise cruise";
+  }
+  .ck__console {
+    margin-top: 0;
+  }
+}
+.ck:is([data-design="digital"], [data-design="hud"], [data-design="motorrad"]) {
+  grid-template-areas: "lamps" "mfd" "fields" "console" "cruise" "speed";
+}
+.ck[data-design="race"] {
+  grid-template-areas: "lamps" "alt" "mfd" "console" "cruise" "speed";
+}
+
+/* tuning bar: one slim line of label/value pairs */
+.ck__tune {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px var(--space-2);
+  margin: 0;
+  padding: var(--space-1) var(--space-2);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+  font-size: var(--fs-14);
+}
+.ck__tune[hidden] {
+  display: none;
+}
+.ck-tune__item {
+  white-space: nowrap;
+  padding: 2px var(--space-1);
+  border-radius: 4px;
+}
+.ck-tune__item small {
+  color: var(--ck-dim);
+  font-size: var(--fs-12);
+}
+.ck-tune__item b {
+  font-weight: 600;
+  color: var(--ck-light);
+}
+.ck-tune__item.is-active {
+  background: rgba(255, 173, 31, 0.16);
+}
+.ck-tune__item.is-active b,
+.ck-tune__item.is-limit b {
+  color: var(--signal);
+}
+
+/* the gauges: round pods (a small dial each) or bars */
+.ck__pods {
+  display: none;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: var(--space-2);
+}
+.ck__console.has-pods .ck__pods {
+  display: grid;
+}
+.ck-pod {
+  margin: 0;
+  display: grid;
+  justify-items: center;
+  min-width: 0;
+}
+.ck-pod[hidden] {
+  display: none;
+}
+.ck-pod .dial {
+  width: 72px;
+  height: 72px;
+}
+.ck-pod figcaption {
+  max-width: 100%;
+  font-size: var(--fs-12);
+  color: var(--ck-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: center;
+}
+.ck-pod__val {
+  font-size: var(--fs-16);
+  font-weight: 500;
+  color: var(--ck-light);
+}
+.ck-pod.is-limit .ck-pod__val {
+  color: var(--signal);
+}
+.ck-pod__bar {
+  display: none;
+}
+.ck__console[data-gstyle="bar"] .ck__pods {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.ck__console[data-gstyle="bar"] .ck-pod {
+  justify-items: stretch;
+  padding: var(--space-1) var(--space-2) var(--space-2);
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.28);
+}
+.ck__console[data-gstyle="bar"] .ck-pod .dial {
+  display: none;
+}
+.ck__console[data-gstyle="bar"] .ck-pod figcaption {
+  order: -1;
+  text-align: left;
+}
+.ck__console[data-gstyle="bar"] .ck-pod__bar {
+  position: relative;
+  display: block;
+  height: 10px;
+  margin-top: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.ck-pod__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0;
+  background: var(--ck-light);
+}
+.ck-pod__zone {
+  position: absolute;
+  inset: auto auto 0 0;
+  height: 3px;
+  background: var(--signal);
+}
+.ck-pod.is-limit .ck-pod__fill {
+  background: var(--signal);
+}
+
+/* picker */
+.ck__extras {
+  justify-self: center;
+  max-width: 100%;
+  font-size: var(--fs-14);
+  color: var(--ck-dim);
+}
+.ck__extras > summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-plate);
+  cursor: pointer;
+  color: var(--ck-light);
+  list-style: none;
+}
+.ck__extras > summary::-webkit-details-marker {
+  display: none;
+}
+.ck__extras > summary::before {
+  content: "+";
+  margin-right: var(--space-1);
+  font-weight: 600;
+}
+.ck__extras[open] > summary::before {
+  content: "−";
+}
+.ck__extras > summary:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+.ck__extras-body {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2) var(--space-4);
+  padding: var(--space-2);
+}
+.ck__extras fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.ck__extras legend {
+  width: 100%;
+  padding: 0;
+  font-size: var(--fs-12);
+}
+.ck-chk {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  padding: 0 var(--space-1);
+  color: var(--ck-light);
+  cursor: pointer;
+}
+.ck-chk input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--ck-needle);
+}
+.ck-chk:has(input:disabled) {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── Nutzfahrzeug: big white-on-black dials, square cowl, engine brake and limiter in the centre display ── */
+.ck[data-design="truck"] {
+  --ck-housing: #1b1e20;
+  --ck-face: #0b0d0e;
+  --ck-ring: #8c9296;
+  --ck-light: #f4f5f0;
+  --ck-dim: #8d9398;
+  --ck-needle: #ff6a1f;
+  --ck-hub: #26292b;
+  --ck-lcd: #0c1113;
+  border-radius: 36px 36px 8px 8px / 22px 22px 8px 8px;
+  box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.05), 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+/* the speed scale is fixed (125 km/h), so the scale choice is not offered */
+.ck[data-design="truck"] :is([data-ck-skala], [data-ck-custom]) {
+  display: none;
+}
+.ck[data-design="truck"] .ck__truck {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  margin: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.ck__truck div {
+  min-width: 0;
+  padding: var(--space-1) var(--space-2) 0;
+}
+.ck__truck div + div {
+  border-left: 1px solid rgba(255, 255, 255, 0.08);
+}
+.ck__truck dt {
+  font-size: var(--fs-12);
+  color: var(--ck-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ck__truck dd {
+  margin: 0;
+  font-size: var(--fs-16);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.ck__truck [data-state="none"] dd,
+.ck__truck [data-state="off"] dd {
+  color: var(--ck-dim);
+  font-weight: 500;
+}
+/* engine brake acting: amber like a lamp; limiter regulating: orange like the limiter mark */
+.ck__truck [data-state="active"] dd {
+  color: var(--ck-amber);
+}
+.ck__truck [data-ck="eb-row"][data-state="active"] dt::before {
+  content: "● ";
+  color: var(--ck-amber);
+}
+
+@media (max-width: 899px) {
+  .ck-pod .dial {
+    width: 60px;
+    height: 60px;
+  }
+  .ck__pods {
+    grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+  }
+  .ck__console[data-gstyle="bar"] .ck__pods {
+    grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  }
+  .ck[data-design="truck"] .ck__truck {
+    grid-column: 1 / -1;
+  }
+}

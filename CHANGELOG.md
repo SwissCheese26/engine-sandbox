@@ -4,10 +4,13 @@ Alle sichtbaren Änderungen an der Prüfzelle, neueste zuerst. Aufbau nach [Keep
 
 _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `bun scripts/changelog.ts` ausführen._
 
-## 2026-11-20 – Getriebeöltemperatur und echte Launch Control
+## 2026-11-20 – Nutzfahrzeug-Cockpit, Getriebeöltemperatur und echte Launch Control
 
 ### Neu
 
+- Cockpit-Design „Nutzfahrzeug“: Tacho bis 125 km/h mit Markierung des Begrenzers, Drehzahlmesser mit grünem Bereich (Drehmomentplateau) und Anzeige der Motorbremse. Mit „Automatisch“ erscheint es bei Lkw und Bus von selbst. ([#83](https://github.com/SwissCheese26/engine-sandbox/issues/83), [#106](https://github.com/SwissCheese26/engine-sandbox/issues/106))
+- Zusatzinstrumente wie im Tuning-Auto: Ladedruck, Öldruck, Öltemperatur, Lambda und Abgastemperatur, als Rundinstrumente oder Balken, unter „+ Zusatzanzeigen“ im Cockpit. ([#83](https://github.com/SwissCheese26/engine-sandbox/issues/83), [#106](https://github.com/SwissCheese26/engine-sandbox/issues/106))
+- Tuning-Leiste: Ladedruck Soll und Ist, Zündung bzw. Förderbeginn gegenüber dem Kennfeld, Vollast-λ bzw. Rauchgrenze, Klopfen und die Leistungsgrenze des Steuergeräts, mit Hinweis, wenn sie greift. ([#83](https://github.com/SwissCheese26/engine-sandbox/issues/83), [#106](https://github.com/SwissCheese26/engine-sandbox/issues/106))
 - Das Getriebe hat jetzt eine eigene Öltemperatur. Sie steigt unter Last, beim Anfahren am Berg und mit schleifender Kupplung, und der Fahrtwind kühlt. Kaltes Öl ist zäh und kostet etwas Leistung. Zu sehen ist sie im Getriebe-Pult und als Feld „Getriebeöl“ im Digital-Cockpit. ([#53](https://github.com/SwissCheese26/engine-sandbox/issues/53), [#102](https://github.com/SwissCheese26/engine-sandbox/issues/102))
 - Wird das Getriebe zu heiß, leuchtet die Lampe „Getriebe heiß“. DSG und Automatik gehen in den Notlauf und begrenzen die Leistung. Mit „Realistisch“ kann das Getriebe Schaden nehmen, mit „Sandbox“ nicht. ([#53](https://github.com/SwissCheese26/engine-sandbox/issues/53), [#102](https://github.com/SwissCheese26/engine-sandbox/issues/102))
 

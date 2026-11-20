@@ -2,6 +2,7 @@
 // (`pruefzelle.settings`), validated on load. No DOM here, so the module runs in unit tests.
 import { DEFAULT_FIELDS, isCockpitChoice, validateFields, type CockpitChoice, type CockpitDesignId, type FieldSet } from "./layouts/designs.ts";
 import { clampSpeedoKmh, isSpeedoScale, type SpeedoScale } from "./layouts/logic.ts";
+import { validateGauges, type GaugeId, type GaugeStyle } from "./layouts/designs.ts";
 
 /** Quantities the player can choose a unit for. The physics stays SI; this is display only. */
 export type Quantity = "power" | "torque" | "pressure" | "temp" | "fuel" | "speed" | "distance" | "length" | "volume";
@@ -64,6 +65,10 @@ export interface Settings {
   cockpitDesign: CockpitChoice;
   /** What the three switchable fields of the digital cockpit show (#83). */
   ckFields: FieldSet;
+  /** Additional gauges of the cockpit console strip (#83), round or as bars, and the tuning bar. */
+  ckGauges: GaugeId[];
+  ckGaugeStyle: GaugeStyle;
+  ckTuneBar: boolean;
   /** Gas lever on the chassis dyno: "spring" = back to 0 when let go (pedal), "hold" = stays (hand throttle). */
   throttle: "spring" | "hold";
   /** Shift buttons (▲ gear ▼) in the bottom control bar: "auto" = on touch screens, "on" = always, "off" = never. */
@@ -113,7 +118,7 @@ export const FUEL_PRICE_MIN = 0.1;
 export const FUEL_PRICE_MAX = 10;
 
 export const DEFAULT_SETTINGS: Settings = {
-  preset: "metric-kw", custom: { ...METRIC }, layout: "pruefzelle", speedo: "standard", speedoCustomKmh: 240, cockpitDesign: "classic", ckFields: [...DEFAULT_FIELDS], throttle: "spring", shiftPad: "auto",
+  preset: "metric-kw", custom: { ...METRIC }, layout: "pruefzelle", speedo: "standard", speedoCustomKmh: 240, cockpitDesign: "classic", ckFields: [...DEFAULT_FIELDS], ckGauges: [], ckGaugeStyle: "round", ckTuneBar: false, throttle: "spring", shiftPad: "auto",
   gasRamp: 0, startWarm: false, autoMeasure: true, pedalSide: "right", wakeLock: true, vibration: "auto", realism: "real",
   fuelPrice: { diesel: 1.65, petrol: 1.75 }, limitHints: "off", sound: true, volume: 0.6, autoHold: true, sandboxIntro: true,
 };
@@ -159,6 +164,9 @@ export function validateSettings(raw: unknown): Settings {
     preset, custom, layout, speedo, speedoCustomKmh: clampSpeedoKmh(r.speedoCustomKmh), throttle, shiftPad,
     cockpitDesign: legacy ?? (isCockpitChoice(r.cockpitDesign) ? r.cockpitDesign : d.cockpitDesign),
     ckFields: validateFields(r.ckFields),
+    ckGauges: validateGauges(r.ckGauges),
+    ckGaugeStyle: oneOf(r.ckGaugeStyle, ["round", "bar"] as const, d.ckGaugeStyle),
+    ckTuneBar: typeof r.ckTuneBar === "boolean" ? r.ckTuneBar : d.ckTuneBar,
     gasRamp: oneOf(r.gasRamp, GAS_RAMPS.map((g) => g.s), d.gasRamp),
     startWarm: typeof r.startWarm === "boolean" ? r.startWarm : d.startWarm,
     autoMeasure: typeof r.autoMeasure === "boolean" ? r.autoMeasure : d.autoMeasure,

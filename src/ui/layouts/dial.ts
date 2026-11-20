@@ -17,6 +17,10 @@ export interface DialScale {
   zone?: { from: number; to: number };
   /** Red zone from the limiter on (cockpit rev counter only). */
   red?: { from: number; to: number };
+  /** Green economy band (truck rev counter, #83), drawn on the inner edge of the scale. */
+  eco?: { from: number; to: number };
+  /** Fixed mark across the scale, e.g. the speed limiter of a truck (#83); orange like the limiter arrow. */
+  stop?: number;
   /** Small instruments: print min and max at the ends of the arc. */
   ends?: boolean;
   /** Short caption under the hub, e.g. "km/h" or "1/min × 1000". */
@@ -227,6 +231,24 @@ export class Dial {
       ctx.globalAlpha = 0.9;
       ctx.stroke();
       ctx.globalAlpha = 1;
+    }
+    // green band (economy range) just inside the ticks
+    if (s.eco && s.eco.to > s.eco.from) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, Math.max(0, rr - rr * 0.17), this.angle(s.eco.from), this.angle(s.eco.to));
+      ctx.lineWidth = small ? 3 : 6;
+      ctx.strokeStyle = MARK_CRUISE;
+      ctx.stroke();
+    }
+    // fixed limiter mark: a bold orange line across the scale
+    if (s.stop !== undefined && Number.isFinite(s.stop)) {
+      const a = this.angle(s.stop);
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(a) * (rr + 2), cy + Math.sin(a) * (rr + 2));
+      ctx.lineTo(cx + Math.cos(a) * rr * 0.7, cy + Math.sin(a) * rr * 0.7);
+      ctx.lineWidth = small ? 2 : 4;
+      ctx.strokeStyle = MARK_LIMIT;
+      ctx.stroke();
     }
     // ticks
     const n = Math.round((s.max - s.min) / s.minor);

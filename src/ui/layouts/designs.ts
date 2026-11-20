@@ -2,8 +2,8 @@
 // `.ck[data-design=…]` root (layouts.css) plus a DialTheme for the canvas dials. No design has logic of its own.
 // Also the ids of the switchable fields of the digital design. DOM-free (imported by settings.ts and tests).
 
-export type CockpitDesignId = "classic" | "night-orange" | "italian" | "oldschool" | "digital" | "hud" | "race" | "motorrad";
-/** Stored choice: a design, or "auto" = by vehicle (motorcycle → "motorrad", everything else → "classic"). */
+export type CockpitDesignId = "classic" | "night-orange" | "italian" | "oldschool" | "digital" | "hud" | "race" | "motorrad" | "truck";
+/** Stored choice: a design, or "auto" = by vehicle (motorcycle → "motorrad", truck/bus → "truck", else "classic"). */
 export type CockpitChoice = CockpitDesignId | "auto";
 
 /** How a round dial is drawn. Colours come from the CSS tokens (--ck-face, --ck-needle, …) of the design. */
@@ -44,9 +44,11 @@ export const COCKPIT_DESIGNS: readonly CockpitDesign[] = [
   // the former "Renn-Dash" view (#26), now a design (#94); drawn by RaceView inside the cockpit
   { id: "race", label: "Renn-Dash", hint: "Schaltblitz-LEDs, große Gangzahl, 0–100 mit Delta, Öl und Wasser", dial: DEFAULT_DIAL_THEME },
   { id: "motorrad", label: "Motorrad", hint: "Kompaktes TFT: Drehzahlbalken mit Schaltblitz, Tempo und Gang groß", dial: DEFAULT_DIAL_THEME },
+  // commercial vehicles (#83, #31): 125 km/h speedometer with the limiter mark, rev counter with the green band
+  { id: "truck", label: "Nutzfahrzeug", hint: "Tacho bis 125 km/h mit Begrenzer, Drehzahlmesser mit grünem Bereich, Motorbremse", dial: { needle: "bar", ring: "alu", numeralWeight: 600, numeralScale: 1.1, glow: 3, minorTicks: true } },
 ];
 
-export const AUTO_DESIGN = { id: "auto", label: "Automatisch nach Fahrzeug", hint: "Motorrad-Display auf dem Motorrad, sonst Klassisch" } as const;
+export const AUTO_DESIGN = { id: "auto", label: "Automatisch nach Fahrzeug", hint: "Motorrad-Display auf dem Motorrad, Nutzfahrzeug bei Lkw und Bus, sonst Klassisch" } as const;
 
 /** Everything the design picker offers, in its order: "Automatisch" first, then every design (#94). */
 export const DESIGN_CHOICES: readonly { id: CockpitChoice; label: string; hint: string }[] = [AUTO_DESIGN, ...COCKPIT_DESIGNS];
@@ -58,7 +60,8 @@ export function isCockpitChoice(v: unknown): v is CockpitChoice {
 /** The design in effect for a stored choice and the vehicle kind on the dyno. */
 export function resolveDesign(choice: CockpitChoice, vehicleKind: string): CockpitDesignId {
   if (choice !== "auto") return choice;
-  return vehicleKind === "superbike" || vehicleKind === "tourer" ? "motorrad" : "classic";
+  if (vehicleKind === "superbike" || vehicleKind === "tourer") return "motorrad";
+  return vehicleKind === "truck" || vehicleKind === "bus" ? "truck" : "classic";
 }
 
 export function isCockpitDesign(v: unknown): v is CockpitDesignId {
@@ -72,6 +75,8 @@ export function dialTheme(id: CockpitDesignId): DialTheme {
 /** Values the three fields of the digital design can show, in cycling order. */
 export const FIELD_IDS = [
   "coolant", "oilT", "gearOil", "oilP", "boost", "egt", "fuelNow", "range", "power", "torque", "lambda", "road", "sprint", "ambient",
+  // intake air (#83): offered only once the core reports the charge-air temperature (see fields-logic.ts)
+  "intake",
 ] as const;
 export type FieldId = (typeof FIELD_IDS)[number];
 export type FieldSet = [FieldId, FieldId, FieldId];
@@ -92,3 +97,30 @@ export function validateFields(raw: unknown): FieldSet {
   const a = Array.isArray(raw) ? raw : [];
   return [0, 1, 2].map((i) => (isFieldId(a[i]) ? a[i] : DEFAULT_FIELDS[i])) as FieldSet;
 }
+
+/**
+ * Gauges the console strip can show. Each is a value of EngineState. Not offered because the core does not model
+ * them: battery voltage (there is only the charge lamp), intake air temperature (not reported yet).
+ */
+export const GAUGE_IDS = ["boost", "oilP", "oilT", "lambda", "egt"] as const satisfies readonly FieldId[];
+export type GaugeId = (typeof GAUGE_IDS)[number];
+export type GaugeStyle = "round" | "bar";
+
+export const GAUGE_LABEL: Record<GaugeId, string> = {
+  boost: "Ladedruck", oilP: "Öldruck", oilT: "Öltemperatur", lambda: "Lambda", egt: "Abgastemperatur",
+};
+/** Captions under the gauges (narrow on phones); the full name is the tooltip and the picker label. */
+export const GAUGE_SHORT: Record<GaugeId, string> = {
+  boost: "Ladedruck", oilP: "Öldruck", oilT: "Öltemp.", lambda: "Lambda", egt: "Abgas",
+};
+
+export function isGaugeId(v: unknown): v is GaugeId {
+  return typeof v === "string" && (GAUGE_IDS as readonly string[]).includes(v);
+}
+
+/** Stored gauge choice: valid ids only, each once, in the order of the strip. Anything else gives none. */
+export function validateGauges(raw: unknown): GaugeId[] {
+  const a = Array.isArray(raw) ? raw : [];
+  return GAUGE_IDS.filter((id) => a.includes(id));
+}
+
