@@ -591,9 +591,10 @@ export class App {
     // on phones the page scrolls under a sticky header and control bar: never paint over them
     const st = this.stage.getBoundingClientRect();
     const top = Math.max(st.top, this.header.getBoundingClientRect().bottom, 0);
-    const bottom = Math.min(st.bottom, this.deck.getBoundingClientRect().top, window.innerHeight);
+    const vp = document.documentElement;
+    const bottom = Math.min(st.bottom, this.deck.getBoundingClientRect().top, vp.clientHeight || window.innerHeight);
     const left = Math.max(st.left, 0);
-    const right = Math.min(st.right, window.innerWidth);
+    const right = Math.min(st.right, vp.clientWidth || window.innerWidth);
     if (bottom - top < 2 || right - left < 2) return { clip: null, tyre: null, engine: null };
     const clip = new DOMRect(left, top, right - left, bottom - top);
     const view = this.activeView;

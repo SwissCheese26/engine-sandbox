@@ -51,7 +51,7 @@ export async function smokeFxChecks({ browser, base, outDir, failures, errors, l
     const s = a.sim.state;
     let ink = 0, maxA = 0, inClip = true, minY = Infinity, maxY = -Infinity;
     if (!c.hidden && c.width) {
-      const k = c.width / innerWidth;
+      const k = c.width / c.clientWidth;
       const d = c.getContext("2d").getImageData(0, 0, c.width, c.height).data;
       for (let i = 3; i < d.length; i += 4 * 3) {
         if (d[i] < 4) continue;

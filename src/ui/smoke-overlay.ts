@@ -66,18 +66,24 @@ export class SmokeOverlay {
   /** Something is on the canvas that needs clearing. */
   private dirty = false;
   private hazeKey = "";
+  /** Viewport size in CSS px without scrollbars (the canvas' box). */
+  private cssW = 0;
+  private cssH = 0;
   private reduced: MediaQueryList | null;
 
   constructor(private anchors: () => SmokeAnchors) {
     const c = document.createElement("canvas");
     c.className = "smoke-overlay";
     c.setAttribute("aria-hidden", "true");
-    // inline: the overlay is self-contained and needs no layout rule (fixed, so it never shifts anything)
-    Object.assign(c.style, { position: "fixed", inset: "0", width: "100vw", height: "100vh", pointerEvents: "none", zIndex: "3" });
+    // inline: the overlay is self-contained and needs no layout rule (fixed, so it never shifts anything). inset 0
+    // alone sizes it to the viewport without the scrollbar (100vw would include it).
+    Object.assign(c.style, { position: "fixed", inset: "0", pointerEvents: "none", zIndex: "3" });
     c.dataset.active = "false";
     c.hidden = true;
     this.el = c;
     this.reduced = typeof matchMedia === "function" ? matchMedia("(prefers-reduced-motion: reduce)") : null;
+    // switched while smoke is shown: drop particles or haze, the next frame draws in the new mode
+    this.reduced?.addEventListener?.("change", () => this.clear());
   }
 
   /** Live particles (tests, e2e). */
@@ -127,8 +133,11 @@ export class SmokeOverlay {
   private prepare(): boolean {
     this.el.hidden = false;
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const w = Math.round(window.innerWidth * dpr);
-    const h = Math.round(window.innerHeight * dpr);
+    const root = document.documentElement;
+    this.cssW = root.clientWidth || window.innerWidth;
+    this.cssH = root.clientHeight || window.innerHeight;
+    const w = Math.round(this.cssW * dpr);
+    const h = Math.round(this.cssH * dpr);
     if (this.el.width !== w || this.el.height !== h) {
       this.el.width = w;
       this.el.height = h;
@@ -193,7 +202,7 @@ export class SmokeOverlay {
 
   private draw(clip: DOMRect) {
     const ctx = this.ctx!;
-    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    ctx.clearRect(0, 0, this.cssW, this.cssH);
     ctx.save();
     ctx.beginPath();
     ctx.rect(clip.left, clip.top, clip.width, clip.height);
@@ -215,11 +224,12 @@ export class SmokeOverlay {
 
   /** Reduced motion: one still, faint cloud per active source. */
   private haze(e: Emission, a: SmokeAnchors) {
-    const key = EMITTERS.map((k) => Math.round(e[k] * 10)).join(",") + `|${Math.round(a.tyre?.y ?? 0)},${Math.round(a.engine?.y ?? 0)}`;
+    const r = a.clip!;
+    const key = `${EMITTERS.map((k) => Math.round(e[k] * 10)).join(",")}|${Math.round(a.tyre?.y ?? 0)},${Math.round(a.engine?.y ?? 0)}|${[r.left, r.top, r.width, r.height, this.cssW, this.cssH].map(Math.round).join(",")}`;
     if (key === this.hazeKey) return;
     this.hazeKey = key;
     const ctx = this.ctx!;
-    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    ctx.clearRect(0, 0, this.cssW, this.cssH);
     ctx.save();
     ctx.beginPath();
     ctx.rect(a.clip!.left, a.clip!.top, a.clip!.width, a.clip!.height);
