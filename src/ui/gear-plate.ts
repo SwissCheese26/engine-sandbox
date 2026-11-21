@@ -1,7 +1,8 @@
 // Gänge-Platte on the chassis dyno (issue #14): gear count and single ratios, "Abstufung" helper (geometric /
 // progressive from 1st and top gear) and the Zugkraftdiagramm (tractive force per gear and driving resistance over
-// speed, Vmax intersection, "zu kurz / zu lang übersetzt"). Ratios can only be changed at standstill. Own ratios are
-// remembered per vehicle kind and gearbox type; a library car keeps its ratios until they are edited.
+// speed, Vmax intersection, "zu kurz / zu lang übersetzt"). Ratios can only be changed at standstill.
+// Since the "Getriebe" consolidation the plate is the one gearbox section: the Getriebe-Pult puts gearbox type, final
+// drive and oil cooler into its setup slot. Own ratios are stored per vehicle by the vehicle panel (vehicle-custom.ts).
 import {
   GEAR_COUNT_MIN, GEAR_RATIO_MAX, GEAR_RATIO_MIN, airDensity, altitudeToKpa, dynoSweep, gradedRatios, tractionCurves,
 } from "../core/index.ts";
@@ -11,6 +12,7 @@ import { fmt, tickStep } from "./format.ts";
 import { prefs } from "./settings.ts";
 import { toUnit } from "./units.ts";
 
+/** Old global key of own ratios; migrated per vehicle by vehicle-custom.ts. */
 export const RATIOS_KEY = "pruefzelle.gearRatios";
 /** Hints of the gear plate (issue #91): locked while rolling in gear; open with the parking brake applied. */
 export const GEAR_LOCKED_HINT = "Anhalten (Handbremse) oder N";
@@ -44,25 +46,6 @@ export function parseRatioInput(text: string): number {
   return /^\d+(\.\d*)?$|^\.\d+$/.test(t) ? Number(t) : Number.NaN;
 }
 
-function loadSaved(): { saved: SavedRatios | null; corrupt: boolean } {
-  try {
-    const text = localStorage.getItem(RATIOS_KEY);
-    if (text === null) return { saved: null, corrupt: false };
-    const saved = parseSavedRatios(JSON.parse(text));
-    return { saved, corrupt: saved === null };
-  } catch {
-    return { saved: null, corrupt: true };
-  }
-}
-
-function dropSaved() {
-  try {
-    localStorage.removeItem(RATIOS_KEY);
-  } catch {
-    // storage blocked
-  }
-}
-
 export class GearPlate {
   readonly el: HTMLElement;
   private countSel: HTMLSelectElement;
@@ -77,18 +60,21 @@ export class GearPlate {
   private traction: TractionResult | null = null;
   private locked = false;
   private lockEl!: HTMLElement;
-  /** Saved own ratios waiting for standstill / N (restore while rolling). */
-  private pendingRestore = false;
+  /** Slot at the top of the section for the gearbox type, final drive and oil cooler (filled by the Getriebe-Pult). */
+  readonly setupSlot: HTMLElement;
   private envKey = "";
-  /** Called after own ratios were applied (the car becomes "eigenes Fahrzeug", Vmax is recalculated). */
+  /** Called after own ratios were applied (stored for this vehicle, Vmax is recalculated). */
   onEdit: () => void = () => {};
 
   constructor(private drivetrain: Drivetrain, private cfg: EngineConfig, private summary: EngineSummary) {
     const el = document.createElement("div");
     el.className = "gears";
     el.innerHTML = `
-      <h3 class="vehicle__title">Gänge &amp; Zugkraft</h3>
+      <h3 class="vehicle__title">Getriebe</h3>
+      <div class="gears__left">
+      <div class="gears__setup" data-slot="gear-setup"></div>
       <div class="gears__editor">
+        <h4 class="gears__sub">Gänge &amp; Übersetzungen</h4>
         <div class="gears__row">
           <label class="vehicle__num"><span>Gänge</span>
             <select data-control="gear-count"></select>
@@ -105,7 +91,9 @@ export class GearPlate {
         <p class="vehicle__hint" data-out="gear-lock" role="status" hidden></p>
         <p class="vehicle__hint" data-out="gear-msg" role="status"></p>
       </div>
+      </div>
       <figure class="gears__traction">
+        <h4 class="gears__sub">Zugkraft</h4>
         <canvas role="img" aria-label="Zugkraftdiagramm: Zugkraft am Rad je Gang und Fahrwiderstand über der Geschwindigkeit"></canvas>
         <figcaption class="gearbox__calc" data-out="traction-verdict"></figcaption>
       </figure>`;
@@ -120,6 +108,7 @@ export class GearPlate {
     this.canvas = q(".gears__traction canvas");
     this.verdictEl = q("[data-out=traction-verdict]");
     this.lockEl = q("[data-out=gear-lock]");
+    this.setupSlot = q("[data-slot=gear-setup]");
     this.countSel.addEventListener("change", () => this.regrade(Number(this.countSel.value)));
     this.gradeBtn.addEventListener("click", () => this.regrade(this.drivetrain.gearbox.ratios.length));
     this.grid.addEventListener("change", (e) => {
@@ -132,7 +121,6 @@ export class GearPlate {
     });
     if (typeof ResizeObserver === "function") new ResizeObserver(() => this.draw()).observe(this.canvas);
     this.sweep = this.measure();
-    this.restore();
     this.sync();
   }
 
@@ -149,33 +137,6 @@ export class GearPlate {
     } catch {
       return [];
     }
-  }
-
-  /**
-   * Own ratios of the last visit, if they belong to the loaded vehicle kind and gearbox type. While the gearbox is
-   * locked (rolling in gear) they wait until it is editable; corrupt or invalid saves are dropped with a note.
-   */
-  restore(): boolean {
-    this.pendingRestore = false;
-    const { saved, corrupt } = loadSaved();
-    const d = this.drivetrain;
-    if (corrupt) {
-      dropSaved();
-      this.msg.textContent = "Gespeicherte Übersetzungen waren beschädigt und wurden verworfen.";
-      return false;
-    }
-    if (!saved || saved.kind !== d.kind || saved.type !== d.state.type) return false;
-    if (!d.ratiosEditable) {
-      this.pendingRestore = true;
-      return false;
-    }
-    const err = d.setRatios(saved.ratios);
-    if (err) {
-      dropSaved();
-      this.msg.textContent = `Gespeicherte Übersetzungen nicht übernommen (${err}), es gelten die Werkswerte.`;
-      return false;
-    }
-    return true;
   }
 
   private regrade(count: number) {
@@ -197,11 +158,6 @@ export class GearPlate {
       return;
     }
     this.msg.textContent = "";
-    try {
-      localStorage.setItem(RATIOS_KEY, JSON.stringify({ kind: this.drivetrain.kind, type: this.drivetrain.state.type, ratios }));
-    } catch {
-      // storage blocked: the ratios last for this session only
-    }
     this.sync();
     this.onEdit();
   }
@@ -222,6 +178,16 @@ export class GearPlate {
     }
     this.grid.querySelectorAll<HTMLInputElement>("input").forEach((inp, k) => (inp.value = r[k]!.toFixed(3)));
     this.setLocked(this.locked);
+  }
+
+  /** Computed Vmax of the traction diagram (km/h), null without a curve. */
+  get vmaxKmh(): number | null {
+    return this.traction?.vmax.kmh ?? null;
+  }
+
+  /** Shows a note under the ratios (e.g. stored ratios that could not be applied). */
+  note(text: string) {
+    this.msg.textContent = text;
   }
 
   /** Fills the editor from the drivetrain and redraws the diagram (after any vehicle/gearbox change). */
@@ -381,10 +347,6 @@ export class GearPlate {
     if (locked !== this.locked) {
       this.locked = locked;
       this.setLocked(locked);
-      if (!locked && this.pendingRestore && this.restore()) {
-        this.sync();
-        this.onEdit();
-      }
     }
     const hint = gearLockHint(!locked, !!d.state.parkingBrake);
     if (hint !== this.lockEl.textContent || this.lockEl.hidden !== !hint) {
