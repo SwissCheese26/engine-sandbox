@@ -21,7 +21,7 @@ _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `
 
 ### Behoben
 
-- Automatik: Vollgas bei voll getretener Bremse lässt die Räder nicht mehr frei durchdrehen. Die Bremse hält jetzt auch die Antriebsräder, der Motor bleibt auf der Festbremsdrehzahl des Wandlers (z. B. ≈ 2000 1/min beim Land Cruiser statt durchdrehender Räder, ≈ 2400 statt über 4000 1/min beim 530d), und das Getriebeöl wird dabei schnell heiß. Starke Hecktriebler drehen die Hinterräder wie in echt nur langsam gegen die Bremse. ([#104](https://github.com/SwissCheese26/engine-sandbox/issues/104), [#118](https://github.com/SwissCheese26/engine-sandbox/issues/118))
+- Automatik: Vollgas bei voll getretener Bremse lässt die Räder nicht mehr frei durchdrehen. Die Bremse hält jetzt auch die Antriebsräder, der Motor bleibt auf der Festbremsdrehzahl des Wandlers (z. B. ≈ 2000 1/min beim Land Cruiser statt durchdrehender Räder). Bei starken Hecktrieblern wie 530d und E 220 d nimmt die Steuerung wie in echt Motormoment zurück, damit die Bremse hält (≈ 1800 statt über 4000 1/min). Das Getriebeöl wird dabei schnell heiß. ([#104](https://github.com/SwissCheese26/engine-sandbox/issues/104), [#118](https://github.com/SwissCheese26/engine-sandbox/issues/118), [#119](https://github.com/SwissCheese26/engine-sandbox/issues/119))
 
 ## 2026-11-20 – Engine Builder, Nutzfahrzeug-Cockpit, Getriebeöltemperatur und echte Launch Control
 

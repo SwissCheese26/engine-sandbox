@@ -42,19 +42,40 @@ function stall(r: ReturnType<typeof rig>, pedal = 1, s = 4) {
 
 describe("converter stall test (issue #104)", () => {
   for (const id of ["car-bmw-530d-e60", "car-mercedes-e220d", "car-toyota-land-cruiser-120"]) {
-    test(`${id}: full throttle against the full brake settles at the stall speed, the car stays`, () => {
+    test(`${id}: full throttle against the full brake – the car and the driven wheels stay, the engine settles at stall`, () => {
       const r = rig(id);
       expect(r.dt.gearLabel()).toBe("D1");
       const res = stall(r);
-      const spec = r.car.setup.gearboxSpec!.converter!.stallRpm;
       // before #104: 530d ≈ 4170, E 220 d ≈ 4600 rpm (wheels spinning, turbine running)
-      expect(res.rpm).toBeGreaterThan(1800);
+      expect(res.rpm).toBeGreaterThan(1600);
       expect(res.rpm).toBeLessThan(2600);
-      expect(Math.abs(res.rpm - spec) / spec).toBeLessThan(0.08);
-      expect(res.maxKmh).toBeLessThan(0.5);
+      expect(res.spin).toBe(0);
+      expect(res.maxSlip).toBe(0);
+      expect(r.dt.state.speedKmh).toBe(0);
       expect(r.sim.state.running).toBe(true);
     });
   }
+
+  for (const id of ["car-bmw-530d-e60", "car-mercedes-e220d"]) {
+    test(`${id} (RWD): brake-torque protection caps the engine torque, the stall speed follows the converter (n = K·√T)`, () => {
+      const r = rig(id);
+      const res = stall(r);
+      const c = r.dt.inputs(H, r.sim.state, 1, 1);
+      expect(c.torqueLimitNm).toBeGreaterThan(100);
+      expect(c.torqueLimitNm!).toBeLessThan(summarize(libraryConfig(r.car.engineId)).peakTorqueNm);
+      expect(r.sim.state.torqueNm).toBeLessThan(c.torqueLimitNm! + 5);
+      const k = c.converter!.kFactor;
+      expect(Math.abs(res.rpm - k * Math.sqrt(r.sim.state.torqueNm)) / res.rpm).toBeLessThan(0.05);
+      // no cap without the brake, with the car rolling or in N
+      expect(r.dt.inputs(H, r.sim.state, 1, 0).torqueLimitNm).toBeUndefined();
+    });
+  }
+
+  test("AWD (Prado 120): the brakes hold full stall, no torque cap", () => {
+    const r = rig("car-toyota-land-cruiser-120");
+    stall(r, 1, 1);
+    expect(r.dt.inputs(H, r.sim.state, 1, 1).torqueLimitNm).toBeUndefined();
+  });
 
   test("AWD (Prado 120): the brake holds all driven wheels – no wheel spin, exact stall speed", () => {
     const r = rig("car-toyota-land-cruiser-120");

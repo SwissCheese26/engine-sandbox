@@ -326,6 +326,11 @@ export interface VehicleCoupling {
    * pedal. Unset = normal limiter.
    */
   launchLimitRpm?: number;
+  /**
+   * Brake-torque protection (issues #104, #119): cap on the positive engine torque, Nm, requested by the TCU of a
+   * converter automatic standing in gear with the brake and the throttle applied (brake stand / stall). Unset = no cap.
+   */
+  torqueLimitNm?: number;
 }
 
 /** Converter characteristic handed to the simulator (issue #14, docs/research/vehicle.md §4). */

@@ -16,7 +16,7 @@ import type { LimitTracker, ThermalState, TurboState } from "./subsystems.ts";
 import { isAirCooled } from "./thermal.ts";
 import { PEAK_SLIP, SLIDE_FACTOR, tyreForceFactor } from "./tyres.ts";
 import { HOLD_ROLL_G, holdCapN } from "./parking-brake.ts";
-import { drivenAxleLoadN, wheelieLimitN } from "./vehicle.ts";
+import { BRAKE_MAX_G, drivenAxleLoadN, drivenBrakeN as drivenBrakeForceN, wheelieLimitN } from "./vehicle.ts";
 import type { EngineConfig, EngineState, SimInputs, VehicleCoupling, Warning } from "./types.ts";
 import { converterTorques } from "./converter.ts";
 
@@ -374,11 +374,15 @@ export class EngineSimulator {
       // cranking a dead engine: the driver holds the clutch pedal down (the drivetrain sees the starter one frame late)
       const coupling = input.dynoMode === "vehicle" ? input.vehicle : undefined;
       const veh = coupling && starter && !x.running && coupling.clutch > 0 ? { ...coupling, clutch: 0 } : coupling;
+      let tLim = 1;
       if (veh) {
         // ASR ignition retard (issue #23): petrol engines lose torque within one firing when the spark is retarded
         // (≈ 3–4 %/°CA, up to ≈ 60 % with 15–20 °CA retard; Bosch, Gasoline Engine Management, "torque-based ECU") [S]
         const cut = m.p && tEng > 0 ? clamp(fin(veh.torqueCut ?? 0, 0), 0, 0.7) : 0;
-        stepVehicle(x, veh, tEng * (1 - cut) + tStarter, m.J, h);
+        // brake-torque protection (issue #104/#119): the ECU caps the positive engine torque on request of the TCU
+        const lim = fin(veh.torqueLimitNm ?? Infinity, Infinity);
+        tLim = tEng > lim ? Math.max(0, lim) / tEng : 1;
+        stepVehicle(x, veh, tEng * tLim * (1 - cut) + tStarter, m.J, h);
       } else {
         const net = tEng + tStarter - brake;
         let omega = x.rpm / RPM_PER_RADS + (net / m.J) * h;
@@ -386,8 +390,9 @@ export class EngineSimulator {
         x.rpm = omega * RPM_PER_RADS;
       }
       x.crank = (x.crank + x.rpm * 6 * h) % 720;
-      tOutSum += tEng;
-      fuelSum += out.fuelMassFlowGS;
+      tOutSum += tEng * tLim;
+      // the torque request cuts the injected fuel about in proportion (torque-based engine management) [S]
+      fuelSum += out.fuelMassFlowGS * tLim;
       airSum += out.airMassFlowKgS;
       if (out.mFuelCyc > 0) anyFire = true;
       fuelCycSum += out.mFuelCyc;
@@ -537,8 +542,6 @@ function gradeOf(c: VehicleCoupling): { sin: number; cos: number } {
   return { sin: Math.sin(th), cos: Math.cos(th) };
 }
 
-/** Brake system force capacity at full pedal, in g: enough to lock any tyre (ABS: issue #23) [S]. */
-const BRAKE_MAX_G = 1.6;
 /** Rotating inertia of all four braked wheels, kg·m² (4 × ≈ 1.0, see WHEEL_INERTIA) [S]. */
 const BRAKED_INERTIA = 4;
 /**
@@ -860,16 +863,9 @@ function heldStep(x: Internal, c: VehicleCoupling, engineTorqueNm: number, J: nu
   x.aLong += ((x.vSpeed - v0) / h - x.aLong) * Math.min(1, h / 0.02);
 }
 
-/**
- * Service-brake force at the driven wheels, N (issue #104): full-pedal capacity BRAKE_MAX_G·m·g split between the
- * axles by the static axle load (brake balance ≈ load distribution, Breuer/Bill, Bremsenhandbuch, ch. "Bremskraft-
- * verteilung", docs/research/vehicle.md [B20]) [S]; AWD: all four wheels are driven. 530d: ≈ 0.78·m·g on the rear axle ≈ 3.9 kNm at r = 0.31 m.
- */
+/** Service-brake force at the driven wheels, N (issue #104, vehicle.ts drivenBrakeN). */
 function drivenBrakeN(c: VehicleCoupling, pedalB: number): number {
-  const veh = c.vehicle;
-  const w = veh.massKg * G;
-  const share = veh.driveLayout === "awd" ? 1 : clamp(drivenAxleLoadN(veh, 0) / w, 0, 1);
-  return pedalB * BRAKE_MAX_G * w * gradeOf(c).cos * share;
+  return drivenBrakeForceN(c.vehicle, pedalB, gradeOf(c).cos);
 }
 
 /**

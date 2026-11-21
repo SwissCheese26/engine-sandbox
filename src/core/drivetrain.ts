@@ -30,7 +30,7 @@ import { DEFAULT_TANK_L, FuelTank } from "./fuel-tank.ts";
 import type { Environment } from "./environment.ts";
 import { DEFAULT_TYRE, TYRE_TYPES, aquaplaningFactor, compoundFactor, speedRatingKmh, stepTyreTemp, tyreGrip, tyreRadii } from "./tyres.ts";
 import type { RoadSurface, TyreSetup } from "./tyres.ts";
-import { drivenAxleLoadN, wheelieLimitN } from "./vehicle.ts";
+import { brakeStandHoldN, drivenAxleLoadN, wheelieLimitN } from "./vehicle.ts";
 import { converterK, converterTorques } from "./converter.ts";
 import { GEARBOX_HYST_K, GEARBOX_THERMAL, GEARBOX_WARM_C, gearboxDragPenalty, gearboxThermalKind, gearboxWearRate, stepGearboxOil } from "./gearbox-thermal.ts";
 import { dynoSweep } from "./dyno.ts";
@@ -1269,6 +1269,7 @@ export class Drivetrain {
     // gearbox oil (issue #53): the output shaft turns with the wheels also in N
     const outputRpm = (v / this.vehicle.wheelRadiusM) * s.finalDrive * RAD_TO_RPM;
     this.stepGearboxOil(dt, engine, clutch, inputRpm, outputRpm, converter, Number.isFinite(vRoad) ? vRoad : 0);
+    const torqueLimitNm = converter && brake > 0.05 && pedal > 0.02 && Math.abs(Number.isFinite(vRoad) ? vRoad : 0) < 0.1 ? this.brakeStandLimit(ratio * s.finalDrive, g.efficiency, brake) : 0;
     return {
       vehicle: this.vehicle,
       totalRatio: ratio * s.finalDrive,
@@ -1287,7 +1288,22 @@ export class Drivetrain {
       ...(converter ? { converter } : {}),
       ...(held ? { parkingBrake: true } : {}),
       ...(launchLimitRpm > 0 ? { launchLimitRpm } : {}),
+      ...(torqueLimitNm > 0 ? { torqueLimitNm } : {}),
     };
+  }
+
+  /**
+   * Brake-torque protection of the converter automatic (issues #104, #119): standing in gear with brake and throttle,
+   * engine and gearbox management cap the engine torque so the stall torque at the wheels, T·μ₀·i·η, stays at 90 % of
+   * what the braked driven wheels hold (own brake + μ·N, vehicle.ts). Protects converter and driveline; OEMs manage
+   * combined brake + throttle at standstill (e.g. GM US 11,390,281 B2). Calibration is an estimate [S]. 0 = no cap
+   * needed (the brakes hold full stall, e.g. AWD).
+   */
+  private brakeStandLimit(totalRatio: number, efficiency: number, brake: number): number {
+    const mu0 = Math.max(1, this.spec.converter?.stallTorqueRatio ?? 1);
+    if (!(totalRatio > 0)) return 0;
+    const limit = (0.9 * brakeStandHoldN(this.vehicle, brake, this.st.grip) * this.vehicle.wheelRadiusM) / (mu0 * totalRatio * efficiency);
+    return limit < this.summary.peakTorqueNm ? Math.max(0, limit) : 0;
   }
 
   /**
