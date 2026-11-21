@@ -135,3 +135,19 @@ Modell:
 Ergebnisse (0–100 mit Launch Control, 3 s scharf): Golf 7 GTI baut im Stand ≈ 1,1 bar auf, Skyline R34 ≈ 0,45 bar und kommt auf 5,37 s statt 6,07 s (Fachpresse 5,0 s). Der Ferrari 458 als Sauger hat keine Vorspannung und kommt auf 3,75 s statt 4,0 s (Werk 3,4 s mit LC).
 
 - [B19] Haltech: „How Launch Control Works“, https://support.haltech.com/portal/en/kb/articles/how-launch-control-works
+
+## 10. Kurven und Schräglage (#83)
+
+- Die Strecken „Flachland“, „Mittelgebirge“ und „Alpen“ bekommen neben dem Höhenprofil eine **Krümmung** κ(x) = 1/R als
+  Summe von Sinuswellen mit ganzen Perioden über die Streckenlänge, also stetig und nahtlos wiederholbar. Kleinste
+  Radien: Flachland ≈ 600 m, Mittelgebirge ≈ 150 m, Alpen ≈ 60 m [S]. Das liegt in der Größenordnung der
+  Entwurfsradien von Landstraßen nach RAL (≈ 200–500 m) bzw. engen Passstraßen [B20, S]. Kehren werden nicht
+  abgebildet. „Statisch“ und die Rampen „Berg hoch/runter“ sind gerade.
+- **Schräglage** im stationären Kurvenflug, Punktmasse ohne Reifenbreite: tan φ = v²/(R·g) = v²·κ/g [B21]. Liegt
+  v²·κ über μ·g, reicht der Reibwert nicht. Die Anzeige wird dann signalfarben, ein Sturz wird nicht simuliert.
+  Der Fahrer bremst im Modell nicht vor Kurven, die Schräglage ist die zur gefahrenen Geschwindigkeit nötige.
+
+### Quellen zu §10
+
+- [B20] FGSV: Richtlinien für die Anlage von Landstraßen (RAL), Ausgabe 2012, Entwurfsklassen und Kurvenradien
+- [B21] V. Cossalter: Motorcycle Dynamics, 2. Aufl. 2006, Kap. 1 (Steady turning, roll angle)
