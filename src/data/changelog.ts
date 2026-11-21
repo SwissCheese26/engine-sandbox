@@ -21,9 +21,11 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     date: "2026-11-21",
-    title: "Reifenqualm und Dampf",
+    title: "Zusatzinstrumente im Look jedes Cockpits, Reifenqualm und Dampf",
     items: [
+      { kind: "neu", text: "Neues Zusatzinstrument „Getriebeöl“, rund oder als Balken: gelb ab der Warnschwelle, rot ab dem Notlauf des Getriebesteuergeräts (beim Handschalter ab der Schadensgrenze), passend zur Getriebeart. Es erscheint, sobald ein Fahrzeug auf dem Prüfstand steht.", refs: [53, 83, 109] },
       { kind: "neu", text: "Drehen die Räder durch oder blockieren sie, steigt unter den Instrumenten ein Hauch Reifenqualm auf, je mehr Schlupf und Tempo, desto mehr. Wird der Motor zu heiß, dampft es über dem Cockpit bzw. dem Motor-Schnittbild, bei kritischer Hitze oder Motorschaden dichter. Ein Motorschaden oder viel zu heißes Öl zeigt sich als bläulicher Rauch, ein rußender Diesel als dunkle Wolke. Abschalten lässt sich das unter Einstellungen › Effekte (Rauch/Dampf).", refs: [110, 114] },
+      { kind: "geändert", text: "Die Zusatzinstrumente passen sich jetzt dem Cockpit-Design an: elfenbeinfarbene Blätter mit Chromring im Oldschool, orange Beleuchtung in der Nachtfahrt, tiefe Röhren in der Sportlimousine und kräftige Lkw-Instrumente im Nutzfahrzeug. In Digital, Head-up, Renn-Dash und Motorrad erscheinen sie als Kacheln oder Segmentbalken im Stil des Displays. Grenzwerte bleiben überall gelb.", refs: [83, 109] },
     ],
   },
   {
