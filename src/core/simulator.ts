@@ -493,6 +493,8 @@ export class EngineSimulator {
     s.efficiency = powerKw > 0.5 && fuelGs > 0 ? (powerKw * 1000) / ((fuelGs / 1000) * out.fuelLhv) : 0;
     s.lambda = anyFire ? clamp(out.lambda, 0.3, 99) : 99;
     s.egtC = x.thermal.egtC;
+    // charge-air temperature in the manifold (#105): compressor + intercooler + manifold heating, cycle.ts manifoldTempK
+    s.intakeAirC = TManK - 273.15;
     s.coolantC = x.thermal.coolantC;
     s.oilC = x.thermal.oilC;
     s.oilPressureBar = oilPressureBar(cfg, rpm, x.thermal.oilC);

@@ -3,16 +3,17 @@
 // strip. Built for the chassis dyno; on the engine dyno the speedometer rests and reads "–".
 // Since #94 the former views Renn-Dash and Kompakt are designs here: "race" shows RaceView inside the cluster (lamp
 // strip and cruise line stay), "hud" took over Kompakt's big rpm and power values.
-import type { EngineConfig, EngineSummary } from "../../core/index.ts";
+import type { EngineConfig, EngineSummary, VehicleSystems } from "../../core/index.ts";
 import { fmt } from "../format.ts";
-import { RESERVE_SHARE, TERRAIN_LABELS } from "../../core/index.ts";
+import { RESERVE_SHARE, RETARDER_STAGES, TERRAIN_LABELS } from "../../core/index.ts";
 import { reducedMotion } from "../canvas.ts";
 import { GAS_RAMPS, getSettings, prefs, setSettings } from "../settings.ts";
 import { toUnit } from "../units.ts";
 import { Dial, type DialScale } from "./dial.ts";
 import { DESIGN_CHOICES, FIELD_PRESETS, dialTheme, isCockpitChoice, resolveDesign, type CockpitDesignId, type FieldId, type FieldSet } from "./designs.ts";
-import { driveModeWord, fieldAriaLabel, formatField, intakeAirOf, nextField, shownField, type FieldContext, type FieldInputs } from "./fields-logic.ts";
+import { driveModeWord, fieldAriaLabel, formatField, nextField, shownField, type FieldContext, type FieldInputs } from "./fields-logic.ts";
 import { CockpitExtras } from "./extras.ts";
+import { systemReadings } from "./systems-logic.ts";
 import { economyBand, engineBrakeInfo, truckSpeedScale, truckTachoScale } from "./extras-logic.ts";
 import { BASE_ICON, ICON2 } from "./icons.ts";
 import { ledColors, shiftLights, avgL100, clusterLamps, fuelScale, SPEEDO_SCALES, clampSpeedoKmh, isSpeedoScale, speedoScaleMax, speedoTicks, tachoMax, tachoZones, type Lamp, type LampSet } from "./logic.ts";
@@ -35,6 +36,8 @@ const LAMPS: { k: LampKey; color: "red" | "amber" | "ice"; icon: string; on: str
   { k: "ice", color: "ice", icon: BASE_ICON.ice, on: "Glättegefahr" },
   { k: "fuel", color: "amber", icon: ICON2.fuel, on: "Tankreserve" },
   { k: "gearbox", color: "amber", icon: ICON2.gearbox, on: "Getriebe heiß" },
+  { k: "air", color: "red", icon: ICON2.air, on: "Bremsdruck zu niedrig" },
+  { k: "adblue", color: "amber", icon: ICON2.adblue, on: "AdBlue nachfüllen" },
 ];
 
 /** Shift-light LEDs of the head-up and motorcycle displays (#83). */
@@ -89,6 +92,8 @@ export class CockpitView implements LayoutView {
   private designSel: HTMLSelectElement;
   private fieldBtns: HTMLButtonElement[] = [];
   private fieldCtx: FieldContext = { turbo: false, vehicle: false };
+  /** Vehicle systems of the last frame (#83): the retarder buttons act on them. */
+  private systems: VehicleSystems | undefined;
   private revbar: HTMLElement;
   private arcFill: SVGPathElement;
   private shiftLeds: HTMLElement[];
@@ -160,10 +165,15 @@ export class CockpitView implements LayoutView {
             <div><dt data-ck="bike-cool-label">Kühlmittel</dt><dd data-ck="bike-cool">–</dd></div>
             <div><dt data-ck="bike-tank-label">Tank</dt><dd data-ck="bike-tank">–</dd></div>
             <div><dt>Trip</dt><dd data-ck="bike-trip">–</dd></div>
+            <div data-ck="lean-row" hidden><dt>Schräglage</dt><dd data-ck="bike-lean">–</dd></div>
           </dl>
           <dl class="ck__truck num" aria-label="Nutzfahrzeug-Anzeigen">
             <div data-ck="eb-row" data-state="none"><dt data-ck="eb-label">Motorbremse</dt><dd data-ck="eb">–</dd></div>
             <div data-ck="gov-row" data-state="off"><dt>Begrenzer</dt><dd data-ck="gov">–</dd></div>
+            <div data-ck="air-row" data-state="off"><dt>Druckluft</dt><dd data-ck="air">–</dd></div>
+            <div data-ck="ret-row" data-state="off"><dt>Retarder</dt><dd class="ck__ret"><button type="button" class="ck__btn" data-ck="ret-down" aria-label="Retarderstufe runter">−</button><span data-ck="ret" aria-live="polite">–</span><button type="button" class="ck__btn" data-ck="ret-up" aria-label="Retarderstufe hoch">+</button></dd></div>
+            <div data-ck="adblue-row" data-state="off"><dt>AdBlue</dt><dd data-ck="adblue">–</dd></div>
+            <div data-ck="bat-row" data-state="on"><dt>Batterie</dt><dd data-ck="bat">–</dd></div>
           </dl>
           <dl class="ck__ev num" aria-label="Elektroantrieb" hidden>
             <div class="ck__ev-soc"><dt>Akku</dt><dd data-ck="ev-soc">–</dd></div>
@@ -196,6 +206,13 @@ export class CockpitView implements LayoutView {
     this.out["road"]!.addEventListener("click", () => this.onWantEnvironment());
     this.out["ev-mode"]!.addEventListener("click", () => this.onEvMode());
     this.readyEl = el.querySelector<HTMLElement>("[data-ev-lamp=ready]")!;
+    // retarder stage (#83): − / + like the stalk of a truck; the stage lives in the core VehicleSystems
+    for (const [k, dir] of [["ret-down", -1], ["ret-up", 1]] as const) {
+      this.out[k]!.addEventListener("click", () => {
+        const sys = this.systems;
+        if (sys?.commercial) sys.setRetarderStage(sys.retarderStage + dir);
+      });
+    }
 
     const blank: DialScale = { min: 0, max: 100, major: 20, minor: 10, caption: "" };
     this.speedo = new Dial(blank, { label: "Tacho" });
@@ -475,6 +492,7 @@ export class CockpitView implements LayoutView {
 
   update(f: Frame) {
     const { s, dt } = f;
+    this.systems = f.systems;
     const u = prefs();
     const d = f.drivetrain;
     const ds = d.state;
@@ -616,6 +634,15 @@ export class CockpitView implements LayoutView {
       const gal = u.fuel === "mpg";
       this.put("bike-tank", vehicle ? `${fmt(gal ? d.tank.levelL / 3.785411784 : d.tank.levelL, gal ? 1 : 0)} ${gal ? "gal" : "l"}` : "–");
       this.put("bike-trip", `${fmt(toUnit("distance", tripA.km, u.distance), 1)} ${u.distance}`);
+      // lean angle (#83): only on a route with curves (tan φ = v²/(R·g), core terrain.ts)
+      const r = systemReadings(f, this.cfg);
+      const row = this.out["lean-row"]!;
+      if (row.hidden === r.has.lean) row.hidden = !r.has.lean;
+      if (r.has.lean) {
+        const t = formatField("lean", { leanDeg: r.leanDeg, leanLimit: r.leanLimit } as FieldInputs, u);
+        this.put("bike-lean", `${t.value} ${t.unit}`);
+        row.classList.toggle("is-limit", t.warn);
+      }
     }
   }
 
@@ -710,9 +737,27 @@ export class CockpitView implements LayoutView {
   }
 
   /** Engine brake and top-speed limiter of the truck design (#83). No retarder, air brake or AdBlue: not in the core. */
+  /** Engine brake, limiter, air pressure, retarder stage, AdBlue and battery of the truck design (#83). */
   private updateTruck(f: Frame) {
     const u = prefs();
     const ds = f.drivetrain.state;
+    const r = systemReadings(f, this.cfg);
+    const fi = r as unknown as FieldInputs;
+    const air = formatField("air", fi, u);
+    this.put("air", r.has.commercial ? `${air.value} ${air.unit}` : "–");
+    this.out["air-row"]!.dataset.state = !r.has.commercial ? "off" : r.airWarn ? "warn" : "on";
+    const sys = f.systems;
+    const stage = r.has.commercial && sys ? sys.retarderStage : Number.NaN;
+    const retKw = sys && stage > 0 ? (sys.retarderForceN * Math.max(0, f.s.vehicleSpeedMs ?? 0)) / 1000 : 0;
+    this.put("ret", !Number.isFinite(stage) ? "–" : stage === 0 ? "0 · aus" : retKw >= 1 ? `${stage} · ${fmt(toUnit("power", retKw, u.power))} ${u.power}` : `${stage}`);
+    this.out["ret-row"]!.dataset.state = !Number.isFinite(stage) ? "none" : stage > 0 ? "active" : "on";
+    (this.out["ret-down"] as HTMLButtonElement).disabled = !(stage > 0);
+    (this.out["ret-up"] as HTMLButtonElement).disabled = !(stage < RETARDER_STAGES);
+    const ad = formatField("adblue", fi, u);
+    this.put("adblue", r.has.adblue ? `${ad.value} ${ad.unit}${sys?.adblue.empty ? " · Notlauf" : ""}` : "kein SCR");
+    this.out["adblue-row"]!.dataset.state = !r.has.adblue ? "none" : r.adblueReserve ? "warn" : "on";
+    const bat = formatField("battery", fi, u);
+    this.put("bat", `${bat.value} ${bat.unit}`);
     const eb = engineBrakeInfo(this.cfg, !!f.s.engineBrakeActive, f.s.powerKw, u);
     this.put("eb", eb.value);
     const row = this.out["eb-row"]!;
@@ -776,8 +821,8 @@ export class CockpitView implements LayoutView {
     const d = f.drivetrain;
     const ds = d.state;
     const vehicle = f.mode === "vehicle";
-    const intakeAirC = intakeAirOf(s);
-    this.fieldCtx = { ...this.fieldCtx, vehicle, intakeAir: Number.isFinite(intakeAirC) };
+    const r = systemReadings(f, this.cfg);
+    this.fieldCtx = { ...this.fieldCtx, vehicle, intakeAir: r.has.intake, commercial: r.has.commercial, adblue: r.has.adblue, lean: r.has.lean };
     const avg = avgL100(f.trip.tripA.km, f.trip.tripA.fuelL);
     const v: FieldInputs = {
       coolantC: s.coolantC, oilC: s.oilC, oilPressureBar: s.oilPressureBar, boostBar: s.boostBar, egtC: s.egtC,
@@ -786,7 +831,7 @@ export class CockpitView implements LayoutView {
       avgL100: Number.isFinite(avg) ? avg : l100Now, powerKw: s.powerKw, torqueNm: s.torqueNm, lambda: s.lambda,
       altitudeM: (d.environment.terrain ?? "static") === "static" ? Number.NaN : ds.roadAltitudeM ?? Number.NaN,
       gradePct: ds.roadGradePct ?? d.environment.gradePct, t0to100S: ds.t0to100S, t0to100Running: ds.t0to100Running,
-      ambientC: d.environment.ambientC, airCooled: airCooled(this.cfg), intakeAirC,
+      ambientC: d.environment.ambientC, airCooled: airCooled(this.cfg), ...r,
       gearboxOilC: vehicle ? ds.gearboxOilC ?? Number.NaN : Number.NaN, gearboxOilWarn: !!ds.gearboxOilWarn,
     };
     stored.forEach((storedId: FieldId, i) => {
@@ -852,6 +897,7 @@ export class CockpitView implements LayoutView {
       fuelReserve: vehicle ? d.tank.reserve : undefined,
       parkingBrake: vehicle ? !!ds.parkingBrake : undefined,
       gearbox: vehicle ? { hot: !!ds.gearboxOilWarn, protect: !!ds.gearboxProtect, failed: !!ds.gearboxFailed } : undefined,
+      ...lampSystems(f, this.cfg),
     });
     // electric car (#108): Ready lamp, no oil / coolant / glow / alternator lamps
     const evl = this.ev && s.ev ? evLamps(set, { ready: s.ev.ready, ignition: f.ignition, soc: s.ev.soc, warnings: s.warnings.map((w) => w.code) }) : null;
@@ -872,4 +918,13 @@ export class CockpitView implements LayoutView {
       n.setAttribute("aria-label", `${l.on}: ${st === "off" ? "aus" : st === "blink" ? "blinkt" : "an"}`);
     }
   }
+}
+
+/** Air-pressure and AdBlue lamps (#83): only where the vehicle has them. */
+function lampSystems(f: Frame, cfg: EngineConfig): { airLow?: boolean; adblue?: { reserve: boolean; empty: boolean } } {
+  const r = systemReadings(f, cfg);
+  return {
+    airLow: r.has.commercial ? r.airWarn : undefined,
+    adblue: r.has.adblue ? { reserve: r.adblueReserve, empty: !!f.systems?.adblue.empty } : undefined,
+  };
 }

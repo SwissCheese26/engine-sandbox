@@ -21,7 +21,7 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     date: "2026-11-21",
-    title: "Elektroautos mit E-Tuner und E-Tacho, Zusatzinstrumente im Look jedes Cockpits, Reifenqualm, aufgeräumter Rollenprüfstand, Einstellungen pro Fahrzeug und Getriebeölkühler",
+    title: "Elektroautos mit E-Tuner und E-Tacho, Zusatzinstrumente im Look jedes Cockpits, Druckluft, Retarder und AdBlue, Kurven mit Schräglage, Reifenqualm, aufgeräumter Rollenprüfstand, Einstellungen pro Fahrzeug und Getriebeölkühler",
     items: [
       { kind: "neu", text: "Elektroautos: Tesla Model S Long Range, Model S Plaid, Model X Plaid, Model Y Performance, Lucid Air Sapphire, VW ID.3 und ID.4 GTX. Sie stehen mit ⚡ in der Fahrzeugliste und im Start-Assistenten. Statt Zündschlüssel und Starter gibt es „Ready“, die Motoren hängen ohne Kupplung und Gänge direkt an den Rädern.", refs: [108, 115] },
       { kind: "neu", text: "Echte E-Physik: Der Akku bricht unter Last ein, wird warm und nimmt voll oder kalt kaum Rekuperation an. Gas lupfen und leicht bremsen rekuperiert, Allradler verteilen die Kraft auf die Achse mit Grip. Fahrmodi Chill, Sport und Plaid.", refs: [108, 115] },
@@ -34,6 +34,11 @@ export const CHANGELOG: ChangelogEntry[] = [
       { kind: "geändert", text: "Rollenprüfstand aufgeräumt: Jede Einstellung gibt es nur noch einmal. Oben stehen die Anzeigen (Gang, Tempo, Vmax, 0–100, Getriebeöl, Tankinhalt, Bordcomputer), darunter die Abschnitte „Getriebe“ (Getriebeart, Achsübersetzung, Ölkühler, Gänge und Zugkraftdiagramm), „Fahrzeug & Reifen“ (Fahrzeugtyp, fertiges Fahrzeug, Vmax-Begrenzer, Karosserie, Reifen) und „Umwelt & Assistenten“. Die berechnete Vmax steht nur noch einmal, unter dem Zugkraftdiagramm.", refs: [112, 113] },
       { kind: "geändert", text: "Einstellungen gelten pro Fahrzeug: Eigene Gänge, Getriebeart, Achsübersetzung, Reifen, Antrieb, Karosserie, Tankgröße, Vmax-Begrenzer und Ölkühler bleiben beim Fahrzeug, an dem du sie geändert hast. Ein anderes Fahrzeug startet im Werkszustand, beim Zurückwechseln sind deine Änderungen wieder da. Bisher gespeicherte Gänge übernimmt das zuletzt gefahrene Fahrzeug.", refs: [112, 113] },
       { kind: "neu", text: "„Auf Werkszustand zurücksetzen“ unter „Fahrzeug & Reifen“ verwirft die eigenen Änderungen am aktuellen Fahrzeug.", refs: [112, 113] },
+      { kind: "neu", text: "Lkw und Bus haben jetzt Druckluftbremsen: Der Kompressor füllt den Vorrat bis 10 bar, jede Bremsung kostet Luft. Unter 5,5 bar leuchtet die rote Warnleuchte, unter 4,5 bar greifen die Federspeicher. Der Druck steht im Nutzfahrzeug-Design und als Zusatzinstrument „Druckluft“.", refs: [83, 117] },
+      { kind: "neu", text: "Retarder für Lkw und Bus: Stufe 0–5 mit „−“ und „+“ im Nutzfahrzeug-Design, daneben die Bremsleistung. Er bremst bei Tempo kräftig und lässt bei Schrittgeschwindigkeit nach, zum Anhalten braucht es die Bremse.", refs: [83, 117] },
+      { kind: "neu", text: "AdBlue bei Dieseln mit SCR: Der Tank leert sich mit etwa 5 % des Dieselverbrauchs. Bei Reserve leuchtet die AdBlue-Leuchte, ist er leer, blinkt sie und der Motor läuft im Notlauf mit weniger Leistung. Beim Tanken wird AdBlue mit aufgefüllt.", refs: [83, 117] },
+      { kind: "neu", text: "Neue Anzeigen in allen Cockpits: Ansauglufttemperatur und Batteriespannung (12,6 V aus, rund 14,2 V bei laufendem Motor, beim Lkw 24-V-Bordnetz), auch in der Prüfzelle.", refs: [83, 105, 117] },
+      { kind: "neu", text: "Flachland, Mittelgebirge und Alpen haben jetzt Kurven. Auf dem Motorrad zeigt das Cockpit die Schräglage, die das Tempo in der Kurve verlangt, in Signalfarbe, wenn der Reifen das nicht mehr hält.", refs: [83, 117] },
       { kind: "neu", text: "Getriebeölkühler wählbar: „Serie“, „Ölkühler (Zubehör)“ (Luft-Öl-Kühler im Fahrtwind, kühlt bei schneller Fahrt deutlich, im Stand kaum) und „Aus“ bei Getrieben, die ab Werk einen Kühler haben.", refs: [112, 113, 100] },
     ],
   },

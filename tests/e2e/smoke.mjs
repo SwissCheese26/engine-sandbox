@@ -823,11 +823,12 @@ async function cockpitExtras(page, label) {
   const deckH0 = await deckHeight(page);
   await page.click(".ck__extras > summary");
   // gearbox oil (#53) is offered on the chassis dyno, where the cockpit drives here
-  for (const id of ["oilP", "oilT", "gearOil", "lambda", "egt"]) await page.check(`.ck__extras [data-gauge="${id}"]`);
+  // intake air (#105) and battery (#83) are offered with every engine
+  for (const id of ["oilP", "oilT", "gearOil", "lambda", "egt", "intake", "battery"]) await page.check(`.ck__extras [data-gauge="${id}"]`);
   await page.check('.ck__extras [data-control="ck-tune"]');
   await page.waitForTimeout(250);
   const pods = await page.$$eval(".ck-pod:not([hidden])", (n) => n.map((e) => e.dataset.pod));
-  if (pods.join("|") !== "oilP|oilT|gearOil|lambda|egt") failures.push(`${label}: Zusatzinstrumente falsch (${pods.join(", ")})`);
+  if (pods.join("|") !== "oilP|oilT|gearOil|lambda|egt|intake|battery") failures.push(`${label}: Zusatzinstrumente falsch (${pods.join(", ")})`);
   if (!(await page.isVisible('.ck__tune [data-tune="limit"]'))) failures.push(`${label}: Tuning-Leiste ohne Leistungsgrenze`);
   if (label !== "desktop") {
     const minH = await page.$$eval(".ck__extras > summary, .ck__extras .ck-chk", (n) => Math.min(...n.map((e) => e.getBoundingClientRect().height)));
@@ -849,9 +850,9 @@ async function cockpitExtras(page, label) {
     stored: JSON.parse(localStorage.getItem("pruefzelle.settings") ?? "{}"),
   }));
   // the digital design shows "Balken" as its own segment bars
-  if (bar.style !== "segment" || bar.bars !== 5) failures.push(`${label}: Balkenanzeigen fehlen (${JSON.stringify({ style: bar.style, bars: bar.bars })})`);
+  if (bar.style !== "segment" || bar.bars !== 7) failures.push(`${label}: Balkenanzeigen fehlen (${JSON.stringify({ style: bar.style, bars: bar.bars })})`);
   if (bar.sw > 0) failures.push(`${label}: Zusatzanzeigen scrollen horizontal (${bar.sw} px)`);
-  if (JSON.stringify(bar.stored.ckGauges) !== JSON.stringify(["oilP", "oilT", "gearOil", "lambda", "egt"]) || bar.stored.ckGaugeStyle !== "bar" || bar.stored.ckTuneBar !== true) {
+  if (JSON.stringify(bar.stored.ckGauges) !== JSON.stringify(["oilP", "oilT", "gearOil", "lambda", "egt", "intake", "battery"]) || bar.stored.ckGaugeStyle !== "bar" || bar.stored.ckTuneBar !== true) {
     failures.push(`${label}: Zusatzanzeigen nicht gespeichert (${JSON.stringify([bar.stored.ckGauges, bar.stored.ckGaugeStyle, bar.stored.ckTuneBar])})`);
   }
   await page.locator(".ck").screenshot({ path: join(outDir, `smoke-${label}-design-extras-bar.png`) });
@@ -932,6 +933,46 @@ async function autoTruck(page, label) {
   const park = await page.evaluate(() => ({ design: document.querySelector(".ck")?.dataset.design, lamp: document.querySelector('.ck [data-lamp="park"]')?.dataset.state }));
   if (park.design !== "truck" || park.lamp !== "on") failures.push(`${label}: Nutzfahrzeug-Design ohne (P)-Leuchte bei Feststellbremse (${JSON.stringify(park)})`);
   if (!(await page.isVisible('.ck [data-lamp="park"]'))) failures.push(`${label}: (P)-Leuchte im Nutzfahrzeug-Design nicht sichtbar`);
+  await truckSystems(page, label);
+}
+
+/**
+ * #83 air brake, retarder, AdBlue, battery: the truck design shows them (retarder − / +), and with the air and
+ * retarder gauges chosen every design shows them in its own style; no horizontal scroll, the control bar stays still.
+ */
+async function truckSystems(page, label) {
+  const deckH0 = await deckHeight(page);
+  await page.click('.ck [data-ck="ret-up"]');
+  await page.click('.ck [data-ck="ret-up"]');
+  await page.waitForTimeout(200);
+  const t = await page.evaluate(() => {
+    const q = (k) => document.querySelector(`.ck [data-ck="${k}"]`);
+    const dl = document.querySelector(".ck__truck");
+    return { air: q("air")?.textContent, ret: q("ret")?.textContent, ad: q("adblue")?.textContent, bat: q("bat")?.textContent, airLamp: document.querySelector('.ck [data-lamp="air"]')?.dataset.state, over: [...dl.querySelectorAll("div")].some((d) => d.scrollWidth > d.clientWidth + 1) };
+  });
+  if (!/^\d+,\d bar$/.test(t.air ?? "")) failures.push(`${label}: Druckluft im Nutzfahrzeug-Design fehlt (${t.air})`);
+  if (!/^2\b/.test(t.ret ?? "")) failures.push(`${label}: Retarderstufe nicht 2 nach zweimal + (${t.ret})`);
+  if (!/%|kein SCR/.test(t.ad ?? "")) failures.push(`${label}: AdBlue-Anzeige fehlt (${t.ad})`);
+  if (!/^\d+,\d V$/.test(t.bat ?? "")) failures.push(`${label}: Batteriespannung fehlt (${t.bat})`);
+  if (t.airLamp !== "off") failures.push(`${label}: Bremsdruck-Leuchte bei vollem Vorrat an`);
+  if (t.over) failures.push(`${label}: Nutzfahrzeug-Anzeigen laufen über`);
+  await page.locator(".ck").screenshot({ path: join(outDir, `smoke-${label}-design-truck-systems.png`) });
+  await page.click(".ck__extras > summary");
+  for (const id of ["air", "retarder", "adblue"]) await page.check(`.ck__extras [data-gauge="${id}"]`);
+  await page.click(".ck__extras > summary");
+  for (const id of DESIGNS) {
+    await page.selectOption('select[data-control="ck-design"]', id);
+    await page.waitForTimeout(200);
+    const r = await page.evaluate(() => ({
+      pods: [...document.querySelectorAll(".ck-pod:not([hidden])")].map((p) => p.dataset.pod),
+      sw: document.documentElement.scrollWidth - window.innerWidth,
+    }));
+    if (!r.pods.includes("air") || !r.pods.includes("retarder")) failures.push(`${label}: Design ${id} ohne Druckluft/Retarder beim Lkw (${r.pods.join(", ")})`);
+    if (r.sw > 0) failures.push(`${label}: Design ${id} scrollt beim Lkw horizontal (${r.sw} px)`);
+    await page.locator(".ck__console").screenshot({ path: join(outDir, `smoke-${label}-truck-extras-${id}.png`) });
+  }
+  await page.selectOption('select[data-control="ck-design"]', "auto");
+  await deckStaysStill(page, label, deckH0);
 }
 
 // "Fehler melden" in the sandbox header (#55): dialog opens, the link targets the issue form with the diagnosis,

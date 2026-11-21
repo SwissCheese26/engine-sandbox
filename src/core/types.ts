@@ -420,6 +420,8 @@ export interface EngineState {
   lambda: number;
   /** Exhaust gas temperature before turbine, °C. */
   egtC: number;
+  /** Charge-air temperature in the intake manifold, °C (issue #105; diesel.md §3.1, petrol.md §3.2c). */
+  intakeAirC?: number;
   coolantC: number;
   oilC: number;
   oilPressureBar: number;
