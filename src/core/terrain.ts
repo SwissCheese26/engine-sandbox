@@ -99,3 +99,36 @@ export function terrainSamples(t: Exclude<Terrain, "static">, n = 120): { length
   for (let i = 0; i <= n; i++) altitudeM.push(terrainAt(t, (i / n) * lengthM * (t === "uphill" || t === "downhill" ? 0.999 : 1)).altitudeM);
   return { lengthM, altitudeM };
 }
+
+// ── curves (issue #83, docs/research/vehicle.md §10) ────────────────────────────────────────────────────────────
+// Curvature κ = 1/R as a sum of sines with whole periods over the route (continuous, repeats seamlessly). Peak κ of
+// the sum = smallest radius: flat ≈ 600 m, hills ≈ 150 m, alps ≈ 60 m [S]. Static and the ramps are straight.
+const CURVES: Record<"flat" | "hills" | "alps", Wave[]> = {
+  flat: [{ a: 1 / 900, k: 9, p: 0.3 }, { a: 1 / 1800, k: 23, p: 1.1 }],
+  hills: [{ a: 1 / 220, k: 25, p: 0.7 }, { a: 1 / 450, k: 61, p: 2.4 }],
+  alps: [{ a: 1 / 90, k: 60, p: 1.5 }, { a: 1 / 180, k: 151, p: 0.2 }],
+};
+
+/** The route has curves (flat, hills, alps). */
+export function terrainCurved(t: Terrain): t is "flat" | "hills" | "alps" {
+  return t in CURVES;
+}
+
+/** Signed curvature 1/R at a position along the route, 1/m (+ = left-hand bend); 0 on straight routes. */
+export function curvatureAt(t: Terrain, positionM: number): number {
+  if (!terrainCurved(t)) return 0;
+  const x = Number.isFinite(positionM) ? positionM : 0;
+  const L = PROFILES[t].lengthM;
+  let k = 0;
+  for (const w of CURVES[t]) k += w.a * Math.sin(((TAU * w.k) / L) * x + w.p);
+  return k;
+}
+
+/**
+ * Steady-state lean angle of a motorcycle in a bend, degrees (+ = left): tan φ = v²·κ / g, point mass without tyre
+ * width (Cossalter, Motorcycle Dynamics §1; vehicle.md §10). `limit` when v²·κ exceeds μ·g (the tyres could not hold it).
+ */
+export function leanAngle(speedMs: number, curvature: number, mu = Infinity): { deg: number; limit: boolean } {
+  const ay = (Number.isFinite(speedMs) ? speedMs : 0) ** 2 * (Number.isFinite(curvature) ? curvature : 0);
+  return { deg: (Math.atan(ay / 9.81) * 180) / Math.PI, limit: Math.abs(ay) > mu * 9.81 };
+}
