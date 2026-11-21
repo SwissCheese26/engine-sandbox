@@ -109,6 +109,20 @@ export async function evChecks({ browser, base, outDir, failures, errors, label,
     if (id === "race" && r.raceLabel !== "kW") bad.push("Renn-Dash ohne kW");
     if (id === "motorrad" && r.bikeTank !== "Akku") bad.push("Motorrad-TFT ohne Akku");
     if (r.overflow > 0) bad.push(`horizontaler Überlauf ${r.overflow} px`);
+    if (id === "etacho") {
+      // review #115: the speed fits its box, the power meter sits on top (no empty speedometer box beside it)
+      const geo = await page.evaluate(() => {
+        const ck = document.querySelector(".ck");
+        const sp = ck.querySelector(".ck__speed");
+        const lamps = ck.querySelector(".ck__lamps").getBoundingClientRect();
+        const dial = ck.querySelector(".ck__dial--rpm canvas").getBoundingClientRect();
+        const mfd = ck.querySelector(".ck__mfd").getBoundingClientRect();
+        const spr = sp.getBoundingClientRect();
+        return { clipped: sp.scrollWidth > sp.clientWidth + 1 || spr.right > mfd.right + 1, gap: Math.round(dial.top - lamps.bottom), dialAboveMfd: dial.bottom <= mfd.top + 1 };
+      });
+      if (geo.clipped) bad.push(`Tempo abgeschnitten (${JSON.stringify(geo)})`);
+      if (geo.gap > 24) bad.push(`Leistungsanzeige ${geo.gap} px unter den Leuchten`);
+    }
     if (bad.length) fail(`Cockpit-Design ${id}: ${bad.join(", ")} (${JSON.stringify(r)})`);
     await page.screenshot({ path: join(outDir, `smoke-${label}-ev-cockpit-${id}.png`) });
     await page.keyboard.up("w");
@@ -181,13 +195,22 @@ export async function evChecks({ browser, base, outDir, failures, errors, label,
   await page.keyboard.down("s");
   await page.waitForFunction(() => (window.__pruefzelle?.gearbox.drivetrain.state.speedKmh ?? 99) < 0.5, null, { timeout: 30000 }).catch(() => fail("bremst nicht bis zum Stand (getunt)"));
   await page.keyboard.up("s");
-  await page.click('.evp [data-control="tune-reset"]');
+  // the Fahrzeug-Platte's "Auf Werkszustand zurücksetzen" forgets the E-Tuner setup too (review #115)
+  await page.click('.vehicle [data-control="factory-reset"]');
   await page.waitForTimeout(300);
   const back = await page.evaluate(() => ({
     power: document.querySelector('.evp [data-o="t-power"]')?.textContent ?? "",
     stored: JSON.parse(localStorage.getItem("pruefzelle.evTuning") ?? "{}")["ev-tesla-model-s-plaid"] ?? null,
     motors: window.__pruefzelle?.gearbox.drivetrain.ev?.motors.length,
   }));
-  if (!/^1\.0\d\d PS/.test(back.power) || back.stored || back.motors !== 3) fail(`„Auf Werkszustand zurücksetzen“ klappt nicht (${JSON.stringify(back)})`);
+  if (!/^1\.0\d\d PS/.test(back.power) || back.stored || back.motors !== 3) fail(`„Auf Werkszustand zurücksetzen“ (Fahrzeug-Platte) klappt nicht (${JSON.stringify(back)})`);
+  // the E-Tuner's own reset button does the same
+  await set("frontMotors", 2);
+  await page.click('.evp [data-control="tune-apply"]');
+  await page.waitForTimeout(200);
+  await page.click('.evp [data-control="tune-reset"]');
+  await page.waitForTimeout(300);
+  const back2 = await page.evaluate(() => ({ stored: JSON.parse(localStorage.getItem("pruefzelle.evTuning") ?? "{}")["ev-tesla-model-s-plaid"] ?? null, motors: window.__pruefzelle?.gearbox.drivetrain.ev?.motors.length }));
+  if (back2.stored || back2.motors !== 3) fail(`„Auf Werkszustand zurücksetzen“ (E-Tuner) klappt nicht (${JSON.stringify(back2)})`);
   await page.close();
 }

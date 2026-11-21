@@ -157,7 +157,12 @@ export function tuneEv(base: EvConfig, tIn: EvTuning): TunedEv {
   const series = sameCell
     ? t.highVoltage === baseHv ? b0.seriesCells : t.highVoltage ? b0.seriesCells * 2 : Math.round(b0.seriesCells / 2)
     : Math.round((t.highVoltage ? 740 : 370) / cell.vNom);
-  const parallel = Math.max(1, Math.round((t.packKwh * 1000) / (series * cell.vNom * cellAh)));
+  // the car's own cell scales its parallel count from the factory pack (an untouched tuner is the factory car);
+  // another cell type is sized from its nominal voltage
+  const baseKwh = Math.round(evPackKwh(base));
+  const parallel = sameCell
+    ? Math.max(1, Math.round((b0.parallelCells * (t.packKwh / baseKwh) * b0.seriesCells) / series))
+    : Math.max(1, Math.round((t.packKwh * 1000) / (series * cell.vNom * cellAh)));
   const ah = parallel * cellAh;
   let c = t.cRate;
   if (c > cell.maxC) {
@@ -209,6 +214,30 @@ export interface EvEstimate {
  * consumption is rolling resistance at WLTP speeds [S], electric.md §6).
  */
 export function estimateEv(setup: CarSetup, tuned: TunedEv): EvEstimate {
+  const it = estimateSteps(setup, tuned);
+  let r = it.next();
+  while (!r.done) r = it.next();
+  return r.value;
+}
+
+/**
+ * The same estimate in slices (≈ 0.5 s of simulated driving per slice), so the UI can run it without blocking a
+ * frame: `cancel()` stops it, `done` receives the result.
+ */
+export function estimateEvAsync(setup: CarSetup, tuned: TunedEv, done: (e: EvEstimate) => void): { cancel(): void } {
+  const it = estimateSteps(setup, tuned);
+  let stop = false;
+  const slice = () => {
+    if (stop) return;
+    const r = it.next();
+    if (r.done) done(r.value);
+    else setTimeout(slice, 0);
+  };
+  setTimeout(slice, 0);
+  return { cancel: () => (stop = true) };
+}
+
+function* estimateSteps(setup: CarSetup, tuned: TunedEv): Generator<void, EvEstimate, void> {
   const cfg = defaultConfig("petrol");
   const d = new Drivetrain(cfg, summarize(cfg));
   const tyre = { ...setup.tyre, type: tuned.tuning.tyre };
@@ -223,6 +252,7 @@ export function estimateEv(setup: CarSetup, tuned: TunedEv): EvEstimate {
     const vehicle = d.inputs(h, sim.state, 1, 0);
     const s = sim.step(h, { ...inp, vehicle, pedal: d.effectivePedal(1) });
     if (s.ev?.limitedBy === "traction" && s.vehicleSpeedMs! < 15) traction++;
+    if (i % 30 === 29) yield;
   }
   const rated = tuned.ev.ratedKwhPer100 ?? 18;
   const m0 = setup.vehicle.massKg;

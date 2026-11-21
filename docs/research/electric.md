@@ -172,7 +172,9 @@ Vmax ist bei allen Autos elektronisch begrenzt (Motorhöchstdrehzahl und Softwar
 Siehe `tests/core/ev-library.test.ts`. Ehrlich dokumentierte Ausreißer:
 
 - **Model S Plaid** und **Lucid Air Sapphire** sind auf trockenem Asphalt mit dem UHP-Reifen des Modells
-  (μ = 1,15, Bremswert) **haftungsbegrenzt**: ≈ 2,55 s (mit Rollout) statt 2,1 / 2,0 s. Die Werkszeiten entstehen auf
+  (μ = 1,15, Bremswert) **haftungsbegrenzt**. Dazu kommt, dass der Reifen beim Start noch kalt ist (UHP: Faktor
+  0,95 bis 30 °C Lauffläche, also μ ≈ 1,09 auf den ersten Metern) und die Traktionsregelung mit 3 % Abstand zum
+  Haftungsmaximum arbeitet (0,97·μ·N, §4.3). Das Ergebnis: ≈ 2,55 s (mit Rollout) statt 2,1 / 2,0 s. Die Werkszeiten entstehen auf
   präpariertem Belag mit warmen Pilot Sport 4S (μ ≈ 1,3); mit Haftungsfaktor 1,15 (μ ≈ 1,32) liegt das Modell bei
   ≈ 2,25 / 2,2 s, also innerhalb ±12 %.
 - **VW ID.3 / ID.4 GTX** sind im Modell ≈ 8 … 10 % schneller als die Werksangabe. VW gibt die Zeit konservativ an;
@@ -187,5 +189,5 @@ Physikalische Grenzen (`ev-tuning.ts`):
 - Wechselrichterstrom ×0,5 … ×2, Sättigung I^0,75 (§2.2), höchstens 2500 A je Wechselrichter **[S]**.
 - Akku 30 … 200 kWh (≈ 160 Wh/kg), C-Rate 1 … 15 (Hochleistungszellen), 400- oder 800-V-Klasse.
 - Der gesamte Akkustrom ist durch Hochvolt-Schütze, Sicherung und Stromschienen auf ≈ 3000 A begrenzt **[S]**. Bei
-  400 V sind damit ≈ 1,1 MW möglich; erst 800 V bringt ≈ 2 MW (≈ 2800 … 3000 PS).
+  400 V sind damit ≈ 1,1 MW möglich; erst 800 V bringt ≈ 2 MW (bis etwa 2800 PS).
 - Darüber entscheidet die Haftung: 2000 kW auf 2,5 t sind bei μ = 1,15 nur oberhalb ≈ 250 km/h nutzbar.

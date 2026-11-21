@@ -230,8 +230,25 @@
     font-size: clamp(44px, 6vw, 72px);
   }
 }
+.ck[data-design="etacho"] .ck__speed {
+  min-width: 0;
+  white-space: nowrap;
+}
+/* phones: no empty speedometer box next to the power meter; the design/scale pickers move below the display */
+@media (max-width: 700px) {
+  .ck[data-design="etacho"] {
+    grid-template-areas: "lamps lamps" "rpm rpm" "minis minis" "mfd mfd" "speed speed" "cruise cruise";
+  }
+  .ck[data-design="etacho"] .ck__dial--rpm {
+    width: min(100%, 300px);
+    justify-self: center;
+  }
+  .ck[data-design="etacho"] .ck__speed {
+    font-size: 40px;
+  }
+}
 .ck[data-design="etacho"] .ck__ev {
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   column-gap: var(--space-4, 16px);
   font-size: var(--fs-16, 16px);
 }

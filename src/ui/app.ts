@@ -3,7 +3,7 @@
 import { EngineSimulator, EvSimulator, TERRAIN_LABELS, defaultInputs, summarize } from "../core/index.ts";
 import type { EvConfig, EvDriveMode } from "../core/index.ts";
 import { EvPanel } from "./ev-panel.ts";
-import { clearEvTuning, loadEvTuning, saveEvTuning } from "./ev-tuning-store.ts";
+import { loadEvTuning, saveEvTuning } from "./ev-tuning-store.ts";
 import { tuneEv, type TunedEv } from "../data/ev-tuning.ts";
 import { nextDriveMode } from "./layouts/ev-logic.ts";
 import { customSetup, loadOwnVehicle, saveOwnVehicle, setOwnVehicleActive, takePendingSetup, type PendingSetup } from "./sandbox-setup.ts";
@@ -337,8 +337,7 @@ export class App {
     };
     this.evPanel.onFactory = () => {
       if (this.gearbox.drivetrain.state.speedKmh > 0.5) return false;
-      clearEvTuning(this.gearbox.vehiclePanel.carId);
-      // reloads the car as delivered (also mass and tyres); syncDrive then sees a new electric configuration
+      // the Fahrzeug-Platte's reset: own changes and E-Tuner setup, car as delivered; syncDrive sees the new config
       this.gearbox.vehiclePanel.resetFactory();
       this.syncDrive();
       this.announce("E-Tuner: Werkszustand.");

@@ -6,7 +6,7 @@ import type { EngineState, EvConfig, EvDriveMode } from "../core/index.ts";
 import { TYRE_TYPES } from "../core/index.ts";
 import type { EvChemistry, TyreType } from "../core/index.ts";
 import type { LibraryCar } from "../data/vehicle-library.ts";
-import { CELLS, COOLING, LIMIT_LABEL as TUNE_LIMIT, PS_PER_KW, TUNING_LIMITS, estimateEv, evTuningOf, maxTuning, tuneEv, validTuning, type EvCooling, type EvTuning, type TunedEv } from "../data/ev-tuning.ts";
+import { CELLS, COOLING, LIMIT_LABEL as TUNE_LIMIT, PS_PER_KW, TUNING_LIMITS, estimateEvAsync, evTuningOf, maxTuning, tuneEv, validTuning, type EvCooling, type EvTuning, type TunedEv } from "../data/ev-tuning.ts";
 import { fmt } from "./format.ts";
 import { prefs } from "./settings.ts";
 import { toUnit } from "./units.ts";
@@ -24,6 +24,7 @@ export class EvPanel {
   private car: LibraryCar | null = null;
   private preview: TunedEv | null = null;
   private estTimer = 0;
+  private estRun: { cancel(): void } | null = null;
   mode: EvDriveMode = "sport";
   /** Set by the app: drive mode changed. */
   onMode: (m: EvDriveMode) => void = () => {};
@@ -160,14 +161,18 @@ export class EvPanel {
     this.put("t-limit", TUNE_LIMIT[p.limit]);
     this.put("t-t100", "…");
     // the drive estimate takes a few ms of simulation: once the input settles
+    // the drive estimate is a few hundred ms of simulation: once the input settles, in slices between frames
     clearTimeout(this.estTimer);
+    this.estRun?.cancel();
     this.estTimer = window.setTimeout(() => {
       if (this.preview !== p || !this.car) return;
-      const e = estimateEv(this.car.setup, p);
-      this.put("t-limit", `${TUNE_LIMIT[p.limit]}${e.tractionLimited ? `, beim Anfahren ${TUNE_LIMIT.traction}` : ""}`);
-      this.put("t-t100", e.t100 === null ? "über 20 s" : `${fmt(e.t100, 1)} s`);
-      this.put("t-range", rangeText(e.rangeKm, u));
-    }, 120);
+      this.estRun = estimateEvAsync(this.car.setup, p, (e) => {
+        if (this.preview !== p) return;
+        this.put("t-limit", `${TUNE_LIMIT[p.limit]}${e.tractionLimited ? `, beim Anfahren ${TUNE_LIMIT.traction}` : ""}`);
+        this.put("t-t100", e.t100 === null ? "über 20 s" : `${fmt(e.t100, 1)} s`);
+        this.put("t-range", rangeText(e.rangeKm, u));
+      });
+    }, 150);
   }
 
   private apply() {

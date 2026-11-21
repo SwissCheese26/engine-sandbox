@@ -6,6 +6,7 @@ import {
 import type { EvMotorConfig, SimInputs } from "../../src/core/index.ts";
 import { defaultConfig } from "../../src/data/presets.ts";
 import { libraryCar } from "../../src/data/vehicle-library.ts";
+import { EV_LIBRARY } from "../../src/data/ev-library.ts";
 import { estimateEv, evTuningOf, maxTuning, tuneEv, validTuning } from "../../src/data/ev-tuning.ts";
 import { driveEv, evRig } from "./ev-run.ts";
 
@@ -240,6 +241,19 @@ describe("EV tuning (electric.md §6)", () => {
     expect(Math.abs(t.deltaKg)).toBeLessThan(1);
     expect(t.ev.battery.seriesCells).toBe(plaid.battery.seriesCells);
     expect(t.ev.motors.length).toBe(3);
+  });
+  test("an untouched tuner is the factory car, for every electric car", () => {
+    for (const c of EV_LIBRARY) {
+      const ev = c.setup.ev!;
+      const t = tuneEv(ev, evTuningOf(ev, c.setup.tyre.type));
+      expect(t.ev.battery.seriesCells).toBe(ev.battery.seriesCells);
+      expect(t.ev.battery.parallelCells).toBe(ev.battery.parallelCells);
+      expect(t.ev.battery.cellAh).toBe(ev.battery.cellAh);
+      expect(t.ev.battery.maxDischargeC).toBeCloseTo(ev.battery.maxDischargeC, 9);
+      expect(t.ev.motors.map((m) => [m.axle, m.peakTorqueNm, m.peakPowerKw, m.inverterA, m.ratio])).toEqual(ev.motors.map((m) => [m.axle, m.peakTorqueNm, m.peakPowerKw, m.inverterA, m.ratio]));
+      expect(t.deltaKg).toBeCloseTo(0, 6);
+      expect(t.systemKw).toBeCloseTo(evSystemPowerKw(ev), 6);
+    }
   });
   test("1 … 4 motors, limits enforced", () => {
     const v = validTuning({ ...factory, frontMotors: 4, rearMotors: 4, cRate: 99, motorScale: -1, tyre: "rubber" }, factory);
