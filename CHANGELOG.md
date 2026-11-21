@@ -4,6 +4,18 @@ Alle sichtbaren Änderungen an der Prüfzelle, neueste zuerst. Aufbau nach [Keep
 
 _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `bun scripts/changelog.ts` ausführen._
 
+## 2026-11-21 – Aufgeräumter Rollenprüfstand, Einstellungen pro Fahrzeug und Getriebeölkühler
+
+### Neu
+
+- „Auf Werkszustand zurücksetzen“ unter „Fahrzeug & Reifen“ verwirft die eigenen Änderungen am aktuellen Fahrzeug. ([#112](https://github.com/SwissCheese26/engine-sandbox/issues/112))
+- Getriebeölkühler wählbar: „Serie“, „Ölkühler (Zubehör)“ (Luft-Öl-Kühler im Fahrtwind, kühlt bei schneller Fahrt deutlich, im Stand kaum) und „Aus“ bei Getrieben, die ab Werk einen Kühler haben. ([#112](https://github.com/SwissCheese26/engine-sandbox/issues/112), [#100](https://github.com/SwissCheese26/engine-sandbox/issues/100))
+
+### Geändert
+
+- Rollenprüfstand aufgeräumt: Jede Einstellung gibt es nur noch einmal. Oben stehen die Anzeigen (Gang, Tempo, Vmax, 0–100, Getriebeöl, Tankinhalt, Bordcomputer), darunter die Abschnitte „Getriebe“ (Getriebeart, Achsübersetzung, Ölkühler, Gänge und Zugkraftdiagramm), „Fahrzeug & Reifen“ (Fahrzeugtyp, fertiges Fahrzeug, Vmax-Begrenzer, Karosserie, Reifen) und „Umwelt & Assistenten“. Die berechnete Vmax steht nur noch einmal, unter dem Zugkraftdiagramm. ([#112](https://github.com/SwissCheese26/engine-sandbox/issues/112))
+- Einstellungen gelten pro Fahrzeug: Eigene Gänge, Getriebeart, Achsübersetzung, Reifen, Antrieb, Karosserie, Tankgröße, Vmax-Begrenzer und Ölkühler bleiben beim Fahrzeug, an dem du sie geändert hast. Ein anderes Fahrzeug startet im Werkszustand, beim Zurückwechseln sind deine Änderungen wieder da. Bisher gespeicherte Gänge übernimmt das zuletzt gefahrene Fahrzeug. ([#112](https://github.com/SwissCheese26/engine-sandbox/issues/112))
+
 ## 2026-11-20 – Engine Builder, Nutzfahrzeug-Cockpit, Getriebeöltemperatur und echte Launch Control
 
 ### Neu
