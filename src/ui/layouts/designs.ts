@@ -83,8 +83,8 @@ export function dialTheme(id: CockpitDesignId): DialTheme {
 /** Values the three fields of the digital design can show, in cycling order. */
 export const FIELD_IDS = [
   "coolant", "oilT", "gearOil", "oilP", "boost", "egt", "fuelNow", "range", "power", "torque", "lambda", "road", "sprint", "ambient",
-  // intake air (#83): offered only once the core reports the charge-air temperature (see fields-logic.ts)
-  "intake",
+  // intake air (#83, #105), board-net voltage; air pressure, retarder (trucks, buses), AdBlue (SCR), lean (bikes on a curved route)
+  "intake", "battery", "air", "retarder", "adblue", "lean",
 ] as const;
 export type FieldId = (typeof FIELD_IDS)[number];
 export type FieldSet = [FieldId, FieldId, FieldId];
@@ -107,19 +107,21 @@ export function validateFields(raw: unknown): FieldSet {
 }
 
 /**
- * Gauges the console strip can show. Each is a value of EngineState. Not offered because the core does not model
- * them: battery voltage (there is only the charge lamp), intake air temperature (not reported yet).
+ * Gauges the console strip can show: values of EngineState and of the vehicle systems (core vehicle-systems.ts,
+ * #83). Each is offered only where the vehicle has it (gaugeAvailable).
  */
-export const GAUGE_IDS = ["boost", "oilP", "oilT", "gearOil", "lambda", "egt"] as const satisfies readonly FieldId[];
+export const GAUGE_IDS = ["boost", "oilP", "oilT", "gearOil", "lambda", "egt", "intake", "battery", "air", "retarder", "adblue", "lean"] as const satisfies readonly FieldId[];
 export type GaugeId = (typeof GAUGE_IDS)[number];
 export type GaugeStyle = "round" | "bar";
 
 export const GAUGE_LABEL: Record<GaugeId, string> = {
   boost: "Ladedruck", oilP: "Öldruck", oilT: "Öltemperatur", gearOil: "Getriebeöl", lambda: "Lambda", egt: "Abgastemperatur",
+  intake: "Ansauglufttemperatur", battery: "Batteriespannung", air: "Druckluft (Vorrat)", retarder: "Retarderstufe", adblue: "AdBlue-Füllstand", lean: "Schräglage",
 };
 /** Captions under the gauges (narrow on phones); the full name is the tooltip and the picker label. */
 export const GAUGE_SHORT: Record<GaugeId, string> = {
   boost: "Ladedruck", oilP: "Öldruck", oilT: "Öltemp.", gearOil: "Getr.-Öl", lambda: "Lambda", egt: "Abgas",
+  intake: "Ansaugl.", battery: "Batterie", air: "Druckluft", retarder: "Retarder", adblue: "AdBlue", lean: "Schräglage",
 };
 
 /** What the console shows for the chosen style in a design: "tile" and "segment" are the screen equivalents. */

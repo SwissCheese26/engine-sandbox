@@ -566,3 +566,30 @@
     grid-column: 1 / -1;
   }
 }
+
+/* truck rows (#83): air pressure, retarder stage with − / +, AdBlue, battery; two per line */
+.ck__truck div:nth-child(odd) {
+  border-left: 0;
+}
+.ck__truck div:nth-child(n + 3) {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.ck__truck [data-state="warn"] dd {
+  color: var(--ck-red, #ff4d3d);
+}
+.ck__ret {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+.ck__ret .ck__btn {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0 var(--space-1);
+  flex: none;
+}
+.ck__ret span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

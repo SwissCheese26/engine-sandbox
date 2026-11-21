@@ -479,6 +479,8 @@ export class EngineSimulator {
     s.efficiency = powerKw > 0.5 && fuelGs > 0 ? (powerKw * 1000) / ((fuelGs / 1000) * out.fuelLhv) : 0;
     s.lambda = anyFire ? clamp(out.lambda, 0.3, 99) : 99;
     s.egtC = x.thermal.egtC;
+    // charge-air temperature in the manifold (#105): compressor + intercooler + manifold heating, cycle.ts manifoldTempK
+    s.intakeAirC = TManK - 273.15;
     s.coolantC = x.thermal.coolantC;
     s.oilC = x.thermal.oilC;
     s.oilPressureBar = oilPressureBar(cfg, rpm, x.thermal.oilC);
@@ -538,7 +540,7 @@ function gradeOf(c: VehicleCoupling): { sin: number; cos: number } {
 }
 
 /** Brake system force capacity at full pedal, in g: enough to lock any tyre (ABS: issue #23) [S]. */
-const BRAKE_MAX_G = 1.6;
+export const BRAKE_MAX_G = 1.6;
 /** Rotating inertia of all four braked wheels, kg·m² (4 × ≈ 1.0, see WHEEL_INERTIA) [S]. */
 const BRAKED_INERTIA = 4;
 /**

@@ -1,7 +1,7 @@
 // Cockpit extras (#83), pure and DOM-free so they are unit-tested: the additional gauges of the console strip
 // ("Zusatzinstrumente" like in a tuner car), the scales of the truck/bus design and the tuning bar. Everything shown
 // here is a value the core reports or a value of the engine configuration; nothing is estimated in the UI.
-import type { EngineConfig, EngineLimits, FuelKind, GearboxThermalSpec, WarningCode } from "../../core/index.ts";
+import { AIR_SPRING_BAR, AIR_WARN_BAR, RETARDER_STAGES, type EngineConfig, type EngineLimits, type FuelKind, type GearboxThermalSpec, type WarningCode } from "../../core/index.ts";
 import { fmt } from "../format.ts";
 import type { UnitPrefs } from "../settings.ts";
 import { toUnit } from "../units.ts";
@@ -11,14 +11,49 @@ import { torqueAt, type CurvePoint } from "./logic.ts";
 // ── additional gauges ────────────────────────────────────────────────────────────────────────────────────────────
 // (ids, labels and validation live in designs.ts, next to the field ids, so settings.ts stays free of unit code)
 
+/** What the engine and the vehicle on the dyno have (which gauges can show something). */
+export interface GaugeContext {
+  turbo: boolean;
+  gearOil?: boolean;
+  /** The core reports the charge-air temperature (#105). */
+  intake?: boolean;
+  /** Truck or bus on the chassis dyno: air brake and retarder (#83). */
+  commercial?: boolean;
+  /** SCR diesel in a vehicle (#83). */
+  adblue?: boolean;
+  /** Motorcycle on a route with curves (#83). */
+  lean?: boolean;
+}
+
 /**
  * Boost only on charged engines; the gearbox oil only while a vehicle is on the dyno and the drivetrain reports its
- * temperature (#53, DrivetrainState.gearboxOilC); the others always.
+ * temperature (#53, DrivetrainState.gearboxOilC); air pressure and retarder on trucks and buses, AdBlue with SCR,
+ * lean on a motorcycle on a curved route (#83); the others always.
  */
-export function gaugeAvailable(id: GaugeId, c: { turbo: boolean; gearOil?: boolean }): boolean {
-  if (id === "boost") return c.turbo;
-  if (id === "gearOil") return !!c.gearOil;
-  return true;
+export function gaugeAvailable(id: GaugeId, c: GaugeContext): boolean {
+  switch (id) {
+    case "boost": return c.turbo;
+    case "gearOil": return !!c.gearOil;
+    case "intake": return !!c.intake;
+    case "air":
+    case "retarder": return !!c.commercial;
+    case "adblue": return !!c.adblue;
+    case "lean": return !!c.lean;
+    default: return true;
+  }
+}
+
+/** Why a gauge cannot be chosen (tooltip of its disabled checkbox). */
+export function gaugeUnavailableHint(id: GaugeId): string {
+  switch (id) {
+    case "gearOil": return "Nur mit Fahrzeug auf dem Prüfstand";
+    case "boost": return "Saugmotor: kein Ladedruck";
+    case "air":
+    case "retarder": return "Nur Lkw und Bus auf dem Prüfstand";
+    case "adblue": return "Nur Diesel mit SCR im Fahrzeug";
+    case "lean": return "Nur Motorrad auf einer kurvigen Strecke";
+    default: return "";
+  }
 }
 
 /** Toggles one gauge in a choice (kept in strip order). */
@@ -42,7 +77,7 @@ export interface GaugeScale {
 export type GearOilLimits = Pick<GearboxThermalSpec, "warnC" | "protectC" | "damageC">;
 
 /** Scale of a gauge in display units. Limit zones come from EngineLimits (limits.ts), never from the UI. */
-export function gaugeScale(id: GaugeId, lim: EngineLimits, fuel: FuelKind, u: UnitPrefs, gear?: GearOilLimits): GaugeScale {
+export function gaugeScale(id: GaugeId, lim: EngineLimits, fuel: FuelKind, u: UnitPrefs, gear?: GearOilLimits, sys?: 1 | 2): GaugeScale {
   const T = (c: number) => toUnit("temp", c, u.temp);
   const P = (b: number) => toUnit("pressure", b, u.pressure);
   switch (id) {
@@ -77,6 +112,25 @@ export function gaugeScale(id: GaugeId, lim: EngineLimits, fuel: FuelKind, u: Un
       const b = T(1100);
       return { min: a, max: b, major: (b - a) / 5, minor: (b - a) / 10, zone: { from: T(Math.min(1100, lim.egtMaxC)), to: b } };
     }
+    case "intake": {
+      const a = T(-20);
+      const b = T(100);
+      return { min: a, max: b, major: (b - a) / 4, minor: (b - a) / 12 };
+    }
+    case "battery":
+      // 8–16 V (16–32 V at 24 V): red below the rest voltage of a flat battery (≈ 11,8 V), commercial.md §8
+      return { min: 8 * (sys ?? 1), max: 16 * (sys ?? 1), major: 2 * (sys ?? 1), minor: 0.5 * (sys ?? 1), red: { from: 8 * (sys ?? 1), to: 11.8 * (sys ?? 1) } };
+    case "air": {
+      // 0–12 bar manometer; yellow below the warning, red below the spring brakes (commercial.md §5)
+      const top = P(12);
+      return { min: 0, max: top, major: top / 6, minor: top / 24, zone: { from: P(AIR_SPRING_BAR), to: P(AIR_WARN_BAR) }, red: { from: 0, to: P(AIR_SPRING_BAR) } };
+    }
+    case "retarder":
+      return { min: 0, max: RETARDER_STAGES, major: 1, minor: 1 };
+    case "adblue":
+      return { min: 0, max: 100, major: 25, minor: 12.5, zone: { from: 0, to: 10 } };
+    case "lean":
+      return { min: -60, max: 60, major: 30, minor: 10 };
   }
 }
 
@@ -89,6 +143,28 @@ export interface GaugeInputs {
   egtC: number;
   /** Gearbox oil (#53), NaN/undefined without a vehicle. */
   gearboxOilC?: number;
+  /** Vehicle systems (#83); NaN/undefined where the vehicle has none. */
+  intakeAirC?: number;
+  batteryV?: number;
+  airBar?: number;
+  retarderStage?: number;
+  adblueShare?: number;
+  leanDeg?: number;
+}
+
+/** Display unit of a gauge. */
+export function gaugeUnit(id: GaugeId, u: UnitPrefs): string {
+  switch (id) {
+    case "lambda": return "λ";
+    case "oilP":
+    case "boost":
+    case "air": return u.pressure;
+    case "battery": return "V";
+    case "retarder": return "Stufe";
+    case "adblue": return "%";
+    case "lean": return "°";
+    default: return u.temp;
+  }
 }
 
 /** Value of a gauge in display units (boost below ambient reads 0, like the gauge of a car). */
@@ -100,6 +176,12 @@ export function gaugeValue(id: GaugeId, v: GaugeInputs, u: UnitPrefs): number {
     case "gearOil": return toUnit("temp", v.gearboxOilC ?? Number.NaN, u.temp);
     case "lambda": return v.lambda;
     case "egt": return toUnit("temp", v.egtC, u.temp);
+    case "intake": return toUnit("temp", v.intakeAirC ?? Number.NaN, u.temp);
+    case "battery": return v.batteryV ?? Number.NaN;
+    case "air": return toUnit("pressure", v.airBar ?? Number.NaN, u.pressure);
+    case "retarder": return v.retarderStage ?? Number.NaN;
+    case "adblue": return (v.adblueShare ?? Number.NaN) * 100;
+    case "lean": return v.leanDeg ?? Number.NaN;
   }
 }
 
@@ -150,8 +232,7 @@ export type BrakeState = "none" | "ready" | "active";
 
 /**
  * Engine brake indicator (EngineConfig.engineBrake, EngineState.engineBrakeActive, issue #31). While it acts, the
- * braking power is the negative brake power of the state. A hydrodynamic retarder is not modelled
- * (docs/research/commercial.md §3), so there are no retarder stages.
+ * braking power is the negative brake power of the state. The retarder is a separate brake (vehicle-systems.ts, #83).
  */
 export function engineBrakeInfo(cfg: EngineConfig, active: boolean, powerKw: number, u: UnitPrefs): { state: BrakeState; kind: string; value: string } {
   const eb = cfg.engineBrake;

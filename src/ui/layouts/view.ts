@@ -2,7 +2,7 @@
 // active view; views only display. DriveInfo caches what several views derive from the configuration (full-load
 // curve, shift points, top speed), so nothing is computed twice.
 import { dynoSweep, theoreticalVmax } from "../../core/index.ts";
-import type { Drivetrain, EngineConfig, EngineState, EngineSummary, GearboxSpec, SimInputs } from "../../core/index.ts";
+import type { Drivetrain, EngineConfig, EngineState, EngineSummary, GearboxSpec, SimInputs, VehicleSystems } from "../../core/index.ts";
 import type { TripComputerData } from "../../core/index.ts";
 import { shiftPoints, torqueAt, type CurvePoint } from "./logic.ts";
 
@@ -17,6 +17,8 @@ export interface Frame {
   braking: boolean;
   drivetrain: Drivetrain;
   trip: Readonly<TripComputerData>;
+  /** Air brake, retarder, AdBlue and battery (#83); optional so older callers and tests need not pass it. */
+  systems?: VehicleSystems;
 }
 
 export interface LayoutView {

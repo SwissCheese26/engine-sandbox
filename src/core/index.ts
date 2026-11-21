@@ -67,7 +67,7 @@ export type { TripComputerData, TripCounter } from "./trip-computer.ts";
 // issue #30: cruise control and driver speed limiter
 export { CruiseControl, CRUISE_MIN_KMH, CRUISE_MIN_MPH, LIMITER_OPTIONS, LIMITER_OPTIONS_MPH, MPH_KMH, KICKDOWN_S } from "./cruise.ts";
 export type { CruiseState, CruiseMode } from "./cruise.ts";
-export { TERRAIN_LABELS, RAMP_PCT, isTerrain, roadAt, terrainAt, terrainLengthM, terrainSamples } from "./terrain.ts";
+export { TERRAIN_LABELS, RAMP_PCT, isTerrain, roadAt, terrainAt, terrainLengthM, terrainSamples, terrainCurved, curvatureAt, leanAngle } from "./terrain.ts";
 export type { Terrain } from "./terrain.ts";
 export { DEFAULT_TANK_L, FuelTank, RESERVE_SHARE } from "./fuel-tank.ts";
 // issue #91: parking brake and Auto-Hold
@@ -81,3 +81,10 @@ export {
   AFTERMARKET_OIL_COOLER_WK, AUX_COOLER_EXPONENT,
 } from "./gearbox-thermal.ts";
 export type { GearboxOilInput, GearboxThermalKind, GearboxThermalSpec } from "./gearbox-thermal.ts";
+// issue #83: compressed-air brake, retarder, AdBlue, battery voltage
+export {
+  VehicleSystems, AirBrake, AdBlueTank, retarderTorqueNm, retarderForceN, batteryTargetV, systemFactor, RETARDER_STAGES, RETARDER_MAX_NM,
+  AIR_CUT_IN_BAR, AIR_CUT_OUT_BAR, AIR_WARN_BAR, AIR_SPRING_BAR, ADBLUE_SHARE, ADBLUE_LIMP_PEDAL, ADBLUE_TANK_L, BATTERY_REST_V, ALTERNATOR_V,
+} from "./vehicle-systems.ts";
+export type { SystemsInput, SystemsOutput } from "./vehicle-systems.ts";
+export { BRAKE_MAX_G } from "./simulator.ts";
