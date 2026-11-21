@@ -17,6 +17,7 @@ import { mkdir, readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { extname, join, normalize, resolve } from "node:path";
 import { builderChecks } from "./builder.mjs";
+import { smokeFxChecks } from "./smoke-fx.mjs";
 
 const require = createRequire(import.meta.url);
 let playwright;
@@ -820,19 +821,24 @@ async function cockpitDesigns(page, label) {
 async function cockpitExtras(page, label) {
   const deckH0 = await deckHeight(page);
   await page.click(".ck__extras > summary");
-  for (const id of ["oilP", "oilT", "lambda", "egt"]) await page.check(`.ck__extras [data-gauge="${id}"]`);
+  // gearbox oil (#53) is offered on the chassis dyno, where the cockpit drives here
+  for (const id of ["oilP", "oilT", "gearOil", "lambda", "egt"]) await page.check(`.ck__extras [data-gauge="${id}"]`);
   await page.check('.ck__extras [data-control="ck-tune"]');
   await page.waitForTimeout(250);
   const pods = await page.$$eval(".ck-pod:not([hidden])", (n) => n.map((e) => e.dataset.pod));
-  if (pods.join("|") !== "oilP|oilT|lambda|egt") failures.push(`${label}: Zusatzinstrumente falsch (${pods.join(", ")})`);
+  if (pods.join("|") !== "oilP|oilT|gearOil|lambda|egt") failures.push(`${label}: Zusatzinstrumente falsch (${pods.join(", ")})`);
   if (!(await page.isVisible('.ck__tune [data-tune="limit"]'))) failures.push(`${label}: Tuning-Leiste ohne Leistungsgrenze`);
   if (label !== "desktop") {
     const minH = await page.$$eval(".ck__extras > summary, .ck__extras .ck-chk", (n) => Math.min(...n.map((e) => e.getBoundingClientRect().height)));
     if (minH < 44) failures.push(`${label}: Zusatzanzeigen: Bedienelement unter 44 px (${minH})`);
   }
   await page.locator(".ck").screenshot({ path: join(outDir, `smoke-${label}-design-extras-round.png`) });
+  await page.click(".ck__extras > summary");
+  await extrasPerDesign(page, label, "round");
+  await page.click(".ck__extras > summary");
   await page.check('.ck__extras input[name="ck-gstyle"][value="bar"]');
   await page.click(".ck__extras > summary");
+  await extrasPerDesign(page, label, "bar");
   await page.selectOption('select[data-control="ck-design"]', "digital");
   await page.waitForTimeout(300);
   const bar = await page.evaluate(() => ({
@@ -841,14 +847,48 @@ async function cockpitExtras(page, label) {
     sw: document.documentElement.scrollWidth - window.innerWidth,
     stored: JSON.parse(localStorage.getItem("pruefzelle.settings") ?? "{}"),
   }));
-  if (bar.style !== "bar" || bar.bars !== 4) failures.push(`${label}: Balkenanzeigen fehlen (${JSON.stringify({ style: bar.style, bars: bar.bars })})`);
+  // the digital design shows "Balken" as its own segment bars
+  if (bar.style !== "segment" || bar.bars !== 5) failures.push(`${label}: Balkenanzeigen fehlen (${JSON.stringify({ style: bar.style, bars: bar.bars })})`);
   if (bar.sw > 0) failures.push(`${label}: Zusatzanzeigen scrollen horizontal (${bar.sw} px)`);
-  if (JSON.stringify(bar.stored.ckGauges) !== JSON.stringify(["oilP", "oilT", "lambda", "egt"]) || bar.stored.ckGaugeStyle !== "bar" || bar.stored.ckTuneBar !== true) {
+  if (JSON.stringify(bar.stored.ckGauges) !== JSON.stringify(["oilP", "oilT", "gearOil", "lambda", "egt"]) || bar.stored.ckGaugeStyle !== "bar" || bar.stored.ckTuneBar !== true) {
     failures.push(`${label}: Zusatzanzeigen nicht gespeichert (${JSON.stringify([bar.stored.ckGauges, bar.stored.ckGaugeStyle, bar.stored.ckTuneBar])})`);
   }
   await page.locator(".ck").screenshot({ path: join(outDir, `smoke-${label}-design-extras-bar.png`) });
   await deckStaysStill(page, label, deckH0);
   await page.selectOption('select[data-control="ck-design"]', "auto");
+}
+
+const SCREEN_DESIGNS = ["digital", "hud", "race", "motorrad"];
+
+/**
+ * #83 the extra gauges take on each design: round pods (canvas) in the dial designs, tiles ("Rund") or segment bars
+ * ("Balken") without any canvas in the screen designs, with the hint in the picker. One screenshot of the console per
+ * design, no horizontal scroll.
+ */
+async function extrasPerDesign(page, label, style) {
+  for (const id of DESIGNS) {
+    await page.selectOption('select[data-control="ck-design"]', id);
+    await page.waitForTimeout(250);
+    const r = await page.evaluate(() => {
+      const c = document.querySelector(".ck__console");
+      const pods = [...c.querySelectorAll(".ck-pod:not([hidden])")];
+      return {
+        shown: c.dataset.gstyle,
+        canvases: pods.filter((p) => p.querySelector("canvas").getBoundingClientRect().width > 0).length,
+        pods: pods.length,
+        hint: c.querySelector("[data-ck=gstyle-hint]").hidden ? "" : c.querySelector("[data-ck=gstyle-hint]").textContent,
+        sw: document.documentElement.scrollWidth - window.innerWidth,
+      };
+    });
+    const screen = SCREEN_DESIGNS.includes(id);
+    const want = screen ? (style === "round" ? "tile" : "segment") : style;
+    if (r.shown !== want) failures.push(`${label}: Zusatzinstrumente im Design ${id} als ${r.shown} statt ${want}`);
+    if (screen && r.canvases > 0) failures.push(`${label}: Design ${id} zeigt runde Zusatzinstrumente`);
+    if (!screen && style === "round" && r.canvases !== r.pods) failures.push(`${label}: Design ${id} ohne runde Zusatzinstrumente (${r.canvases}/${r.pods})`);
+    if (screen !== /keine Rundinstrumente/.test(r.hint)) failures.push(`${label}: Hinweis zur Darstellung im Design ${id} falsch („${r.hint}“)`);
+    if (r.sw > 0) failures.push(`${label}: Zusatzinstrumente im Design ${id} scrollen horizontal (${r.sw} px)`);
+    await page.locator(".ck__console").screenshot({ path: join(outDir, `smoke-${label}-extras-${style}-${id}.png`) });
+  }
 }
 
 /** #83: "Automatisch nach Fahrzeug" shows the truck design after loading the truck (engine off, car stopped). */
@@ -996,6 +1036,8 @@ try {
   if (!skipped) await run("small", { width: 360, height: 740 });
   // Engine Builder (#72): full build, save, rev, drive (tests/e2e/builder.mjs)
   for (const [label, viewport] of [["desktop", { width: 1440, height: 900 }], ["small", { width: 360, height: 740 }]]) if (!skipped) await builderChecks({ browser, base, outDir, failures, errors, label, viewport });
+  // Rauch/Dampf: burnout smoke in every cockpit design and the Prüfzelle (tests/e2e/smoke-fx.mjs)
+  for (const [label, viewport] of [["desktop", { width: 1440, height: 900 }], ["small", { width: 360, height: 740 }]]) if (!skipped) await smokeFxChecks({ browser, base, outDir, failures, errors, label, viewport });
 } catch (e) {
   failures.push(`Ausnahme: ${e?.stack ?? e}`);
 } finally {

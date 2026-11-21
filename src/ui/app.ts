@@ -24,6 +24,9 @@ import { Haptics, ScreenWake, isTouch } from "./device.ts";
 import { bugButton, setBugContext } from "./bug-dialog.ts";
 import { RingBuffer, SAMPLE_COUNT, SAMPLE_INTERVAL_S, samplesText, type DiagnosisSection, type ValueSample } from "./bug-report.ts";
 import { VEHICLE_LIBRARY } from "../data/vehicle-library.ts";
+import { SmokeOverlay, type SmokeAnchors } from "./smoke-overlay.ts";
+import { emission } from "./smoke-emitters.ts";
+import { FALLBACK_LIMITS } from "./limits-fallback.ts";
 
 /** Largest simulation step per frame; longer frames (tab in background) are clamped. */
 const MAX_DT = 1 / 30;
@@ -84,6 +87,11 @@ export class App {
   /** Last ~5 s of live values for a bug report (#55). */
   private samples = new RingBuffer<ValueSample>(SAMPLE_COUNT);
   private sampleT = 0;
+  /** Tyre smoke and engine steam over the stage (setting "Effekte (Rauch/Dampf)"). */
+  private smoke = new SmokeOverlay(() => this.smokeAnchors());
+  private stage!: HTMLElement;
+  private header!: HTMLElement;
+  private deck!: HTMLElement;
 
   constructor(private root: HTMLElement) {
     this.inputs.damage = getSettings().realism;
@@ -223,6 +231,7 @@ export class App {
     this.viewSlot.className = "stage__view";
     this.viewSlot.hidden = true;
     stage.append(this.viewSlot, engine, this.gauges.el, this.gearbox.el, this.recorder.el);
+    this.stage = stage;
 
     const deck = document.createElement("footer");
     deck.className = "deck";
@@ -232,7 +241,9 @@ export class App {
     this.console.pedalsEl.prepend(this.shiftPad.el);
     this.console.setPedalSide(getSettings().pedalSide);
 
-    cell.append(top, this.bench.el, stage, deck, this.announcer);
+    this.header = top;
+    this.deck = deck;
+    cell.append(top, this.bench.el, stage, deck, this.announcer, this.smoke.el);
     this.root.replaceChildren(cell);
   }
 
@@ -526,6 +537,7 @@ export class App {
       this.gearbox.trip.step(dt, s, this.inputs.dynoMode === "vehicle");
       if (this.soundStarted) this.sound.update(s, this.inputs.pedal);
       const st = getSettings();
+      this.updateSmoke(s, dt, st.effects);
       this.wake.update(st.wakeLock && s.running);
       this.haptics.update(dt, s, this.cfg.revLimitRpm, this.inputs.pedal, st.vibration === "on" || (st.vibration === "auto" && isTouch()));
       this.rafId = requestAnimationFrame(frame);
@@ -545,6 +557,7 @@ export class App {
     this.gearbox.cruise.release();
     this.gearbox.trip.save();
     this.wake.release();
+    this.smoke.clear();
     if (this.soundStarted) {
       // silence first (smoothed in the DSP), then stop the audio clock
       this.sound.setVolume(0);
@@ -553,6 +566,48 @@ export class App {
         if (this.paused) void sound.suspend();
       }, 80);
     }
+  }
+
+  /** Smoke and steam from the state values only (smoke-emitters.ts); the lamps' limits, no own thresholds. */
+  private updateSmoke(s: EngineState, dt: number, enabled: boolean) {
+    const vehicle = this.inputs.dynoMode === "vehicle";
+    const cooling = this.cfg.cooling.type;
+    const e = emission({
+      running: s.running, vehicle, vehicleSpeedMs: s.vehicleSpeedMs, wheelSlip: s.wheelSlip, wheelSpin: s.wheelSpin, wheelsLocked: s.wheelsLocked, brakeSlip: s.brakeSlip,
+      liquidCooled: cooling !== "air" && cooling !== "oil-air", coolantC: s.coolantC, coolantMaxC: this.summary.limits.coolantMaxC,
+      oilC: s.oilC, oilMaxC: this.summary.limits.oilMaxC, warnings: s.warnings, damaged: s.destroyed || s.damage.length > 0,
+      diesel: this.cfg.fuel === "diesel", smoke: s.smoke, smokeMax: FALLBACK_LIMITS.smokeMax,
+    });
+    this.smoke.update(e, dt, enabled);
+  }
+
+  /**
+   * Where the smoke comes from: the bottom edge of the instruments (tyres) and the bonnet edge of the cockpit or the
+   * engine cutaway (steam), the same for every cockpit design since all of them render into the view's element.
+   * The visible part of the stage clips the effect; a source scrolled out of it is held at its edge, so a little
+   * smoke still shows on phones where the cluster is taller than the screen.
+   */
+  private smokeAnchors(): SmokeAnchors {
+    // on phones the page scrolls under a sticky header and control bar: never paint over them
+    const st = this.stage.getBoundingClientRect();
+    const top = Math.max(st.top, this.header.getBoundingClientRect().bottom, 0);
+    const vp = document.documentElement;
+    const bottom = Math.min(st.bottom, this.deck.getBoundingClientRect().top, vp.clientHeight || window.innerHeight);
+    const left = Math.max(st.left, 0);
+    const right = Math.min(st.right, vp.clientWidth || window.innerWidth);
+    if (bottom - top < 2 || right - left < 2) return { clip: null, tyre: null, engine: null };
+    const clip = new DOMRect(left, top, right - left, bottom - top);
+    const view = this.activeView;
+    const inst = (view ? view.el : this.gauges.el).getBoundingClientRect();
+    const eng = (view ? view.el : this.schematic.el).getBoundingClientRect();
+    const ok = (r: DOMRect) => r.width > 0 && r.height > 0;
+    const within = (y: number) => Math.min(bottom, Math.max(top, y));
+    const span = (r: DOMRect, f: number) => ({ x0: Math.max(left, r.left + r.width * f), x1: Math.min(right, r.right - r.width * f) });
+    return {
+      clip,
+      tyre: ok(inst) ? { ...span(inst, 0.08), y: within(inst.bottom) } : null,
+      engine: !ok(eng) ? null : view ? { ...span(eng, 0.2), y: within(eng.top) } : { ...span(eng, 0.25), y: within(eng.top + eng.height * 0.35) },
+    };
   }
 
   /** Engine of the guided start waiting for the running engine to spin down (#93 review). */

@@ -9,6 +9,7 @@ import {
 import { fieldLabel, formatField, intakeAirOf, type FieldInputs } from "../../src/ui/layouts/fields-logic.ts";
 import { DEFAULT_SETTINGS, PRESETS, resetSettingsCache, validateSettings } from "../../src/ui/settings.ts";
 import { REFERENCE_ENGINES } from "../../src/data/reference-engines.ts";
+import { GEARBOX_THERMAL, gearboxThermalKind } from "../../src/core/index.ts";
 
 beforeEach(() => resetSettingsCache());
 
@@ -72,8 +73,8 @@ describe("design selection: truck/bus design", () => {
 });
 
 describe("additional gauges", () => {
-  test("ids: boost, oil pressure, oil temperature, lambda, EGT; no voltage (not in the core)", () => {
-    expect([...GAUGE_IDS]).toEqual(["boost", "oilP", "oilT", "lambda", "egt"]);
+  test("ids: boost, oil pressure, oil temperature, gearbox oil, lambda, EGT; no voltage (not in the core)", () => {
+    expect([...GAUGE_IDS]).toEqual(["boost", "oilP", "oilT", "gearOil", "lambda", "egt"]);
     expect(isGaugeId("voltage")).toBe(false);
     expect(isGaugeId("intake")).toBe(false);
   });
@@ -91,6 +92,29 @@ describe("additional gauges", () => {
     expect(gaugeAvailable("boost", { turbo: false })).toBe(false);
     expect(gaugeAvailable("boost", { turbo: true })).toBe(true);
     expect(gaugeAvailable("lambda", { turbo: false })).toBe(true);
+  });
+  test("gearbox oil: only when the drivetrain reports it (vehicle on the dyno), hidden on the engine dyno", () => {
+    expect(gaugeAvailable("gearOil", { turbo: true })).toBe(false);
+    expect(gaugeAvailable("gearOil", { turbo: false, gearOil: false })).toBe(false);
+    expect(gaugeAvailable("gearOil", { turbo: false, gearOil: true })).toBe(true);
+    expect(validateGauges(["gearOil", "boost"])).toEqual(["boost", "gearOil"]);
+  });
+  test("gearbox oil scale: warning and TCU protection of the gearbox kind (gearbox-thermal.ts)", () => {
+    const dct = GEARBOX_THERMAL[gearboxThermalKind("dsg")];
+    expect(gaugeScale("gearOil", LIM, "petrol", METRIC, dct)).toMatchObject({ min: 40, max: 160, zone: { from: dct.warnC, to: dct.protectC! }, red: { from: dct.protectC!, to: 160 } });
+    // manual gearbox: no TCU, red from the damage reference
+    const man = GEARBOX_THERMAL.manual;
+    expect(man.protectC).toBeNull();
+    expect(gaugeScale("gearOil", LIM, "petrol", METRIC, man)).toMatchObject({ zone: { from: man.warnC, to: man.damageC }, red: { from: man.damageC, to: 160 } });
+    // motorcycle (sequential, shared sump) warns later
+    const seq = GEARBOX_THERMAL[gearboxThermalKind("sequential", "superbike")];
+    expect(gaugeScale("gearOil", LIM, "petrol", METRIC, seq).zone!.from).toBe(seq.warnC);
+    const f = gaugeScale("gearOil", LIM, "petrol", IMPERIAL, GEARBOX_THERMAL.truck);
+    expect(f.min).toBeCloseTo(104, 5);
+    expect(f.zone!.from).toBeCloseTo(248, 5);
+    expect(gaugeScale("gearOil", LIM, "petrol", METRIC).zone).toBeUndefined();
+    expect(gaugeValue("gearOil", { boostBar: 0, oilPressureBar: 0, oilC: 0, lambda: 1, egtC: 0, gearboxOilC: 100 }, IMPERIAL)).toBeCloseTo(212, 5);
+    expect(gaugeValue("gearOil", { boostBar: 0, oilPressureBar: 0, oilC: 0, lambda: 1, egtC: 0 }, METRIC)).toBeNaN();
   });
   test("scales in the chosen units with the engine's limit zones", () => {
     expect(gaugeScale("boost", LIM, "petrol", METRIC)).toMatchObject({ min: 0, max: 2, zone: { from: 1.6, to: 2 } });

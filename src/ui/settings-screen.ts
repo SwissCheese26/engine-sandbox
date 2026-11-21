@@ -150,6 +150,10 @@ export class SettingsScreen {
             <legend>Ton</legend>
             <label><input type="checkbox" data-set="sound" /> <span><b>Motorklang an</b>: startet mit dem ersten Tippen oder Tastendruck in der Sandbox.</span></label>
           </fieldset>
+          <fieldset class="office__choice">
+            <legend>Effekte</legend>
+            <label><input type="checkbox" data-set="effects" /> <span><b>Effekte (Rauch/Dampf)</b>: ein Hauch Reifenqualm bei durchdrehenden oder blockierenden Rädern, Dampf bei überhitztem Motor.</span></label>
+          </fieldset>
         </section>
         <section class="plate office__plate" aria-labelledby="set-sim">
           <span class="screw screw--tl" aria-hidden="true"></span><span class="screw screw--tr" aria-hidden="true"></span>
@@ -279,7 +283,7 @@ export class SettingsScreen {
     radio("realism", "realism", (v) => (v === "lenient" || v === "off" ? v : "real"));
     radio("limithints", "limitHints", (v) => (v === "toast" ? "toast" : "off"));
     el.querySelectorAll<HTMLInputElement>("input[data-set]").forEach((c) =>
-      c.addEventListener("change", () => setSettings({ [c.dataset.set as "startWarm" | "autoMeasure" | "wakeLock" | "sound" | "autoHold" | "sandboxIntro"]: c.checked })),
+      c.addEventListener("change", () => setSettings({ [c.dataset.set as "startWarm" | "autoMeasure" | "wakeLock" | "sound" | "autoHold" | "sandboxIntro" | "effects"]: c.checked })),
     );
     el.querySelectorAll<HTMLInputElement>("input[data-price]").forEach((inp) =>
       inp.addEventListener("change", () => {
@@ -371,7 +375,7 @@ export class SettingsScreen {
     check("vibration", s.vibration);
     check("realism", s.realism);
     check("limithints", s.limitHints);
-    this.el.querySelectorAll<HTMLInputElement>("input[data-set]").forEach((c) => (c.checked = s[c.dataset.set as "startWarm" | "autoMeasure" | "wakeLock" | "sound" | "autoHold" | "sandboxIntro"]));
+    this.el.querySelectorAll<HTMLInputElement>("input[data-set]").forEach((c) => (c.checked = s[c.dataset.set as "startWarm" | "autoMeasure" | "wakeLock" | "sound" | "autoHold" | "sandboxIntro" | "effects"]));
     this.el.querySelectorAll<HTMLInputElement>("input[data-price]").forEach((inp) => (inp.value = s.fuelPrice[inp.dataset.price as "diesel" | "petrol"].toFixed(2)));
     const nav = globalThis.navigator as { wakeLock?: unknown; vibrate?: unknown } | undefined;
     const missing = [!nav?.wakeLock && "Bildschirm wach halten", typeof nav?.vibrate !== "function" && "Vibration"].filter(Boolean);
