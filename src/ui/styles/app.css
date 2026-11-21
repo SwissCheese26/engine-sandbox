@@ -102,6 +102,10 @@ kbd {
 .cell__top .bench-toggle {
   display: none;
 }
+/* the verb is a flex item of the inline-flex .btn, which strips its leading space ("Werkbanköffnen"): keep it */
+.bench-toggle__verb {
+  white-space: pre;
+}
 
 /* ── Buttons ───────────────────────────────────────────────────────────── */
 .btn {
