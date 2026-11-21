@@ -38,8 +38,20 @@ describe("vehicle filter by kind", () => {
     for (const c of VEHICLE_LIBRARY) {
       const f = vehicleFacts(c);
       expect(f.ps).toBeGreaterThan(40);
-      expect(f.tankL).toBeGreaterThan(0);
+      // electric cars (#108): battery instead of a tank
+      if (c.setup.ev) expect(f.packKwh).toBeGreaterThan(50);
+      else expect(f.tankL).toBeGreaterThan(0);
     }
+  });
+
+  test("electric cars (#108) are in the Auto group with system power, motors and battery", () => {
+    const plaid = vehiclesOf("car").find((c) => c.id === "ev-tesla-model-s-plaid")!;
+    const f = vehicleFacts(plaid);
+    expect(f.ps).toBe(1020);
+    expect(f.gearbox).toBe("3 E-Motoren, 1 Gang");
+    expect(f.packKwh).toBe(100);
+    // no engine to load: the pending setup carries none
+    expect(buildSetup("car", { vehicleId: plaid.id, route: "static" })?.engineId).toBe("");
   });
 });
 
@@ -111,7 +123,7 @@ describe("pending setup", () => {
     const golf = VEHICLE_LIBRARY.find((c) => c.id === "car-vw-golf7-gti")!;
     expect(buildSetup("car", { vehicleId: golf.id, route: "alps" })).toEqual({ kind: "car", vehicleId: golf.id, engineId: golf.engineId, route: "alps" });
     // every library vehicle's engine is in the engine library
-    for (const c of VEHICLE_LIBRARY) expect(ENGINE_LIBRARY.some((e) => e.config.id === c.engineId)).toBe(true);
+    for (const c of VEHICLE_LIBRARY.filter((v) => !v.setup.ev)) expect(ENGINE_LIBRARY.some((e) => e.config.id === c.engineId)).toBe(true);
   });
 
   test("a vehicle of another kind, a missing route or a missing vehicle give nothing", () => {

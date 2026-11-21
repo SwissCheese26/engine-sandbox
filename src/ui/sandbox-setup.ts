@@ -59,10 +59,20 @@ export interface VehicleFacts {
   drive: string;
   gearbox: string;
   tankL: number;
+  /** Electric car (#108): usable battery energy, kWh (then there is no tank). */
+  packKwh?: number;
 }
 
 /** What a vehicle card in step 2 shows: rated power of its engine, published weight, drive, gearbox, tank. */
 export function vehicleFacts(car: LibraryCar): VehicleFacts {
+  if (car.setup.ev) {
+    // electric car (#108): system power, single-speed reduction, battery instead of a tank
+    const n = car.setup.ev.motors.length;
+    return {
+      ps: Math.round((car.factory.powerKw ?? 0) * PS_PER_KW), kg: car.factory.kerbKg, drive: LAYOUT_SHORT[car.setup.vehicle.driveLayout ?? "rwd"],
+      gearbox: `${n} ${n === 1 ? "E-Motor" : "E-Motoren"}, 1 Gang`, tankL: 0, packKwh: car.factory.packKwh ?? 0,
+    };
+  }
   const e = engineById(car.engineId);
   const kind = car.setup.kind ?? "car";
   const bike = isMotorcycleKind(kind);

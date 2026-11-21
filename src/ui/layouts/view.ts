@@ -75,11 +75,18 @@ export class DriveInfo {
     return this.points[gear - 1] ?? this.cfg.revLimitRpm;
   }
 
+  /** Electric car (#108): top speed at the motors' speed limit, km/h; null = combustion (full-load curve). */
+  private evVmax: number | null = null;
+  setElectricVmax(kmh: number | null) {
+    this.evVmax = kmh;
+  }
+
   /** Theoretical top speed without governor, km/h. */
   get vmaxKmh(): number {
     this.refresh();
     const lim = this.drivetrain.state.speedLimitKmh;
-    return lim !== null ? Math.min(this.vmax, lim) : this.vmax;
+    const v = this.evVmax ?? this.vmax;
+    return lim !== null ? Math.min(v, lim) : v;
   }
 
   get fullLoad(): readonly CurvePoint[] {

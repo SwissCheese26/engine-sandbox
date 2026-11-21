@@ -18,6 +18,8 @@ import { BASE_ICON, ICON2 } from "./icons.ts";
 import { ledColors, shiftLights, avgL100, clusterLamps, fuelScale, SPEEDO_SCALES, clampSpeedoKmh, isSpeedoScale, speedoScaleMax, speedoTicks, tachoMax, tachoZones, type Lamp, type LampSet } from "./logic.ts";
 import { RaceView } from "./race.ts";
 import type { DriveInfo, Frame, LayoutView } from "./view.ts";
+import type { EvConfig } from "../../core/index.ts";
+import { consumptionText, driveModeLabel, evField, evLamps, powerMeterScale, powerMeterValue, rangeText, socText } from "./ev-logic.ts";
 
 type LampKey = keyof LampSet;
 const LAMPS: { k: LampKey; color: "red" | "amber" | "ice"; icon: string; on: string; text?: string }[] = [
@@ -97,6 +99,12 @@ export class CockpitView implements LayoutView {
   private extras = new CockpitExtras();
   /** The Renn-Dash design (#94): created the first time it is chosen. */
   private race: RaceView | null = null;
+  /** Electric car (#108): the power meter replaces the rev counter, SoC the tank, Ready lamp; null = combustion. */
+  private ev: EvConfig | null = null;
+  private evScale = { min: -100, max: 500, major: 100, minor: 50 };
+  private readyEl!: HTMLElement;
+  /** Set by the app: next EV drive mode (Chill → Sport → Plaid). */
+  onEvMode: () => void = () => {};
   /** Set by the app: switches the console to the chassis dyno. */
   onWantVehicle: () => void = () => {};
   /** Set by the app: jump to the Umwelt panel (route, weather, gradient). */
@@ -113,6 +121,7 @@ export class CockpitView implements LayoutView {
     el.innerHTML = `
       <div class="ck__lamps" role="group" aria-label="Kontrollleuchten">
         ${LAMPS.map((l) => `<span class="ck-lamp ck-lamp--${l.color}" data-lamp="${l.k}" data-state="off" role="img" aria-label="${l.on}: aus">${l.icon}${l.text ? `<b>${l.text}</b>` : ""}</span>`).join("")}
+        <span class="ck-lamp ck-lamp--green ck-lamp--ready" data-ev-lamp="ready" data-state="off" role="img" aria-label="Ready: aus"><b>READY</b></span>
       </div>
       <div class="ck__alt" data-slot="alt"></div>
       <div class="ck__main">
@@ -138,7 +147,7 @@ export class CockpitView implements LayoutView {
           <button type="button" class="ck__mode" data-ck="mode"></button>
           <p class="ck__speed num"><span data-ck="speed-big">–</span><small data-ck="speed-unit2">km/h</small></p>
           <dl class="ck__hud num" aria-label="Drehzahl und Leistung">
-            <div class="ck__hud-rpm"><dt>Drehzahl</dt><dd><span data-ck="hud-rpm">0</span> <small>1/min</small></dd></div>
+            <div class="ck__hud-rpm"><dt data-ck="hud-rpm-label">Drehzahl</dt><dd><span data-ck="hud-rpm">0</span> <small data-ck="hud-rpm-unit">1/min</small></dd></div>
             <div><dt>Leistung</dt><dd><span data-ck="hud-power">0</span> <small data-ck="hud-power-unit">kW</small></dd></div>
           </dl>
           <p class="ck__dyno" data-ck="dyno" hidden>Motorprüfstand: kein Tempo.
@@ -149,12 +158,19 @@ export class CockpitView implements LayoutView {
           </p>
           <dl class="ck__bike num" aria-label="Motorrad-Anzeigen">
             <div><dt data-ck="bike-cool-label">Kühlmittel</dt><dd data-ck="bike-cool">–</dd></div>
-            <div><dt>Tank</dt><dd data-ck="bike-tank">–</dd></div>
+            <div><dt data-ck="bike-tank-label">Tank</dt><dd data-ck="bike-tank">–</dd></div>
             <div><dt>Trip</dt><dd data-ck="bike-trip">–</dd></div>
           </dl>
           <dl class="ck__truck num" aria-label="Nutzfahrzeug-Anzeigen">
-            <div data-ck="eb-row" data-state="none"><dt>Motorbremse</dt><dd data-ck="eb">–</dd></div>
+            <div data-ck="eb-row" data-state="none"><dt data-ck="eb-label">Motorbremse</dt><dd data-ck="eb">–</dd></div>
             <div data-ck="gov-row" data-state="off"><dt>Begrenzer</dt><dd data-ck="gov">–</dd></div>
+          </dl>
+          <dl class="ck__ev num" aria-label="Elektroantrieb" hidden>
+            <div class="ck__ev-soc"><dt>Akku</dt><dd data-ck="ev-soc">–</dd></div>
+            <div class="ck__ev-range"><dt>Reichweite</dt><dd data-ck="ev-range">–</dd></div>
+            <div class="ck__ev-cons"><dt>Verbrauch</dt><dd><span data-ck="ev-cons">–</span> <small data-ck="ev-cons-unit">kWh/100 km</small></dd></div>
+            <div class="ck__ev-batt"><dt>Akkutemp.</dt><dd data-ck="ev-batt">–</dd></div>
+            <div class="ck__ev-mode"><dt>Fahrmodus</dt><dd><button type="button" class="ck__btn" data-ck="ev-mode" title="Fahrmodus wechseln">Sport</button></dd></div>
           </dl>
           <dl class="ck__trip num">
             <div><dt>Außen</dt><dd><span data-ck="ambient">–</span></dd></div>
@@ -164,7 +180,7 @@ export class CockpitView implements LayoutView {
           </dl>
         </div>
         <div class="ck__dial ck__dial--rpm" data-slot="rpm">
-          <p class="ck__read num" aria-live="off"><span data-ck="rpm">0</span> <small>1/min</small></p>
+          <p class="ck__read num" aria-live="off"><span data-ck="rpm">0</span> <small data-ck="rpm-unit">1/min</small></p>
         </div>
       </div>
       <div class="ck__fields" role="group" aria-label="Wählbare Anzeigen">
@@ -178,6 +194,8 @@ export class CockpitView implements LayoutView {
     el.querySelectorAll<HTMLElement>("[data-lamp]").forEach((n) => this.lampEls.set(n.dataset.lamp as LampKey, n));
     this.out["to-vehicle"]!.addEventListener("click", () => this.onWantVehicle());
     this.out["road"]!.addEventListener("click", () => this.onWantEnvironment());
+    this.out["ev-mode"]!.addEventListener("click", () => this.onEvMode());
+    this.readyEl = el.querySelector<HTMLElement>("[data-ev-lamp=ready]")!;
 
     const blank: DialScale = { min: 0, max: 100, major: 20, minor: 10, caption: "" };
     this.speedo = new Dial(blank, { label: "Tacho" });
@@ -208,6 +226,7 @@ export class CockpitView implements LayoutView {
     this.shiftLeds = [...el.querySelectorAll<HTMLElement>(".ck__shift i")];
     // drive mode of the sport-saloon display: a name for the gas response (#66), a tap steps through it
     this.out.mode!.addEventListener("click", () => {
+      if (this.ev) return this.onEvMode();
       const ramps = GAS_RAMPS.map((g) => g.s);
       const i = ramps.indexOf(getSettings().gasRamp);
       setSettings({ gasRamp: ramps[(i + 1) % ramps.length]! });
@@ -277,7 +296,7 @@ export class CockpitView implements LayoutView {
     nums.innerHTML = svg;
     this.el.style.setProperty("--ck-warn-at", `${f(this.zones.warnFrom).toFixed(2)}%`);
     this.fieldCtx = { ...this.fieldCtx, turbo: summary.limits.boostMaxBar > 0 };
-    this.out["bike-cool-label"]!.textContent = airCooled(cfg) ? "Zyl.-Kopf" : "Kühlmittel";
+    if (!this.ev) this.out["bike-cool-label"]!.textContent = airCooled(cfg) ? "Zyl.-Kopf" : "Kühlmittel";
     this.race?.configure(cfg, summary, info);
     this.extras.configure(cfg, summary);
     this.syncUnits();
@@ -289,6 +308,12 @@ export class CockpitView implements LayoutView {
    */
   private scaleTacho() {
     if (!this.cfg) return;
+    if (this.ev) {
+      // EV (#108): power meter, regen below zero in green (every design, also the truck one)
+      const p = this.evScale;
+      this.tacho.setScale({ min: p.min, max: p.max, major: p.major, minor: p.minor, labelDiv: 1, eco: { from: p.min, to: 0 }, caption: "kW" });
+      return;
+    }
     const cfg = this.cfg;
     // yellow pre-warning (Gelb heißt Grenze), red from the limiter on like in a real car (design.md "Cockpit-Layout")
     const z = tachoZones(cfg.revLimitRpm, this.summary.safeMaxRpm);
@@ -322,6 +347,7 @@ export class CockpitView implements LayoutView {
     if (id === "race" && !this.race) {
       this.race = new RaceView();
       this.race.configure(this.cfg, this.summary, this.info);
+      this.race.setElectric(this.ev);
       this.el.querySelector("[data-slot=alt]")!.append(this.race.el);
     }
     const t = dialTheme(id);
@@ -331,8 +357,30 @@ export class CockpitView implements LayoutView {
     this.redraw();
   }
 
+  /**
+   * Electric car on (#108) or off (null): power meter instead of the rev counter, battery and motor temperature instead
+   * of coolant and oil, state of charge instead of the tank, consumption in kWh, Ready lamp; in every design.
+   */
+  setElectric(ev: EvConfig | null) {
+    this.ev = ev;
+    this.el.dataset.drive = ev ? "ev" : "ice";
+    (this.el.querySelector(".ck__ev") as HTMLElement).hidden = !ev;
+    if (ev) this.evScale = powerMeterScale(ev);
+    this.out["rpm-unit"]!.textContent = ev ? "kW" : "1/min";
+    this.out["hud-rpm-label"]!.textContent = ev ? "Akku" : "Drehzahl";
+    this.out["hud-rpm-unit"]!.textContent = ev ? "%" : "1/min";
+    this.out["bike-tank-label"]!.textContent = ev ? "Akku" : "Tank";
+    this.out["eb-label"]!.textContent = ev ? "Rekuperation" : "Motorbremse";
+    this.out["bike-cool-label"]!.textContent = ev ? "Akku" : this.cfg && airCooled(this.cfg) ? "Zyl.-Kopf" : "Kühlmittel";
+    this.race?.setElectric(ev);
+    this.scaleTacho();
+    this.syncUnits();
+    this.redraw();
+  }
+
   syncUnits() {
     if (!this.cfg) return;
+    if (this.ev) return this.syncUnitsEv();
     const u = prefs();
     const T = (c: number) => toUnit("temp", c, u.temp);
     const P = (b: number) => toUnit("pressure", b, u.pressure);
@@ -349,6 +397,7 @@ export class CockpitView implements LayoutView {
     this.setMini("oilT", "Öl", u.temp, tScale(50, 150, Math.min(150, L.oilMaxC)));
     const pMax = P(6);
     this.setMini("oilP", "Öldruck", u.pressure, { min: 0, max: pMax, major: pMax / 3, minor: pMax / 6, zone: { from: 0, to: P(L.oilPressureMinBar) }, caption: u.pressure });
+    this.minis.oilP.wrap.hidden = false;
     const turbo = L.boostMaxBar > 0;
     this.minis.boost.wrap.hidden = !turbo;
     if (turbo) {
@@ -362,6 +411,34 @@ export class CockpitView implements LayoutView {
     this.out["hud-power-unit"]!.textContent = u.power;
     this.race?.syncUnits();
     this.extras.syncUnits();
+    this.speedKey = "";
+    for (const k of Object.keys(this.last)) this.last[k] = "";
+    for (const m of Object.values(this.minis)) m.last = "";
+    this.lastLamps = "";
+  }
+
+  /** Small instruments of an electric car (#108): battery and motor temperature, consumption (kWh), state of charge. */
+  private syncUnitsEv() {
+    const u = prefs();
+    const T = (c: number) => toUnit("temp", c, u.temp);
+    const tScale = (lo: number, hi: number, zone: number): DialScale => {
+      const a = T(lo);
+      const b = T(hi);
+      return { min: a, max: b, major: (b - a) / 4, minor: (b - a) / 8, zone: { from: T(zone), to: b }, caption: u.temp };
+    };
+    this.setMini("coolant", "Akkutemp.", u.temp, tScale(0, 70, 55));
+    this.setMini("oilT", "E-Motor", u.temp, tScale(20, 180, 150));
+    this.minis.oilP.wrap.hidden = true;
+    this.minis.boost.wrap.hidden = true;
+    const c = consumptionText(0, u);
+    this.setMini("fuel", "Verbrauch", c.unit, { min: 0, max: 40, major: 10, minor: 5, caption: c.unit });
+    this.setMini("tank", "Akku", "%", { min: 0, max: 100, major: 50, minor: 25, zone: { from: 0, to: 10 }, caption: "0 · 100 %" });
+    this.out["speed-unit"]!.textContent = this.out["speed-unit2"]!.textContent = u.speed;
+    this.out["hud-power-unit"]!.textContent = u.power;
+    this.race?.syncUnits();
+    this.extras.syncUnits();
+    this.fuelKey = "ev";
+    this.tankKey = "ev";
     this.speedKey = "";
     for (const k of Object.keys(this.last)) this.last[k] = "";
     for (const m of Object.values(this.minis)) m.last = "";
@@ -412,7 +489,7 @@ export class CockpitView implements LayoutView {
       (this.customIn.closest("[data-ck-custom]") as HTMLElement).hidden = st.speedo !== "custom";
     }
     if (this.designSel.value !== st.cockpitDesign) this.designSel.value = st.cockpitDesign;
-    this.applyDesign(resolveDesign(st.cockpitDesign, d.kind));
+    this.applyDesign(resolveDesign(st.cockpitDesign, d.kind, !!this.ev));
     const vmaxShown = toUnit("speed", this.info.vmaxKmh, u.speed);
     const truck = this.design === "truck";
     // truck design (#83): fixed 125 km/h scale with the vehicle's top-speed limiter (Directive 92/6/EEC) marked
@@ -434,11 +511,11 @@ export class CockpitView implements LayoutView {
       cc?.limiterOn ? toUnit("speed", cc.limitKmh, u.speed) : null,
     );
     this.speedo.set(speed, dt);
-    this.tacho.set(s.rpm, dt);
+    this.tacho.set(this.ev && s.ev ? powerMeterValue(s.ev, this.evScale) : s.rpm, dt);
     const speedText = vehicle ? fmt(speed) : "–";
     this.put("speed", speedText);
     this.put("speed-big", speedText);
-    this.put("rpm", fmt(Math.round(s.rpm / 10) * 10));
+    this.put("rpm", this.ev && s.ev ? fmt(Math.round(s.ev.powerKw)) : fmt(Math.round(s.rpm / 10) * 10));
     this.put("gear", vehicle ? (ds.shifting && ds.type === "manual" ? "–" : d.gearLabel()) : "–");
     if (this.last.dyno !== String(vehicle)) {
       this.last.dyno = String(vehicle);
@@ -469,6 +546,10 @@ export class CockpitView implements LayoutView {
     this.put("avg", `${Number.isFinite(avg) ? fmt(avg, 1) : "–"} ${u.fuel}`);
     this.updateCruise(d);
 
+    if (this.ev && s.ev) {
+      this.updateEv(f);
+      return;
+    }
     // small instruments
     const T = (c: number) => toUnit("temp", c, u.temp);
     const P = (b: number) => toUnit("pressure", b, u.pressure);
@@ -538,6 +619,96 @@ export class CockpitView implements LayoutView {
     }
   }
 
+  /**
+   * Electric car (#108), every design: small instruments (battery, motor, consumption, SoC), the EV line in the centre
+   * display, Ready and the remaining lamps, and the design-specific readouts with EV values.
+   */
+  private updateEv(f: Frame) {
+    const { s, dt } = f;
+    const ev = s.ev!;
+    const u = prefs();
+    const st = getSettings();
+    const vehicle = f.mode === "vehicle";
+    const T = (c: number) => toUnit("temp", c, u.temp);
+    this.mini("coolant", T(ev.batteryC), fmt(T(ev.batteryC)), dt);
+    this.mini("oilT", T(ev.motorC), fmt(T(ev.motorC)), dt);
+    const cons = consumptionText(ev.kwhPer100, u);
+    // at standstill (or regen) the consumption dial rests; the text says "–"
+    const cv = Number.parseFloat(cons.value.replace(/\./g, "").replace(",", "."));
+    this.mini("fuel", Number.isFinite(cv) ? Math.max(0, Math.min(40, cv)) : 0, cons.value, dt);
+    this.minis.tank.wrap.hidden = false;
+    this.mini("tank", ev.soc * 100, fmt(Math.round(ev.soc * 100)), dt);
+    this.put("ev-soc", socText(ev.soc));
+    this.put("ev-range", rangeText(ev.rangeKm, u));
+    this.put("ev-cons", cons.value);
+    this.put("ev-cons-unit", cons.unit);
+    this.put("ev-batt", `${fmt(T(ev.batteryC))} ${u.temp}`);
+    this.put("ev-mode", driveModeLabel(ev.driveMode));
+    this.out["ev-soc"]!.parentElement!.classList.toggle("is-limit", ev.soc < 0.1);
+    this.out["ev-batt"]!.parentElement!.classList.toggle("is-limit", ev.batteryC > 55);
+    this.out["ev-mode"]!.dataset.mode = ev.driveMode;
+    // average consumption of trip A in kWh instead of litres
+    const trip = consumptionText(ev.tripKwhPer100, u);
+    this.put("avg", `${trip.value} ${trip.unit}`);
+    this.updateLamps(f);
+    this.updateRev(f);
+    this.extras.update(f);
+    const design = this.design;
+    if (design === "digital") this.updateFieldsEv(f, st.ckFields);
+    if (design === "race") this.race?.update(f);
+    if (design === "hud") {
+      this.put("hud-rpm", fmt(Math.round(ev.soc * 100)));
+      this.put("hud-power", fmt(toUnit("power", ev.powerKw, u.power)));
+    }
+    if (design === "italian") this.put("mode", driveModeLabel(ev.driveMode));
+    if (design === "truck") {
+      this.updateTruck(f);
+      this.put("eb", ev.regenKw > 1 ? `${fmt(toUnit("power", ev.regenKw, u.power))} ${u.power}` : "–");
+      this.out["eb-row"]!.dataset.state = ev.regenKw > 1 ? "active" : "on";
+    }
+    if (design === "motorrad") {
+      this.put("bike-cool", `${fmt(T(ev.batteryC))} ${u.temp}`);
+      this.put("bike-tank", vehicle ? socText(ev.soc) : "–");
+      this.put("bike-trip", `${fmt(toUnit("distance", f.trip.tripA.km, u.distance), 1)} ${u.distance}`);
+    }
+  }
+
+  /** Digital fields of an EV (#108): same slots, EV quantities (ev-logic.ts evField). */
+  private updateFieldsEv(f: Frame, stored: FieldSet) {
+    const u = prefs();
+    stored.forEach((storedId: FieldId, i) => {
+      const t = evField(storedId, f.s, u) ?? formatField(shownField(storedId, this.fieldCtx), this.fieldInputs(f), u, this.summary.limits);
+      const key = `${t.label}|${t.value}|${t.unit}|${t.warn}`;
+      if (this.last[`field${i}`] === key) return;
+      this.last[`field${i}`] = key;
+      const b = this.fieldBtns[i]!;
+      b.querySelector(".ck-field__lab")!.textContent = t.label;
+      b.querySelector(".ck-field__val")!.textContent = t.value;
+      b.querySelector(".ck-field__unit")!.textContent = t.unit;
+      b.classList.toggle("is-limit", t.warn);
+      if (b.dataset.name !== t.label) {
+        b.dataset.name = t.label;
+        b.setAttribute("aria-label", fieldAriaLabel(i, t.label));
+      }
+    });
+  }
+
+  /** Field inputs that are the same for both drives (speed, power, road, sprint, ambient). */
+  private fieldInputs(f: Frame): FieldInputs {
+    const { s } = f;
+    const d = f.drivetrain;
+    const ds = d.state;
+    const vehicle = f.mode === "vehicle";
+    return {
+      coolantC: s.coolantC, oilC: s.oilC, oilPressureBar: s.oilPressureBar, boostBar: s.boostBar, egtC: s.egtC,
+      fuelFlowLh: s.fuelFlowLh, speedKmh: vehicle ? ds.speedKmh : 0, running: s.running, tankLevelL: Number.NaN,
+      avgL100: Number.NaN, powerKw: s.powerKw, torqueNm: s.torqueNm, lambda: s.lambda,
+      altitudeM: (d.environment.terrain ?? "static") === "static" ? Number.NaN : ds.roadAltitudeM ?? Number.NaN,
+      gradePct: ds.roadGradePct ?? d.environment.gradePct, t0to100S: ds.t0to100S, t0to100Running: ds.t0to100Running,
+      ambientC: d.environment.ambientC, airCooled: false,
+    };
+  }
+
   /** Engine brake and top-speed limiter of the truck design (#83). No retarder, air brake or AdBlue: not in the core. */
   private updateTruck(f: Frame) {
     const u = prefs();
@@ -567,6 +738,20 @@ export class CockpitView implements LayoutView {
     const { s } = f;
     const ds = f.drivetrain.state;
     const vehicle = f.mode === "vehicle";
+    if (this.ev && s.ev) {
+      // EV (#108): the arc / bar shows the drive power share, no shift light (no gears)
+      const pct = Math.min(100, Math.max(0, (s.ev.powerKw / this.evScale.max) * 100));
+      const band = s.ev.regenKw > 1 ? "regen" : "normal";
+      const key = `ev|${pct.toFixed(1)}|${band}`;
+      if (key === this.last.rev) return;
+      this.last.rev = key;
+      this.arcFill.style.setProperty("stroke-dasharray", `${pct.toFixed(2)} 100`);
+      this.revbar.style.setProperty("--ck-rpm", `${pct.toFixed(2)}%`);
+      this.el.dataset.band = band;
+      this.el.dataset.shift = "off";
+      this.shiftLeds.forEach((l, i) => (l.dataset.on = String(i < Math.round((pct / 100) * SHIFT_LEDS))));
+      return;
+    }
     const rpm = s.running ? s.rpm : 0;
     const pct = Math.min(100, (rpm / this.rpmMax) * 100);
     const shiftRpm = vehicle && ds.gear > 0 && ds.type !== "cvt" && ds.gear < ds.gearCount ? this.info.shiftRpm(ds.gear) : vehicle ? this.cfg.revLimitRpm : this.summary.peakPowerRpm;
@@ -668,6 +853,14 @@ export class CockpitView implements LayoutView {
       parkingBrake: vehicle ? !!ds.parkingBrake : undefined,
       gearbox: vehicle ? { hot: !!ds.gearboxOilWarn, protect: !!ds.gearboxProtect, failed: !!ds.gearboxFailed } : undefined,
     });
+    // electric car (#108): Ready lamp, no oil / coolant / glow / alternator lamps
+    const evl = this.ev && s.ev ? evLamps(set, { ready: s.ev.ready, ignition: f.ignition, soc: s.ev.soc, warnings: s.warnings.map((w) => w.code) }) : null;
+    if (evl) Object.assign(set, evl);
+    const ready = evl?.ready ?? "off";
+    if (this.readyEl.dataset.state !== ready) {
+      this.readyEl.dataset.state = ready;
+      this.readyEl.setAttribute("aria-label", `Ready: ${ready === "on" ? "an" : "aus"}`);
+    }
     const key = Object.values(set).join("|");
     if (key === this.lastLamps) return;
     this.lastLamps = key;

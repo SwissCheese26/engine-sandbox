@@ -1,6 +1,7 @@
 // Instrument panel: round gauges (canvas) for rpm, torque, power and boost, plus linear meters
 // (DOM) for temperatures, oil pressure, consumption, λ and knock/soot. Yellow marks limits only.
-import type { EngineConfig, EngineState, EngineSummary, WarningCode } from "../core/index.ts";
+import { evSystemPowerKw } from "../core/index.ts";
+import type { EngineConfig, EngineState, EngineSummary, EvConfig, WarningCode } from "../core/index.ts";
 import { fitCanvas, reducedMotion, tokens } from "./canvas.ts";
 import { setText } from "./dom.ts";
 import { clamp, fmt, mixHex, niceCeil, tickStep } from "./format.ts";
@@ -18,6 +19,8 @@ interface RoundDef {
   /** Shown scale divisor (e.g. rpm shown as ×1000). */
   scaleLabel?: string;
   scaleDiv?: number;
+  /** Labelled tick spacing in display units (default: scaleDiv, else automatic); EV motor speed: 2000 (#108). */
+  scaleStep?: number;
   value: (s: EngineState) => number;
   warns: WarningCode[];
   /** Switchable display units (first = base). */
@@ -163,7 +166,7 @@ class RoundGauge {
     const div = this.def.scaleDiv ?? 1;
     const dMin = this.min * k + off;
     const dSpan = span * k;
-    const step = div > 1 ? div : tickStep(dSpan, R > 70 ? 8 : 2) || 1; // guard: zero span → no endless loop
+    const step = this.def.scaleStep ?? (div > 1 ? div : tickStep(dSpan, R > 70 ? 8 : 2) || 1); // guard: zero span → no endless loop
     const minor = step / (R > 70 ? 5 : 2);
     ctx.strokeStyle = t.alu;
     const first = Math.ceil(dMin / minor - 1e-9) * minor;
@@ -360,6 +363,58 @@ export class InstrumentPanel {
     lin.className = "instruments__meters";
     lin.append(...this.meters.map((m) => m.el));
     this.el.append(dial, lin);
+    this.iceEls = [dial, lin];
+  }
+
+  // --- electric car (#108): own instruments, the combustion ones are hidden ---------------------------------------
+  private iceEls: HTMLElement[] = [];
+  private ev: { cfg: EvConfig; round: RoundGauge[]; meters: Meter[]; els: HTMLElement[] } | null = null;
+  private evOn = false;
+
+  /** Electric car on (motor speed, power incl. regen, torque, battery and motor values) or off (null). */
+  setElectric(ev: EvConfig | null) {
+    this.evOn = !!ev;
+    this.el.dataset.drive = ev ? "ev" : "ice";
+    if (ev && (!this.ev || this.ev.cfg !== ev)) {
+      this.ev?.els.forEach((e) => e.remove());
+      const E = (s: EngineState) => s.ev;
+      const maxRpm = Math.max(...ev.motors.map((m) => m.maxRpm));
+      const sys = evSystemPowerKw(ev);
+      const round = [
+        new RoundGauge({ id: "ev-rpm", label: "Motordrehzahl", unit: "1/min", decimals: 0, scaleLabel: "× 1000 1/min", scaleDiv: 1000, scaleStep: maxRpm > 12000 ? 2000 : 1000, value: (s) => s.rpm, warns: [] }, true),
+        new RoundGauge({ id: "ev-power", label: "Akkuleistung", unit: "kW", decimals: 0, value: (s) => E(s)?.powerKw ?? 0, warns: ["battery-hot"], units: UNITS.power }),
+        new RoundGauge({ id: "ev-torque", label: "Drehmoment", unit: "Nm", decimals: 0, value: (s) => s.torqueNm, warns: ["motor-hot"], units: UNITS.torque }),
+      ];
+      round[0]!.setScale(0, Math.ceil(maxRpm / 1000) * 1000, maxRpm * 0.98);
+      round[1]!.setScale(-Math.max(50, niceCeil(sys * 0.3)), niceCeil(sys * 1.1), Infinity);
+      const tq = ev.motors.reduce((a, m) => a + m.peakTorqueNm * (m.ratio / (ev.motors.find((x) => x.axle === "rear") ?? ev.motors[0]!).ratio), 0);
+      round[2]!.setScale(-niceCeil(tq * 0.5), niceCeil(tq * 1.1), Infinity);
+      const temp = (id: string, label: string, max: number, limit: number, value: (s: EngineState) => number, warns: WarningCode[]): MeterDef => ({
+        id, label, unit: "°C", decimals: 0, min: 0, max: () => max, limit: () => limit, value, warns, thermal: true, units: UNITS.temp,
+      });
+      const meters = [
+        new Meter({ id: "ev-soc", label: "Ladezustand", unit: "%", decimals: 1, min: 0, max: () => 100, limit: () => 10, lowLimit: true, value: (s) => (E(s)?.soc ?? Number.NaN) * 100, warns: ["battery-low"] }),
+        new Meter({ id: "ev-volt", label: "Akkuspannung", unit: "V", decimals: 0, min: 0, max: () => niceCeil(ev.battery.seriesCells * 4.25), limit: () => ev.battery.seriesCells * 3.1, lowLimit: true, value: (s) => E(s)?.packV ?? Number.NaN, warns: [] }),
+        new Meter({ id: "ev-amp", label: "Akkustrom", unit: "A", decimals: 0, min: 0, max: () => niceCeil(ev.battery.maxDischargeC * ev.battery.cellAh * ev.battery.parallelCells), limit: () => Infinity, value: (s) => Math.abs(E(s)?.packA ?? Number.NaN), warns: [] }),
+        new Meter(temp("ev-batt", "Akku", 70, 55, (s) => E(s)?.batteryC ?? Number.NaN, ["battery-hot"])),
+        new Meter(temp("ev-motor", "E-Motor", 180, 150, (s) => E(s)?.motorC ?? Number.NaN, ["motor-hot"])),
+        new Meter({ id: "ev-regen", label: "Rekuperation", unit: "kW", decimals: 0, min: 0, max: () => niceCeil(Math.max(50, sys * 0.4)), limit: () => Infinity, value: (s) => E(s)?.regenKw ?? 0, warns: [] }),
+        new Meter({ id: "ev-cons", label: "Verbrauch", unit: "kWh/100 km", decimals: 1, min: 0, max: () => 60, limit: () => Infinity, value: (s) => E(s)?.kwhPer100 ?? Number.NaN, warns: [] }),
+      ];
+      const cfgStub = {} as EngineConfig;
+      for (const m of meters) m.configure(cfgStub);
+      const dial = document.createElement("div");
+      dial.className = "instruments__dials instruments__dials--ev";
+      dial.append(...round.map((g) => g.el));
+      const lin = document.createElement("div");
+      lin.className = "instruments__meters instruments__meters--ev";
+      lin.append(...meters.map((m) => m.el));
+      this.el.append(dial, lin);
+      this.ev = { cfg: ev, round, meters, els: [dial, lin] };
+    }
+    for (const e of this.iceEls) e.hidden = this.evOn;
+    for (const e of this.ev?.els ?? []) e.hidden = !this.evOn;
+    this.redraw();
   }
 
   configure(cfg: EngineConfig, sum: EngineSummary) {
@@ -377,12 +432,17 @@ export class InstrumentPanel {
 
   update(s: EngineState, dt: number) {
     const active = new Set(s.warnings.map((w) => w.code));
+    if (this.evOn && this.ev) {
+      for (const g of this.ev.round) g.update(s, dt, active);
+      for (const m of this.ev.meters) m.update(s, dt, active);
+      return;
+    }
     for (const g of this.round) g.update(s, dt, active);
     for (const m of this.meters) m.update(s, dt, active);
   }
 
   redraw() {
-    for (const g of this.round) g.draw();
+    for (const g of this.evOn && this.ev ? this.ev.round : this.round) g.draw();
   }
 
   /** Re-reads the unit of every instrument (global setting or reset of the overrides, #24). */

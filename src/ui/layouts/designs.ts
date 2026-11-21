@@ -2,7 +2,7 @@
 // `.ck[data-design=…]` root (layouts.css) plus a DialTheme for the canvas dials. No design has logic of its own.
 // Also the ids of the switchable fields of the digital design. DOM-free (imported by settings.ts and tests).
 
-export type CockpitDesignId = "classic" | "night-orange" | "italian" | "oldschool" | "digital" | "hud" | "race" | "motorrad" | "truck";
+export type CockpitDesignId = "classic" | "night-orange" | "italian" | "oldschool" | "digital" | "hud" | "race" | "motorrad" | "truck" | "etacho";
 /** Stored choice: a design, or "auto" = by vehicle (motorcycle → "motorrad", truck/bus → "truck", else "classic"). */
 export type CockpitChoice = CockpitDesignId | "auto";
 
@@ -46,9 +46,11 @@ export const COCKPIT_DESIGNS: readonly CockpitDesign[] = [
   { id: "motorrad", label: "Motorrad", hint: "Kompaktes TFT: Drehzahlbalken mit Schaltblitz, Tempo und Gang groß", dial: DEFAULT_DIAL_THEME },
   // commercial vehicles (#83, #31): 125 km/h speedometer with the limiter mark, rev counter with the green band
   { id: "truck", label: "Nutzfahrzeug", hint: "Tacho bis 125 km/h mit Begrenzer, Drehzahlmesser mit grünem Bereich, Motorbremse", dial: { needle: "bar", ring: "alu", numeralWeight: 600, numeralScale: 1.1, glow: 3, minorTicks: true } },
+  // electric cars (#108): power/regen meter, state of charge, range, consumption, battery temperature, drive mode
+  { id: "etacho", label: "E-Tacho", hint: "Für Elektroautos: Leistung und Rekuperation, Ladezustand, Reichweite, kWh/100 km, Akkutemperatur, Fahrmodus", dial: { needle: "bar", ring: "none", numeralWeight: 500, numeralScale: 1, glow: 4, minorTicks: false } },
 ];
 
-export const AUTO_DESIGN = { id: "auto", label: "Automatisch nach Fahrzeug", hint: "Motorrad-Display auf dem Motorrad, Nutzfahrzeug bei Lkw und Bus, sonst Klassisch" } as const;
+export const AUTO_DESIGN = { id: "auto", label: "Automatisch nach Fahrzeug", hint: "Motorrad-Display auf dem Motorrad, Nutzfahrzeug bei Lkw und Bus, E-Tacho im Elektroauto, sonst Klassisch" } as const;
 
 /** Everything the design picker offers, in its order: "Automatisch" first, then every design (#94). */
 export const DESIGN_CHOICES: readonly { id: CockpitChoice; label: string; hint: string }[] = [AUTO_DESIGN, ...COCKPIT_DESIGNS];
@@ -58,8 +60,9 @@ export function isCockpitChoice(v: unknown): v is CockpitChoice {
 }
 
 /** The design in effect for a stored choice and the vehicle kind on the dyno. */
-export function resolveDesign(choice: CockpitChoice, vehicleKind: string): CockpitDesignId {
+export function resolveDesign(choice: CockpitChoice, vehicleKind: string, electric = false): CockpitDesignId {
   if (choice !== "auto") return choice;
+  if (electric) return "etacho";
   if (vehicleKind === "superbike" || vehicleKind === "tourer") return "motorrad";
   return vehicleKind === "truck" || vehicleKind === "bus" ? "truck" : "classic";
 }

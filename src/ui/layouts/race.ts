@@ -9,6 +9,8 @@ import { prefs } from "../settings.ts";
 import { fmtQ, toUnit } from "../units.ts";
 import { ledColors, limitZoneRpm, shiftLights, tachoMax } from "./logic.ts";
 import type { DriveInfo, Frame, LayoutView } from "./view.ts";
+import type { EvConfig } from "../../core/index.ts";
+import { powerMeterScale, rangeText, socText } from "./ev-logic.ts";
 
 const LEDS = 12;
 /** Flash rate of the blue shift light, Hz (typical motorsport dashes: 5 … 10 Hz). */
@@ -30,6 +32,9 @@ export class RaceView implements LayoutView {
   private litKey = "";
   /** Shift flash held until the rpm drops this far below the shift point (no flicker at the threshold). */
   private flashing = false;
+  /** Electric car (#108): LEDs and bar show the power share, kW instead of rpm, motor/battery instead of oil/water. */
+  private ev: EvConfig | null = null;
+  private evMaxKw = 500;
   /** Gear the "Schalten" hint was announced in; announced once per gear (#26 review). */
   private announcedGear = -1;
 
@@ -43,16 +48,17 @@ export class RaceView implements LayoutView {
       <div class="rd__grid">
         <div class="rd__cell rd__cell--speed"><span class="rd__lab" data-rd="speed-unit">km/h</span><b class="num rd__big" data-rd="speed">–</b></div>
         <div class="rd__gear num"><span class="sr-only">Gang </span><b data-rd="gear">N</b></div>
-        <div class="rd__cell rd__cell--rpm"><span class="rd__lab">1/min</span><b class="num rd__big" data-rd="rpm">0</b></div>
+        <div class="rd__cell rd__cell--rpm"><span class="rd__lab" data-rd="rpm-label">1/min</span><b class="num rd__big" data-rd="rpm">0</b></div>
       </div>
       <div class="rd__bar" aria-hidden="true"><i class="rd__fill"></i><i class="rd__zone"></i><i class="rd__mark"></i></div>
       <div class="rd__row">
         <div class="rd__cell"><span class="rd__lab" data-rd="sprint-label">0–100 km/h</span><b class="num" data-rd="sprint">–</b></div>
         <div class="rd__cell"><span class="rd__lab">Delta</span><b class="num" data-rd="delta">–</b></div>
         <div class="rd__cell"><span class="rd__lab">Leistung</span><b class="num" data-rd="power">–</b></div>
-        <div class="rd__cell rd__cell--warn" data-rd="oil-tile"><span class="rd__lab">Öl</span><b class="num" data-rd="oil">–</b></div>
+        <div class="rd__cell rd__cell--warn" data-rd="oil-tile"><span class="rd__lab" data-rd="oil-label">Öl</span><b class="num" data-rd="oil">–</b></div>
         <div class="rd__cell rd__cell--warn" data-rd="water-tile"><span class="rd__lab" data-rd="water-label">Wasser</span><b class="num" data-rd="water">–</b></div>
-        <div class="rd__cell rd__cell--warn" data-rd="tank-tile"><span class="rd__lab">Tank</span><b class="num" data-rd="tank">–</b></div>
+        <div class="rd__cell rd__cell--warn" data-rd="tank-tile"><span class="rd__lab" data-rd="tank-label">Tank</span><b class="num" data-rd="tank">–</b></div>
+        <div class="rd__cell" data-rd="range-tile" hidden><span class="rd__lab">Reichweite</span><b class="num" data-rd="range">–</b></div>
       </div>`;
     this.el = el;
     this.leds = [...el.querySelectorAll<HTMLElement>(".rd-led")];
@@ -73,6 +79,19 @@ export class RaceView implements LayoutView {
     this.syncUnits();
   }
 
+  setElectric(ev: EvConfig | null) {
+    this.ev = ev;
+    if (ev) this.evMaxKw = powerMeterScale(ev).max;
+    this.out["rpm-label"]!.textContent = ev ? "kW" : "1/min";
+    this.out["oil-label"]!.textContent = ev ? "Motor" : "Öl";
+    this.out["tank-label"]!.textContent = ev ? "Ladung" : "Tank";
+    this.out["range-tile"]!.hidden = !ev;
+    const air = this.cfg && (this.cfg.cooling.type === "air" || this.cfg.cooling.type === "oil-air");
+    this.out["water-label"]!.textContent = ev ? "Akku" : air ? "Kopf" : "Wasser";
+    for (const k of Object.keys(this.last)) this.last[k] = "";
+    this.litKey = "";
+  }
+
   syncUnits() {
     const u = prefs();
     this.out["speed-unit"]!.textContent = u.speed;
@@ -90,6 +109,7 @@ export class RaceView implements LayoutView {
   }
 
   update(f: Frame) {
+    if (this.ev && f.s.ev) return this.updateEv(f);
     const { s } = f;
     const u = prefs();
     const d = f.drivetrain;
@@ -154,6 +174,48 @@ export class RaceView implements LayoutView {
     const lv = gal ? d.tank.levelL / 3.785411784 : d.tank.levelL;
     this.put("tank", vehicle ? `${fmt(lv, gal ? 1 : 0)} ${gal ? "gal" : "l"}` : "–");
     this.flag("tank-tile", vehicle && d.tank.reserve);
+  }
+
+  /** EV (#108): power LEDs (no shift light: one gear), kW, sprint, motor and battery temperature, state of charge. */
+  private updateEv(f: Frame) {
+    const { s } = f;
+    const ev = s.ev!;
+    const u = prefs();
+    const ds = f.drivetrain.state;
+    const vehicle = f.mode === "vehicle";
+    this.put("speed", vehicle ? fmt(toUnit("speed", ds.speedKmh, u.speed)) : "–");
+    this.put("rpm", fmt(Math.round(ev.powerKw)));
+    this.put("gear", vehicle ? "D" : "–");
+    this.put("power", fmtQ("power", Math.max(0, s.powerKw)));
+    const share = Math.max(0, Math.min(1, ev.powerKw / this.evMaxKw));
+    const lit = Math.round(share * LEDS);
+    const key = `ev|${lit}`;
+    if (key !== this.litKey) {
+      this.litKey = key;
+      this.leds.forEach((l, i) => {
+        l.dataset.on = String(i < lit);
+        l.classList.remove("is-shift");
+      });
+    }
+    this.bar.style.setProperty("--rpm", `${(share * 100).toFixed(1)}%`);
+    this.bar.style.setProperty("--mark", "100%");
+    const run = ds.t0to100Running;
+    const done = ds.t0to100S;
+    if (run === null && done !== null && done !== this.lastRun) {
+      this.lastRun = done;
+      const prev = this.best;
+      this.best = prev === null ? done : Math.min(prev, done);
+      const diff = prev === null ? 0 : done - prev;
+      this.put("delta", Math.abs(diff) < 0.005 ? "±0,00" : `${diff > 0 ? "+" : "−"}${fmt(Math.abs(diff), 2)}`);
+    }
+    this.put("sprint", run !== null ? fmt(run, 1) : done !== null ? fmt(done, 2) : "–");
+    this.put("oil", `${fmt(toUnit("temp", ev.motorC, u.temp))} ${u.temp}`);
+    this.put("water", `${fmt(toUnit("temp", ev.batteryC, u.temp))} ${u.temp}`);
+    this.flag("oil-tile", ev.motorC > 150);
+    this.flag("water-tile", ev.batteryC > 55);
+    this.put("tank", vehicle ? socText(ev.soc) : "–");
+    this.flag("tank-tile", ev.soc < 0.1);
+    this.put("range", rangeText(ev.rangeKm, u));
   }
 
   private flag(k: string, on: boolean) {

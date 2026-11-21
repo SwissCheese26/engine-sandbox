@@ -72,12 +72,13 @@ export class VehiclePanel {
         <label class="gearbox__field"><span>Fertiges Fahrzeug</span>
           <select data-control="car">
             <option value="">– eigenes Fahrzeug –</option>
-            ${([["Autos", "car"], ["Lkw & Busse", "commercial"], ["Motorräder", "bike"]] as const).map(([label, group]) => `<optgroup label="${label}">${VEHICLE_LIBRARY
+            ${([["Autos", "car"], ["Elektro ⚡", "ev"], ["Lkw & Busse", "commercial"], ["Motorräder", "bike"]] as const).map(([label, group]) => `<optgroup label="${label}">${VEHICLE_LIBRARY
               .filter((c) => {
                 const k = c.setup.kind ?? "car";
-                return group === (isMotorcycleKind(k) ? "bike" : isCommercialKind(k) ? "commercial" : "car");
+                // electric cars (#108) in their own group
+                return group === (c.setup.ev ? "ev" : isMotorcycleKind(k) ? "bike" : isCommercialKind(k) ? "commercial" : "car");
               })
-              .map((c) => `<option value="${c.id}">${c.name}</option>`).join("")}</optgroup>`).join("")}
+              .map((c) => `<option value="${c.id}">${c.setup.ev ? "⚡ " : ""}${c.name}</option>`).join("")}</optgroup>`).join("")}
           </select>
         </label>
         <button type="button" class="btn btn--small" data-control="load-car">Laden</button>
