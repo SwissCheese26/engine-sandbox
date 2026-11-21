@@ -20,6 +20,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    date: "2026-11-21",
+    title: "Reifenqualm und Dampf",
+    items: [
+      { kind: "neu", text: "Drehen die Räder durch oder blockieren sie, steigt unter den Instrumenten ein Hauch Reifenqualm auf, je mehr Schlupf und Tempo, desto mehr. Wird der Motor zu heiß, dampft es über dem Cockpit bzw. dem Motor-Schnittbild, bei kritischer Hitze oder Motorschaden dichter. Ein Motorschaden oder viel zu heißes Öl zeigt sich als bläulicher Rauch, ein rußender Diesel als dunkle Wolke. Abschalten lässt sich das unter Einstellungen › Effekte (Rauch/Dampf).", refs: [110, 111] },
+    ],
+  },
+  {
     date: "2026-11-20",
     title: "Engine Builder, Nutzfahrzeug-Cockpit, Getriebeöltemperatur und echte Launch Control",
     items: [
