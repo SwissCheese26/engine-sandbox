@@ -594,10 +594,12 @@ function stepVehicle(x: Internal, cIn: VehicleCoupling, engineTorqueNm: number, 
   const atRest = x.vSpeed <= 1e-3;
   const traction = c.grip !== undefined && Number.isFinite(c.grip) && veh.driveLayout !== undefined;
   x.absT = Math.min(9, x.absT + h);
-  if (!traction ||(atRest && pedalB > 0.05 && x.vWheel <= 0.05)) {
-    tiedStep(x, c, engineTorqueNm, J, h, traction ? Math.max(0.01, c.grip!) : undefined);
+  if (!traction) {
+    tiedStep(x, c, engineTorqueNm, J, h);
     return;
   }
+  // issue #104: at standstill the service brake holds the driven wheels themselves (brake stand / stall test)
+  if (atRest && pedalB > 0.05 && x.vWheel <= 0.05 && brakeStandStep(x, c, engineTorqueNm, J, h, pedalB)) return;
   const gr = gradeOf(c);
   const mu = Math.max(0.01, c.grip!) * gr.cos;
   x.grip = mu;
@@ -611,6 +613,8 @@ function stepVehicle(x: Internal, cIn: VehicleCoupling, engineTorqueNm: number, 
   const cut = (f: number) => (f > fWheelie ? fWheelie : f);
   // service brake through the braked wheels' tyre force (issue #23: brake slip, ABS)
   const fBrake = atRest ? 0 : stepBrakes(x, c, pedalB, mu, h);
+  // issue #104: car (practically) standing, driven wheels spinning against their own service brake (brake stand)
+  const fBd = x.vSpeed <= HOLD_STOP_MS && x.vWheel > 0 ? drivenBrakeN(c, pedalB) : 0;
   const brakeLocked = fBrake > 0 && x.vSpeed > 0.5 && slipRatio(x.vBrk, x.vSpeed) < LOCK_SLIP;
   const R = roadLoadN(veh, x.vSpeed, airRho(c), gr.cos) + m * G * gr.sin + fBrake;
   const N = drivenAxleLoadN(veh, x.aLong);
@@ -631,7 +635,7 @@ function stepVehicle(x: Internal, cIn: VehicleCoupling, engineTorqueNm: number, 
     // engine + driven side as one body: mD·dw = h(Fd − Ft), m·dv = h(Ft − R), Ft ≈ Ft0 + kt(dw − dv)
     const mD = J * a * a + mW;
     const Fd = cut(engineTorqueNm * a * (engineTorqueNm >= 0 ? eta : 1 / eta));
-    [dw, dv] = solve2(mD + h * kt, -h * kt, -h * kt, m + h * kt, h * (Fd - Ft0), h * (Ft0 - R));
+    [dw, dv] = solve2(mD + h * kt, -h * kt, -h * kt, m + h * kt, h * (Fd - fBd - Ft0), h * (Ft0 - R));
     x.vWheel = Math.max(0, w0 + dw);
     x.rpm = x.vWheel * a * RPM_PER_RADS;
   } else if (c.converter && i > 0) {
@@ -661,7 +665,7 @@ function stepVehicle(x: Internal, cIn: VehicleCoupling, engineTorqueNm: number, 
       [-h * g * Qe, mW - h * g * Qt * a + h * kt, -h * kt],
       [0, -h * kt, m + h * kt],
     ];
-    const b = [h * (engineTorqueNm - P0), h * (Fd0 - Ft0), h * (Ft0 - R)];
+    const b = [h * (engineTorqueNm - P0), h * (Fd0 - fBd - Ft0), h * (Ft0 - R)];
     const [de, dW, dV] = solve3(A, b);
     dw = dW;
     dv = dV;
@@ -680,7 +684,7 @@ function stepVehicle(x: Internal, cIn: VehicleCoupling, engineTorqueNm: number, 
       [-h * g * kc, mW + h * g * kc * a + h * kt, -h * kt],
       [0, -h * kt, m + h * kt],
     ];
-    const b = [h * (engineTorqueNm - tc0), h * (Fd0 - Ft0), h * (Ft0 - R)];
+    const b = [h * (engineTorqueNm - tc0), h * (Fd0 - fBd - Ft0), h * (Ft0 - R)];
     const [de, dW, dV] = solve3(A, b);
     dw = dW;
     dv = dV;
@@ -854,6 +858,68 @@ function heldStep(x: Internal, c: VehicleCoupling, engineTorqueNm: number, J: nu
   x.locked = x.vSpeed > 0.5;
   x.tyreF = x.vSpeed > 0 ? -SLIDE_FACTOR * fHold : 0;
   x.aLong += ((x.vSpeed - v0) / h - x.aLong) * Math.min(1, h / 0.02);
+}
+
+/**
+ * Service-brake force at the driven wheels, N (issue #104): full-pedal capacity BRAKE_MAX_G·m·g split between the
+ * axles by the static axle load (brake balance ≈ load distribution, Breuer/Bill, Bremsenhandbuch, ch. "Bremskraft-
+ * verteilung", docs/research/vehicle.md [B20]) [S]; AWD: all four wheels are driven. 530d: ≈ 0.78·m·g on the rear axle ≈ 3.9 kNm at r = 0.31 m.
+ */
+function drivenBrakeN(c: VehicleCoupling, pedalB: number): number {
+  const veh = c.vehicle;
+  const w = veh.massKg * G;
+  const share = veh.driveLayout === "awd" ? 1 : clamp(drivenAxleLoadN(veh, 0) / w, 0, 1);
+  return pedalB * BRAKE_MAX_G * w * gradeOf(c).cos * share;
+}
+
+/**
+ * Brake stand / stall test at standstill (issue #104, docs/research/vehicle.md §4): the service brake acts on the
+ * wheels, so a converter in D is loaded at stall (turbine at rest, pump torque λ(0)·(n/K)², converter.ts) and the
+ * engine settles where its torque equals the pump torque – the stall speed. The driven wheels stay at rest while the
+ * drive force at the wheel is below their brake force plus the static tyre force μ·N_d; the car stays while the
+ * force the driven tyres pass to the road (drive − own brake) minus the downhill force is held by the other axle's
+ * brake, tyre-limited (Coulomb friction, Mitschke/Wallentowitz [B5]). Otherwise false: the wheels spin against their
+ * brake (stepVehicle, fBd) or the car slides off.
+ */
+function brakeStandStep(x: Internal, c: VehicleCoupling, engineTorqueNm: number, J: number, h: number, pedalB: number): boolean {
+  const veh = c.vehicle;
+  const m = veh.massKg;
+  const i = c.totalRatio;
+  const eta = clamp(c.efficiency, 0.5, 1);
+  const wEng = x.rpm / RPM_PER_RADS;
+  const cap = clamp(c.clutch, 0, 1) * c.clutchCapacityNm;
+  const gr = gradeOf(c);
+  const mu = Math.max(0.01, c.grip!) * gr.cos;
+  let pump = 0;
+  let tIn = 0;
+  if (i > 0 && c.converter) {
+    const t = converterTorques(c.converter, x.rpm, 0);
+    const l = cap * Math.tanh(wEng / 3);
+    pump = t.pumpNm + l;
+    tIn = t.turbineNm + l;
+  } else if (i > 0) {
+    pump = cap * Math.tanh(wEng / 3);
+    tIn = pump * (pump > 0 ? Math.max(1, c.torqueRatio ?? 1) : 1);
+  }
+  const fDrive = i > 0 ? Math.min(wheelieLimitN(veh), (tIn * i * (tIn >= 0 ? eta : 1 / eta)) / veh.wheelRadiusM) : 0;
+  const nD = Math.min(m * G, drivenAxleLoadN(veh, 0)) * gr.cos;
+  const fBd = drivenBrakeN(c, pedalB);
+  const fBnd = Math.max(0, pedalB * BRAKE_MAX_G * m * G * gr.cos - fBd);
+  const fRoad = Math.max(0, fDrive - fBd);
+  if (fDrive > fBd + mu * nD || fRoad - m * G * gr.sin > Math.min(fBnd, mu * (m * G * gr.cos - nD))) return false;
+  const wE = Math.max(0, wEng + ((engineTorqueNm - pump) / J) * h);
+  x.rpm = wE * RPM_PER_RADS;
+  x.grip = mu;
+  x.vSpeed = 0;
+  x.vWheel = 0;
+  x.vBrk = 0;
+  x.absF = 0;
+  x.absRelease = false;
+  x.spin = false;
+  x.locked = false;
+  x.tyreF = fRoad;
+  x.aLong += (0 - x.aLong) * Math.min(1, h / 0.02);
+  return true;
 }
 
 /**

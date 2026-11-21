@@ -19,6 +19,10 @@ _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `
 - Rollenprüfstand aufgeräumt: Jede Einstellung gibt es nur noch einmal. Oben stehen die Anzeigen (Gang, Tempo, Vmax, 0–100, Getriebeöl, Tankinhalt, Bordcomputer), darunter die Abschnitte „Getriebe“ (Getriebeart, Achsübersetzung, Ölkühler, Gänge und Zugkraftdiagramm), „Fahrzeug & Reifen“ (Fahrzeugtyp, fertiges Fahrzeug, Vmax-Begrenzer, Karosserie, Reifen) und „Umwelt & Assistenten“. Die berechnete Vmax steht nur noch einmal, unter dem Zugkraftdiagramm. ([#112](https://github.com/SwissCheese26/engine-sandbox/issues/112), [#113](https://github.com/SwissCheese26/engine-sandbox/issues/113))
 - Einstellungen gelten pro Fahrzeug: Eigene Gänge, Getriebeart, Achsübersetzung, Reifen, Antrieb, Karosserie, Tankgröße, Vmax-Begrenzer und Ölkühler bleiben beim Fahrzeug, an dem du sie geändert hast. Ein anderes Fahrzeug startet im Werkszustand, beim Zurückwechseln sind deine Änderungen wieder da. Bisher gespeicherte Gänge übernimmt das zuletzt gefahrene Fahrzeug. ([#112](https://github.com/SwissCheese26/engine-sandbox/issues/112), [#113](https://github.com/SwissCheese26/engine-sandbox/issues/113))
 
+### Behoben
+
+- Automatik: Vollgas bei voll getretener Bremse lässt die Räder nicht mehr frei durchdrehen. Die Bremse hält jetzt auch die Antriebsräder, der Motor bleibt auf der Festbremsdrehzahl des Wandlers (z. B. ≈ 2000 1/min beim Land Cruiser statt durchdrehender Räder, ≈ 2400 statt über 4000 1/min beim 530d), und das Getriebeöl wird dabei schnell heiß. Starke Hecktriebler drehen die Hinterräder wie in echt nur langsam gegen die Bremse. ([#104](https://github.com/SwissCheese26/engine-sandbox/issues/104))
+
 ## 2026-11-20 – Engine Builder, Nutzfahrzeug-Cockpit, Getriebeöltemperatur und echte Launch Control
 
 ### Neu

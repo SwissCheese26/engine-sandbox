@@ -61,7 +61,7 @@ Trilok-Wandler aus Pumpe (Motor), Turbine (Getriebe) und Leitrad auf Freilauf [B
   - schließt in ≈ 0,5 s und rutscht während der Schaltungen geregelt [B7, S]
 - **Kriechen:** Im Stand mit D und Leerlauf überträgt der Wandler (n_Leerlauf / K)², beim Pkw etwa 30–50 Nm. Ohne Bremse kriecht das Auto mit ≈ 5–7 km/h, mit Bremse muss der Motor dieses Moment im Leerlauf halten.
 - **Schaltprogramm** wie beim DSG, aber auf der Turbinendrehzahl. Hochgeschaltet wird zusätzlich nach der Motordrehzahl, damit der schlupfende Wandler den Motor nicht im Begrenzer hält.
-- **Bremsen mit Vollgas:** Die Bremse hält im Modell nur das Fahrzeug, nicht die Antriebsräder (wie beim Burnout mit Handschalter, #22). Mit Vollgas und Bremse drehen deshalb die Antriebsräder durch, statt den Motor auf der Festbremsdrehzahl zu halten.
+- **Bremsen mit Vollgas (Festbremsdrehzahl, #104):** Die Betriebsbremse wirkt auch auf die Antriebsräder. Ihre Kraft bei vollem Pedal (1,6 g · m · g) teilt sich nach der statischen Achslast auf die Achsen auf [B20, S]. Die Antriebsräder stehen, solange die Antriebskraft am Rad unter ihrer Bremskraft plus μ · N der Antriebsachse liegt. Dann steht die Turbine, und der Motor läuft auf der Festbremsdrehzahl, bei der sein Moment gleich dem Pumpenmoment (n / K)² ist. Allrad (Prado 120) hält so bei Vollgas, ≈ 2000 1/min. Bei starken Hecktrieblern (530d, E 220 d) übersteigt das Radmoment beim Festbremsen (≈ 9,4–9,8 kNm) die Hinterachsbremse (≈ 4 kNm) plus Reifen (≈ 2,5 kNm). Die Hinterräder drehen dann langsam gegen die Bremse durch (Brake-Stand), die Drehzahl bleibt aber nahe der Festbremsdrehzahl (≈ 2400 1/min). Werkstätten prüfen die Festbremsdrehzahl deshalb mit Fest- und Betriebsbremse und höchstens ≈ 5 s lang (Toyota-Reparaturhandbuch „Stall Test“) [S].
 
 ## 5. Gangabstufung (#14)
 
@@ -101,6 +101,7 @@ Die Gänge lassen sich aus der Übersetzung des 1. und des höchsten Gangs berec
 - [B8] SAE J643: Hydrodynamic Drive Test Code (K-Faktor, Wandlung, Wirkungsgrad über dem Drehzahlverhältnis).
 - [B9] Haken, K.-L.: Grundlagen der Kraftfahrzeugtechnik, Hanser, Kap. „Zugkraftdiagramm, Getriebeauslegung“.
 - [B10] UN ECE Regelung Nr. 13-H (Bremsen von Personenkraftwagen), Abs. 5.2.2.3: Feststellbremse hält das Fahrzeug auf 20 % Steigung bzw. Gefälle.
+- [B20] Breuer, B.; Bill, K. H. (Hrsg.): Bremsenhandbuch, Springer Vieweg, Kap. „Bremskraftverteilung“.
 - [B11] StVZO §41 (Bremsen und Unterlegkeile); für Pkw über die Typgenehmigung nach UN ECE R13-H.
 
 ## 8. Getriebeöltemperatur (#53)
