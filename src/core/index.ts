@@ -80,3 +80,14 @@ export {
   GEARBOX_THERMAL, GEARBOX_WARM_C, GEARBOX_HYST_K, gearboxThermalKind, stepGearboxOil, gearboxHeatW, gearboxViscosityFactor, gearboxDragPenalty, gearboxWearRate,
 } from "./gearbox-thermal.ts";
 export type { GearboxOilInput, GearboxThermalKind, GearboxThermalSpec } from "./gearbox-thermal.ts";
+// issue #108: electric drive (motor, inverter, battery, regen, single-speed reduction, multi-motor AWD)
+export { EvSimulator, DRIVE_MODES, DRIVE_MODE_IDS, START_SOC, evRefRatio, evSystemPowerKw, evPackKwh, motorRpmAt } from "./electric.ts";
+export {
+  CONSTANT_POWER_RATIO, INVERTER_EFFICIENCY, MOTOR_DERATE_C, MOTOR_MAX_C, baseRpm, electricPowerKw, motorDerate, motorEfficiency, motorLossKw,
+  motorMaxPowerKw, motorMaxTorque, torqueAtCurrent,
+} from "./electric-motor.ts";
+export {
+  BATTERY_CUTOFF_C, BATTERY_DERATE_C, CELL_V_MAX, CELL_V_MIN, PACK_KWH_PER_KG, batteryLimits, cellOcv, chargeAcceptance, currentForPower,
+  dischargeDerate, nominalV, packAh, packEnergyKwh, packMassKg, packOcv, packResistance, stepBattery,
+} from "./battery.ts";
+export type { BatteryLimits, BatteryState } from "./battery.ts";

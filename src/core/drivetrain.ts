@@ -18,6 +18,8 @@
  * (environment.ts) and ABS / ASR / ESP / launch control (assists.ts), lamps in DrivetrainState.
  * Gearbox oil temperature (issue #53, gearbox-thermal.ts, docs/research/vehicle.md §8): heat from the gear losses and
  * the clutch/converter slip, cold-oil drag, warning, TCU protection mode and damage per realism level.
+ * Electric cars (issue #108): CarSetup.ev set → own path in evInputs(): single-speed reduction, clutch always closed,
+ * no shifting, launch or idle logic; the EvSimulator (electric.ts) takes the coupling.
  * Pure TypeScript, no DOM.
  */
 import { CruiseControl } from "./cruise.ts";
@@ -36,7 +38,8 @@ import { GEARBOX_HYST_K, GEARBOX_THERMAL, GEARBOX_WARM_C, gearboxDragPenalty, ge
 import { dynoSweep } from "./dyno.ts";
 import { AUTO_HOLD_MAX_KMH, HOLD_RELEASE_PEDAL, autoHoldEngages } from "./parking-brake.ts";
 import type { ConverterSpec } from "./converter.ts";
-import type { ConverterCoupling, EngineConfig, EngineState, EngineSummary, SimInputs, VehicleCoupling, VehicleParams } from "./types.ts";
+import { evRefRatio } from "./electric.ts";
+import type { ConverterCoupling, EvConfig, EngineConfig, EngineState, EngineSummary, SimInputs, VehicleCoupling, VehicleParams } from "./types.ts";
 
 export type GearboxType = "manual" | "dsg" | "cvt" | "sequential" | "automatic";
 
@@ -322,6 +325,8 @@ export interface DrivetrainState {
   gearboxProtect?: boolean;
   gearboxWear?: number;
   gearboxFailed?: boolean;
+  /** Issue #108: an electric car is loaded (CarSetup.ev). */
+  electric?: boolean;
 }
 
 /** Pedal cap of the TCU protection mode at gearbox oil overtemperature (vehicle.md §8) [S]. */
@@ -347,6 +352,8 @@ export interface CarSetup {
   /** Gear ratios of this car; default GEARBOXES[gearbox]. */
   gearboxSpec?: GearboxSpec;
   speedLimitKmh: number | null;
+  /** Electric car (issue #108): motors, battery, reduction. `gearbox`/`gearboxSpec` are then ignored by the drivetrain. */
+  ev?: EvConfig;
 }
 
 /** Governor presets in km/h, null = off. Default 250 km/h (German manufacturers' voluntary agreement) [S]. */
@@ -440,6 +447,8 @@ export class Drivetrain {
   private gbFailed = false;
   private gbCooler = true;
   private damageLevel: NonNullable<SimInputs["damage"]> = "real";
+  /** Electric car loaded (issue #108). */
+  private evCfg: EvConfig | null = null;
 
   constructor(
     private cfg: EngineConfig,
@@ -466,7 +475,24 @@ export class Drivetrain {
       parkingBrake: false, autoHold: this.autoHoldOn,
       gearboxOilC: Number.isFinite(this.gbOilC) ? this.gbOilC : this.env.ambientC, gearboxOilWarn: this.gbWarn,
       gearboxProtect: this.gbProtect, gearboxWear: this.gbWear, gearboxFailed: this.gbFailed,
+      ...(this.evCfg ? { electric: true, gearCount: 1, ratio: 1, manualMode: false } : { electric: false }),
     };
+  }
+
+  /** Electric car configuration (issue #108), null for a combustion car. */
+  get ev(): Readonly<EvConfig> | null {
+    return this.evCfg;
+  }
+
+  /**
+   * Another electric configuration for the loaded electric car (tuning, issue #108), only at standstill. The mass
+   * change of motors and battery is set by the caller with setVehicleParams.
+   */
+  setEv(ev: EvConfig): boolean {
+    if (!this.evCfg || this.st.speedKmh > 0.5) return false;
+    this.evCfg = structuredClone(ev);
+    this.st.finalDrive = evRefRatio(this.evCfg);
+    return true;
   }
 
   get state(): DrivetrainState {
@@ -480,6 +506,8 @@ export class Drivetrain {
   }
 
   setType(type: GearboxType) {
+    // an electric car has its fixed reduction (issue #108)
+    if (this.evCfg) return;
     this.clearTransient();
     this.resetGearboxOil();
     this.spec = GEARBOXES[type];
@@ -497,6 +525,7 @@ export class Drivetrain {
    * the reason (German, for the UI).
    */
   setRatios(ratios: readonly number[]): string | null {
+    if (this.evCfg) return "Das Elektroauto hat ein festes 1-Gang-Untersetzungsgetriebe";
     if (this.st.type === "cvt") return "Das CVT hat keine Gänge";
     if (!this.ratiosEditable) return "Nur im Stand (Handbremse) oder in N";
     const err = validateRatios(ratios);
@@ -692,6 +721,9 @@ export class Drivetrain {
     this.clearTransient();
     this.resetGearboxOil();
     this.spec = car.gearboxSpec ? { ...car.gearboxSpec, ratios: [...car.gearboxSpec.ratios] } : GEARBOXES[car.gearbox];
+    // electric car (issue #108): one fixed ratio (the reference motor's reduction), see evInputs()
+    this.evCfg = car.ev ? structuredClone(car.ev) : null;
+    if (this.evCfg) this.spec = { ratios: [1], finalDrive: evRefRatio(this.evCfg), efficiency: this.evCfg.gearEfficiency, shiftTimeS: 0 };
     Object.assign(this.st, this.fresh(car.gearbox, this.spec.finalDrive, car.speedLimitKmh), { maxSpeedKmh: 0, t0to100S: null });
   }
 
@@ -927,7 +959,7 @@ export class Drivetrain {
   /** Driver shift request: +1 up, −1 down. Ignored for CVT. */
   shift(dir: 1 | -1) {
     const s = this.st;
-    if (s.type === "cvt") return;
+    if (s.type === "cvt" || this.evCfg) return;
     if (isAutomaticType(s.type)) s.manualMode = true;
     const target = Math.max(0, Math.min(s.gearCount, (s.shifting ? this.pendingGear : s.gear) + dir));
     // DSG refuses a downshift that would over-rev the engine (ECU protection); the manual gearbox lets you
@@ -981,6 +1013,7 @@ export class Drivetrain {
    * state and returns the coupling for this frame.
    */
   inputs(dt: number, engine: EngineState, driverPedal: number, brake = 0): VehicleCoupling {
+    if (this.evCfg) return this.evInputs(dt, engine, driverPedal, brake, this.evCfg);
     const s = this.st;
     // cruise control / limiter (issue #30): from here on "pedal" is the commanded pedal (shift schedule, CVT target,
     // launch, ASR and the governor all see what the engine is asked for)
@@ -1279,6 +1312,93 @@ export class Drivetrain {
   }
 
   /**
+   * Electric car (issue #108): the motors sit on the wheels through a single-speed reduction, so there is no shift
+   * schedule, clutch, launch or anti-stall logic. Route, Auto-Hold, tyres, assistants, governor, cruise control and
+   * the measurements are the same as in inputs(). The reduction-gear oil runs in the drive unit's cooling circuit:
+   * its temperature is the motor temperature, no gearbox protection mode.
+   */
+  private evInputs(dt: number, engine: EngineState, driverPedal: number, brake: number, ev: EvConfig): VehicleCoupling {
+    const s = this.st;
+    const pedal = this.cc.command(driverPedal);
+    const vRoad = engine.vehicleSpeedMs ?? 0;
+    const v = engine.wheelSpeedMs ?? vRoad;
+    this.lastSpeedMs = v;
+    if (Number.isFinite(vRoad) && dt > 0 && dt < 1) {
+      this.positionM += vRoad * dt;
+      this.updateRoad(dt);
+    }
+    // the "clutch" of an EV is always closed; for the Auto-Hold release it counts as open (drive-away by pedal only)
+    Object.assign(s, { gear: 1, gearCount: 1, ratio: 1, shifting: false, clutch: 0, manualMode: false, launchArmed: false, wheelie: false, electric: true });
+    this.updateHold(Number.isFinite(vRoad) ? vRoad : 0, pedal, brake, engine);
+    const held = !!s.parkingBrake;
+    this.lastRpm = engine.rpm;
+    this.launchCap = 1;
+    // --- tyres (issue #22)
+    const slipMs = engine.wheelsLocked ? vRoad : Math.max(0, v - vRoad);
+    this.roadKmh = vRoad * 3.6;
+    const mu = this.currentGrip();
+    this.tyreT = stepTyreTemp(this.tyreT, dt, (engine.tyreForceN ?? 0) / Math.max(1, mu * this.vehicle.massKg * 9.81), vRoad, slipMs, this.env.ambientC);
+    s.tyreTempC = this.tyreT;
+    s.grip = this.currentGrip();
+    this.spinHold = engine.wheelSpin ? 0.3 : Math.max(0, this.spinHold - dt);
+    s.wheelSpin = this.spinHold > 0;
+    s.wheelsLocked = engine.wheelsLocked ?? false;
+    s.aquaplaning = this.aquaplane && aquaplaningFactor(this.tyreSetup.type, this.roadKmh, this.tyreSetup.size.widthMm) < 0.9;
+    // --- assistants (issue #23): the motor torque reacts like the ignition path of a petrol engine (fast cut)
+    const a = this.assistSet;
+    const tcr = this.tc.step(dt, engine.wheelSlip ?? 0, vRoad, pedal, true, a, brake > 0.05, this.lastEffPedal, s.grip);
+    this.tcOut = { pedalCap: tcr.pedalCap, torqueCut: tcr.torqueCut, pedalFloor: tcr.pedalFloor };
+    this.tcCutting = tcr.cutting;
+    this.absHold = a.abs && engine.absActive ? ASSIST_LAMP_HOLD_S : Math.max(0, this.absHold - dt);
+    this.asrHold = tcr.asrActive || (a.asr && engine.ev?.limitedBy === "traction" && s.grip < 0.9 && vRoad > 0.5) ? ASSIST_LAMP_HOLD_S : Math.max(0, this.asrHold - dt);
+    this.espHold = tcr.msrActive || (a.esp && tcr.asrActive) ? ASSIST_LAMP_HOLD_S : Math.max(0, this.espHold - dt);
+    s.absActive = this.absHold > 0;
+    s.asrActive = this.asrHold > 0;
+    s.espActive = this.espHold > 0;
+    // --- measurements (same as inputs())
+    s.speedKmh = vRoad * 3.6;
+    this.governor(dt, s.speedKmh, pedal);
+    this.cc.update(dt, {
+      speedKmh: s.speedKmh, driverPedal, brake, running: engine.running, gear: 1, clutchOpen: false, manual: false,
+      rpm: engine.rpm, idleRpm: 0, governorKmh: s.speedLimitKmh, holdPedal: this.holdPedal(engine, pedal, 1),
+    });
+    if (s.speedKmh > s.maxSpeedKmh) {
+      s.maxSpeedKmh = s.speedKmh;
+      s.maxSpeedLimited = this.govActive && s.speedLimitKmh !== null && s.speedKmh >= s.speedLimitKmh - 3;
+    }
+    if (s.speedKmh < 0.5 && pedal > 0.05 && s.t0to100Running === null) s.t0to100Running = 0;
+    if (s.t0to100Running !== null) {
+      if ((s.speedKmh < 0.5 && pedal < 0.02) || !engine.running) s.t0to100Running = null;
+      else {
+        s.t0to100Running += dt;
+        if (s.speedKmh >= 100) {
+          s.t0to100S = s.t0to100Running;
+          s.t0to100Running = null;
+        }
+      }
+    }
+    const motorC = engine.ev?.motorC ?? this.env.ambientC;
+    this.gbOilC = motorC;
+    Object.assign(s, { gearboxOilC: motorC, gearboxOilWarn: false, gearboxProtect: false, gearboxWear: 0, gearboxFailed: false });
+    const cut = tcr.torqueCut;
+    return {
+      vehicle: this.vehicle,
+      totalRatio: evRefRatio(ev),
+      efficiency: ev.gearEfficiency,
+      clutch: 1,
+      clutchCapacityNm: 1e7,
+      brake,
+      grip: s.grip,
+      abs: a.abs,
+      asr: a.asr,
+      gradePct: this.road.gradePct,
+      airDensityKgM3: airDensity(altitudeToKpa(this.airAltM), this.env.ambientC),
+      ...(cut > 0 ? { torqueCut: cut } : {}),
+      ...(held ? { parkingBrake: true } : {}),
+    };
+  }
+
+  /**
    * Converter characteristic for the simulator (issue #14): K from the stall speed and the engine's peak torque – the
    * converter is matched to the engine, so a stronger engine gets a stiffer converter (vehicle.md §4) [S].
    */
@@ -1330,6 +1450,7 @@ export class Drivetrain {
   /** Label for the gear indicator: "N", "3", "D4", "M4", "CVT". */
   gearLabel(): string {
     const s = this.st;
+    if (this.evCfg) return "D";
     if (s.type === "cvt") return s.gear === 0 ? "N" : "D";
     if (s.gear === 0) return "N";
     if (isAutomaticType(s.type)) return `${s.manualMode ? "M" : "D"}${s.gear}`;

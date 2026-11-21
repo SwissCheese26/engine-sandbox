@@ -93,6 +93,20 @@ interface Internal {
   grip: number;
 }
 
+/**
+ * Shared longitudinal dynamics (issue #108): the EvSimulator drives the same vehicle model (tyres, brakes, ABS,
+ * gradient, aero) with its motor as the "engine". Only the vehicle part of the state is used there.
+ */
+export type VehicleBody = Internal;
+export function createVehicleBody(ambientC = 20): VehicleBody {
+  return {
+    rpm: 0, crank: 0, pManKpa: 101.325, turbo: { shaftRpm: 0, boostBar: 0 }, thermal: { coolantC: ambientC, oilC: ambientC, egtC: ambientC },
+    knockRetard: 0, idleI: 0, dynoI: 0, running: false, armed: false, stallT: 0, stalled: false, limiterCut: false, relLoad: 0, load: 0,
+    boostCut: 0, initialised: true, wear: 0, destroyed: false, vSpeed: 0, catC: ambientC, vWheel: 0, spin: false, locked: false, tyreF: 0,
+    aLong: 0, vBrk: 0, absF: 0, absRef: 0, absRelease: false, absT: 9, absCycles: 0, grip: 1,
+  };
+}
+
 /** Steady idle command (feed-forward for the idle governor) found by bisection at warm conditions. */
 function idleFeedForward(m: Model): number {
   const cfg = m.cfg;
@@ -538,7 +552,7 @@ function gradeOf(c: VehicleCoupling): { sin: number; cos: number } {
 }
 
 /** Brake system force capacity at full pedal, in g: enough to lock any tyre (ABS: issue #23) [S]. */
-const BRAKE_MAX_G = 1.6;
+export const BRAKE_MAX_G = 1.6;
 /** Rotating inertia of all four braked wheels, kg·m² (4 × ≈ 1.0, see WHEEL_INERTIA) [S]. */
 const BRAKED_INERTIA = 4;
 /**
@@ -576,7 +590,7 @@ const LOCK_SLIP = -0.3;
  * negative (locked driven wheels). The service brake acts on the vehicle, limited to μ·m·g (above: locked,
  * 0.9·μ·m·g); at standstill it holds the car like before (tiedStep).
  */
-function stepVehicle(x: Internal, cIn: VehicleCoupling, engineTorqueNm: number, J: number, h: number) {
+export function stepVehicle(x: Internal, cIn: VehicleCoupling, engineTorqueNm: number, J: number, h: number) {
   let c = cIn;
   if (c.parkingBrake) {
     // issue #91 review: the wheels lock only at standstill. Still rolling, the hold brakes like a firm service brake –
