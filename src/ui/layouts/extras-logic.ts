@@ -1,7 +1,7 @@
 // Cockpit extras (#83), pure and DOM-free so they are unit-tested: the additional gauges of the console strip
 // ("Zusatzinstrumente" like in a tuner car), the scales of the truck/bus design and the tuning bar. Everything shown
 // here is a value the core reports or a value of the engine configuration; nothing is estimated in the UI.
-import type { EngineConfig, EngineLimits, FuelKind, WarningCode } from "../../core/index.ts";
+import type { EngineConfig, EngineLimits, FuelKind, GearboxThermalSpec, WarningCode } from "../../core/index.ts";
 import { fmt } from "../format.ts";
 import type { UnitPrefs } from "../settings.ts";
 import { toUnit } from "../units.ts";
@@ -11,9 +11,14 @@ import { torqueAt, type CurvePoint } from "./logic.ts";
 // ── additional gauges ────────────────────────────────────────────────────────────────────────────────────────────
 // (ids, labels and validation live in designs.ts, next to the field ids, so settings.ts stays free of unit code)
 
-/** Boost only on charged engines; the others always. */
-export function gaugeAvailable(id: GaugeId, c: { turbo: boolean }): boolean {
-  return id !== "boost" || c.turbo;
+/**
+ * Boost only on charged engines; the gearbox oil only while a vehicle is on the dyno and the drivetrain reports its
+ * temperature (#53, DrivetrainState.gearboxOilC); the others always.
+ */
+export function gaugeAvailable(id: GaugeId, c: { turbo: boolean; gearOil?: boolean }): boolean {
+  if (id === "boost") return c.turbo;
+  if (id === "gearOil") return !!c.gearOil;
+  return true;
 }
 
 /** Toggles one gauge in a choice (kept in strip order). */
@@ -29,10 +34,15 @@ export interface GaugeScale {
   minor: number;
   /** Signal-yellow limit zone (display units), from the engine limits. */
   zone?: { from: number; to: number };
+  /** Red zone (display units): the gearbox control unit's protection mode (or damage without one). */
+  red?: { from: number; to: number };
 }
 
+/** Thresholds of the gearbox oil gauge: warning, TCU protection and damage of the gearbox kind (gearbox-thermal.ts). */
+export type GearOilLimits = Pick<GearboxThermalSpec, "warnC" | "protectC" | "damageC">;
+
 /** Scale of a gauge in display units. Limit zones come from EngineLimits (limits.ts), never from the UI. */
-export function gaugeScale(id: GaugeId, lim: EngineLimits, fuel: FuelKind, u: UnitPrefs): GaugeScale {
+export function gaugeScale(id: GaugeId, lim: EngineLimits, fuel: FuelKind, u: UnitPrefs, gear?: GearOilLimits): GaugeScale {
   const T = (c: number) => toUnit("temp", c, u.temp);
   const P = (b: number) => toUnit("pressure", b, u.pressure);
   switch (id) {
@@ -48,6 +58,16 @@ export function gaugeScale(id: GaugeId, lim: EngineLimits, fuel: FuelKind, u: Un
       const a = T(50);
       const b = T(150);
       return { min: a, max: b, major: (b - a) / 4, minor: (b - a) / 8, zone: { from: T(Math.min(150, lim.oilMaxC)), to: b } };
+    }
+    case "gearOil": {
+      // 40–160 °C: a warm gearbox runs at 80–95 °C (docs/research/vehicle.md §8); yellow from the warning threshold,
+      // red from the TCU protection mode (manual gearboxes have none: red from the damage reference temperature)
+      const a = T(40);
+      const b = T(160);
+      const scale: GaugeScale = { min: a, max: b, major: (b - a) / 4, minor: (b - a) / 12 };
+      if (!gear) return scale;
+      const redC = Math.min(160, gear.protectC ?? gear.damageC);
+      return { ...scale, zone: { from: T(Math.min(160, gear.warnC)), to: T(redC) }, red: { from: T(redC), to: b } };
     }
     case "lambda":
       // petrol runs around λ 1 (rich at full load), a diesel always lean (smoke limit ≈ 1.15–1.6, idle far above)
@@ -67,6 +87,8 @@ export interface GaugeInputs {
   oilC: number;
   lambda: number;
   egtC: number;
+  /** Gearbox oil (#53), NaN/undefined without a vehicle. */
+  gearboxOilC?: number;
 }
 
 /** Value of a gauge in display units (boost below ambient reads 0, like the gauge of a car). */
@@ -75,6 +97,7 @@ export function gaugeValue(id: GaugeId, v: GaugeInputs, u: UnitPrefs): number {
     case "boost": return toUnit("pressure", Math.max(0, v.boostBar), u.pressure);
     case "oilP": return toUnit("pressure", v.oilPressureBar, u.pressure);
     case "oilT": return toUnit("temp", v.oilC, u.temp);
+    case "gearOil": return toUnit("temp", v.gearboxOilC ?? Number.NaN, u.temp);
     case "lambda": return v.lambda;
     case "egt": return toUnit("temp", v.egtC, u.temp);
   }
