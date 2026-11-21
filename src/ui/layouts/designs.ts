@@ -26,26 +26,34 @@ export interface DialTheme {
 
 export const DEFAULT_DIAL_THEME: DialTheme = { needle: "taper", ring: "alu", numeralWeight: 500, numeralScale: 1, glow: 5, minorTicks: true };
 
+/**
+ * How the console gauges (Zusatzinstrumente, #83) are drawn in a design: "dial" designs show round canvas dials in
+ * their DialTheme (or plain bars); "screen" designs have no analogue instruments, so the gauges become that screen's
+ * own tiles and segment bars.
+ */
+export type GaugeKind = "dial" | "screen";
+
 export interface CockpitDesign {
   id: CockpitDesignId;
   label: string;
   hint: string;
   dial: DialTheme;
+  gauges: GaugeKind;
 }
 
 export const COCKPIT_DESIGNS: readonly CockpitDesign[] = [
-  { id: "classic", label: "Klassisch", hint: "Schwarze Blätter, warmweiße Ziffern, rote Zeiger", dial: DEFAULT_DIAL_THEME },
-  { id: "night-orange", label: "Nachtfahrt", hint: "Orange Beleuchtung, rote Zeiger, gedimmt", dial: { ...DEFAULT_DIAL_THEME, glow: 7, numeralWeight: 600 } },
-  { id: "italian", label: "Sportlimousine", hint: "Zwei tiefe Röhren, schmales Display mit Fahrmodus", dial: { needle: "tip", ring: "tunnel", numeralWeight: 400, numeralScale: 1.12, glow: 2, minorTicks: true } },
-  { id: "oldschool", label: "Oldschool", hint: "Chromringe, elfenbeinfarbene Blätter, Serifenziffern, Zählwerk", dial: { needle: "tip", ring: "chrome", numeralWeight: 600, numeralScale: 1.08, glow: 0, minorTicks: true, glass: true } },
-  { id: "digital", label: "Digital", hint: "Große Ziffern, Drehzahlbogen und drei Felder zum Durchschalten", dial: DEFAULT_DIAL_THEME },
+  { id: "classic", label: "Klassisch", hint: "Schwarze Blätter, warmweiße Ziffern, rote Zeiger", dial: DEFAULT_DIAL_THEME, gauges: "dial" },
+  { id: "night-orange", label: "Nachtfahrt", hint: "Orange Beleuchtung, rote Zeiger, gedimmt", dial: { ...DEFAULT_DIAL_THEME, glow: 7, numeralWeight: 600 }, gauges: "dial" },
+  { id: "italian", label: "Sportlimousine", hint: "Zwei tiefe Röhren, schmales Display mit Fahrmodus", dial: { needle: "tip", ring: "tunnel", numeralWeight: 400, numeralScale: 1.12, glow: 2, minorTicks: true }, gauges: "dial" },
+  { id: "oldschool", label: "Oldschool", hint: "Chromringe, elfenbeinfarbene Blätter, Serifenziffern, Zählwerk", dial: { needle: "tip", ring: "chrome", numeralWeight: 600, numeralScale: 1.08, glow: 0, minorTicks: true, glass: true }, gauges: "dial" },
+  { id: "digital", label: "Digital", hint: "Große Ziffern, Drehzahlbogen und drei Felder zum Durchschalten", dial: DEFAULT_DIAL_THEME, gauges: "screen" },
   // Head-up also replaces the former "Kompakt" view (#94): both were a few big values without dials
-  { id: "hud", label: "Head-up", hint: "Wenige große Werte: Tempo, Gang, Drehzahl, Leistung, Schaltblitz. Gut fürs Handy", dial: DEFAULT_DIAL_THEME },
+  { id: "hud", label: "Head-up", hint: "Wenige große Werte: Tempo, Gang, Drehzahl, Leistung, Schaltblitz. Gut fürs Handy", dial: DEFAULT_DIAL_THEME, gauges: "screen" },
   // the former "Renn-Dash" view (#26), now a design (#94); drawn by RaceView inside the cockpit
-  { id: "race", label: "Renn-Dash", hint: "Schaltblitz-LEDs, große Gangzahl, 0–100 mit Delta, Öl und Wasser", dial: DEFAULT_DIAL_THEME },
-  { id: "motorrad", label: "Motorrad", hint: "Kompaktes TFT: Drehzahlbalken mit Schaltblitz, Tempo und Gang groß", dial: DEFAULT_DIAL_THEME },
+  { id: "race", label: "Renn-Dash", hint: "Schaltblitz-LEDs, große Gangzahl, 0–100 mit Delta, Öl und Wasser", dial: DEFAULT_DIAL_THEME, gauges: "screen" },
+  { id: "motorrad", label: "Motorrad", hint: "Kompaktes TFT: Drehzahlbalken mit Schaltblitz, Tempo und Gang groß", dial: DEFAULT_DIAL_THEME, gauges: "screen" },
   // commercial vehicles (#83, #31): 125 km/h speedometer with the limiter mark, rev counter with the green band
-  { id: "truck", label: "Nutzfahrzeug", hint: "Tacho bis 125 km/h mit Begrenzer, Drehzahlmesser mit grünem Bereich, Motorbremse", dial: { needle: "bar", ring: "alu", numeralWeight: 600, numeralScale: 1.1, glow: 3, minorTicks: true } },
+  { id: "truck", label: "Nutzfahrzeug", hint: "Tacho bis 125 km/h mit Begrenzer, Drehzahlmesser mit grünem Bereich, Motorbremse", dial: { needle: "bar", ring: "alu", numeralWeight: 600, numeralScale: 1.1, glow: 3, minorTicks: true }, gauges: "dial" },
 ];
 
 export const AUTO_DESIGN = { id: "auto", label: "Automatisch nach Fahrzeug", hint: "Motorrad-Display auf dem Motorrad, Nutzfahrzeug bei Lkw und Bus, sonst Klassisch" } as const;
@@ -102,17 +110,37 @@ export function validateFields(raw: unknown): FieldSet {
  * Gauges the console strip can show. Each is a value of EngineState. Not offered because the core does not model
  * them: battery voltage (there is only the charge lamp), intake air temperature (not reported yet).
  */
-export const GAUGE_IDS = ["boost", "oilP", "oilT", "lambda", "egt"] as const satisfies readonly FieldId[];
+export const GAUGE_IDS = ["boost", "oilP", "oilT", "gearOil", "lambda", "egt"] as const satisfies readonly FieldId[];
 export type GaugeId = (typeof GAUGE_IDS)[number];
 export type GaugeStyle = "round" | "bar";
 
 export const GAUGE_LABEL: Record<GaugeId, string> = {
-  boost: "Ladedruck", oilP: "Öldruck", oilT: "Öltemperatur", lambda: "Lambda", egt: "Abgastemperatur",
+  boost: "Ladedruck", oilP: "Öldruck", oilT: "Öltemperatur", gearOil: "Getriebeöl", lambda: "Lambda", egt: "Abgastemperatur",
 };
 /** Captions under the gauges (narrow on phones); the full name is the tooltip and the picker label. */
 export const GAUGE_SHORT: Record<GaugeId, string> = {
-  boost: "Ladedruck", oilP: "Öldruck", oilT: "Öltemp.", lambda: "Lambda", egt: "Abgas",
+  boost: "Ladedruck", oilP: "Öldruck", oilT: "Öltemp.", gearOil: "Getr.-Öl", lambda: "Lambda", egt: "Abgas",
 };
+
+/** What the console shows for the chosen style in a design: "tile" and "segment" are the screen equivalents. */
+export type GaugeDisplay = "round" | "bar" | "tile" | "segment";
+
+export function gaugeKind(id: CockpitDesignId): GaugeKind {
+  return COCKPIT_DESIGNS.find((d) => d.id === id)?.gauges ?? "dial";
+}
+
+/** Round dials only where the design has analogue instruments; screen designs show tiles (round) or segment bars. */
+export function gaugeDisplay(id: CockpitDesignId, style: GaugeStyle): GaugeDisplay {
+  if (gaugeKind(id) === "screen") return style === "round" ? "tile" : "segment";
+  return style;
+}
+
+/** Hint under the style choice of the picker: says how a screen design shows the choice (empty for dial designs). */
+export function gaugeStyleHint(id: CockpitDesignId): string {
+  if (gaugeKind(id) !== "screen") return "";
+  const label = COCKPIT_DESIGNS.find((d) => d.id === id)!.label;
+  return `${label} hat keine Rundinstrumente: „Rund“ erscheint hier als Kachel, „Balken“ als Segmentbalken im Stil des Displays.`;
+}
 
 export function isGaugeId(v: unknown): v is GaugeId {
   return typeof v === "string" && (GAUGE_IDS as readonly string[]).includes(v);

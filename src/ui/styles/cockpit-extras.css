@@ -145,8 +145,270 @@
   height: 3px;
   background: var(--signal);
 }
+.ck-pod__red {
+  position: absolute;
+  inset: auto auto 0 0;
+  height: 3px;
+  background: var(--ck-redline, #d8321f);
+}
 .ck-pod.is-limit .ck-pod__fill {
   background: var(--signal);
+}
+
+/* ── the gauges in each design's look (#83): dial designs keep round pods in their DialTheme (designs.ts) and get
+   their print and plates here; screen designs show tiles ("Rund") or segment bars ("Balken") instead of dials.
+   Warn and limit stay the same everywhere: zone and limit values in --signal. ── */
+.ck__extras-hint {
+  flex-basis: 100%;
+  max-width: 36em;
+  margin: 0;
+  padding: 0 var(--space-1);
+  font-size: var(--fs-12);
+  color: var(--ck-dim);
+}
+.ck__extras-hint[hidden] {
+  display: none;
+}
+
+/* Nachtfahrt: orange backlight, a step dimmer, the print glows */
+.ck[data-design="night-orange"] .ck-pod .dial {
+  filter: brightness(0.92) drop-shadow(0 0 4px rgba(255, 155, 61, 0.35));
+}
+.ck[data-design="night-orange"] .ck-pod__val {
+  text-shadow: 0 0 6px rgba(255, 155, 61, 0.55);
+}
+.ck[data-design="night-orange"] .ck-pod__fill {
+  box-shadow: 0 0 6px rgba(255, 155, 61, 0.6);
+}
+.ck[data-design="night-orange"] .ck__console[data-gstyle="bar"] .ck-pod {
+  background: rgba(20, 12, 5, 0.6);
+  box-shadow: inset 0 0 0 1px #2c1e11;
+}
+
+/* Sportlimousine: each pod sits in a small deep tube, condensed numerals, red accent line */
+.ck[data-design="italian"] .ck-pod {
+  font-family: var(--ck-font);
+}
+.ck[data-design="italian"] .ck__console[data-gstyle="round"] .ck-pod .dial {
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px #111113, 0 0 0 4px #2a2a2e, 0 6px 12px rgba(0, 0, 0, 0.7);
+}
+.ck[data-design="italian"] .ck__console[data-gstyle="bar"] .ck-pod {
+  background: #050505;
+  border-radius: 2px;
+  border-top: 2px solid var(--ck-accent);
+}
+
+/* Oldschool: ivory faces in chrome rings (drawn by the dial), warm bulbs, serif print on the wood-brown fascia */
+.ck[data-design="oldschool"] .ck-pod {
+  position: relative;
+  font-family: var(--ck-font);
+}
+.ck[data-design="oldschool"] .ck-pod figcaption,
+.ck[data-design="oldschool"] .ck-pod__val {
+  color: var(--ck-paper-text);
+}
+.ck[data-design="oldschool"] .ck__console[data-gstyle="round"] .ck-pod::after {
+  content: "";
+  position: absolute;
+  inset: 0 auto auto 50%;
+  width: 72px;
+  height: 72px;
+  translate: -50% 0;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 42%, rgba(255, 190, 110, 0.16), rgba(255, 190, 110, 0) 62%);
+}
+/* tuning bar and picker sit on the fascia, not on a face: light paper print (the faces keep their dark print) */
+.ck[data-design="oldschool"] :is(.ck__tune, .ck__extras) {
+  --ck-light: var(--ck-paper-text);
+  --ck-dim: #b9a888;
+  --ck-needle: #c1281b;
+  font-family: var(--ck-font);
+}
+/* bars: an ivory strip behind a chrome bezel, black print like the faces */
+.ck[data-design="oldschool"] .ck__console[data-gstyle="bar"] .ck-pod {
+  background: var(--ck-face);
+  border-radius: 8px;
+  box-shadow: 0 0 0 2px #c9ccc7, 0 0 0 3px #5f6361, inset 0 2px 6px rgba(90, 55, 10, 0.25);
+}
+.ck[data-design="oldschool"] .ck__console[data-gstyle="bar"] .ck-pod figcaption {
+  color: var(--ck-dim);
+}
+.ck[data-design="oldschool"] .ck__console[data-gstyle="bar"] .ck-pod__val {
+  color: var(--ck-light);
+}
+.ck[data-design="oldschool"] .ck__console[data-gstyle="bar"] .ck-pod__bar {
+  background: rgba(60, 45, 30, 0.14);
+}
+.ck[data-design="oldschool"] .ck-pod__fill {
+  background: var(--ck-light);
+}
+.ck[data-design="oldschool"] .ck-pod.is-limit .ck-pod__val {
+  color: var(--signal);
+}
+.ck[data-design="oldschool"] .ck-pod.is-limit .ck-pod__fill {
+  background: var(--signal);
+}
+
+/* Nutzfahrzeug: bold white-on-black like the truck cluster, square plates */
+.ck[data-design="truck"] .ck-pod__val {
+  font-weight: 700;
+}
+.ck[data-design="truck"] .ck-pod__cap {
+  font-weight: 600;
+  color: var(--ck-light);
+}
+.ck[data-design="truck"] .ck__console[data-gstyle="bar"] .ck-pod {
+  background: var(--ck-face);
+  border-radius: 2px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1);
+}
+.ck[data-design="truck"] .ck__console[data-gstyle="bar"] .ck-pod__bar {
+  height: 12px;
+  border-radius: 0;
+}
+
+/* screen designs: tiles and segment bars, no canvas */
+.ck__console:is([data-gstyle="tile"], [data-gstyle="segment"]) .ck-pod {
+  --pod-panel: rgba(0, 0, 0, 0.28);
+  --pod-edge: rgba(255, 255, 255, 0.08);
+  --pod-fill: var(--ck-light);
+  --pod-off: rgba(255, 255, 255, 0.08);
+  --pod-gap: #05080b;
+  justify-items: stretch;
+  align-content: start;
+  min-width: 0;
+  padding: var(--space-1) var(--space-2) var(--space-2);
+  border: 1px solid var(--pod-edge);
+  border-radius: 8px;
+  background: var(--pod-panel);
+  font-family: var(--font-num);
+}
+.ck__console:is([data-gstyle="tile"], [data-gstyle="segment"]) .ck-pod .dial {
+  display: none;
+}
+.ck__console:is([data-gstyle="tile"], [data-gstyle="segment"]) .ck-pod figcaption {
+  order: -1;
+  text-align: left;
+}
+.ck__console:is([data-gstyle="tile"], [data-gstyle="segment"]) .ck-pod__bar {
+  position: relative;
+  display: block;
+  margin-top: 4px;
+  border-radius: 2px;
+  background: var(--pod-off);
+  overflow: hidden;
+}
+/* segments: dark gaps every 10 % like an LED/TFT bar */
+.ck__console:is([data-gstyle="tile"], [data-gstyle="segment"]) .ck-pod__bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 2px), var(--pod-gap) calc(10% - 2px) 10%);
+  pointer-events: none;
+}
+.ck__console:is([data-gstyle="tile"], [data-gstyle="segment"]) .ck-pod__fill {
+  background: var(--pod-fill);
+}
+.ck__console:is([data-gstyle="tile"], [data-gstyle="segment"]) .ck-pod.is-limit {
+  border-color: var(--signal);
+}
+.ck__console:is([data-gstyle="tile"], [data-gstyle="segment"]) .ck-pod.is-limit .ck-pod__fill {
+  background: var(--signal);
+}
+/* tile ("Rund" on a screen): label, big value with unit, a thin segment bar */
+.ck__console[data-gstyle="tile"] .ck__pods {
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+}
+.ck__console[data-gstyle="tile"] .ck-pod figcaption {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  column-gap: 4px;
+}
+.ck__console[data-gstyle="tile"] .ck-pod__cap {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ck__console[data-gstyle="tile"] .ck-pod__val {
+  font-size: var(--fs-25);
+  line-height: 1.1;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.ck__console[data-gstyle="tile"] .ck-pod__bar {
+  height: 5px;
+}
+/* segment bar ("Balken" on a screen): label and value in a row, a tall segment bar */
+.ck__console[data-gstyle="segment"] .ck__pods {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+.ck__console[data-gstyle="segment"] .ck-pod__val {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.ck__console[data-gstyle="segment"] .ck-pod__bar {
+  height: 14px;
+}
+
+/* Digital: the blue-edged panels and the fill colour of its fields */
+.ck[data-design="digital"] .ck-pod {
+  --pod-panel: linear-gradient(180deg, #0e1924, var(--ck-panel));
+  --pod-edge: var(--ck-edge);
+  --pod-fill: var(--ck-fill);
+  --pod-off: var(--ck-off);
+  --pod-gap: var(--ck-panel);
+}
+/* Head-up: values on the dark glass, no plates, a light bar */
+.ck[data-design="hud"] .ck-pod {
+  --pod-panel: rgba(255, 255, 255, 0.04);
+  --pod-edge: transparent;
+  --pod-fill: var(--ck-light);
+  --pod-off: rgba(255, 255, 255, 0.1);
+  --pod-gap: rgba(5, 9, 9, 0.9);
+}
+.ck[data-design="hud"] .ck-pod__val {
+  text-shadow: 0 0 8px rgba(251, 255, 248, 0.25);
+}
+/* Renn-Dash: the cells and bars of the race display (layouts.css .rd) */
+.ck[data-design="race"] .ck-pod {
+  --pod-panel: #1d2324;
+  --pod-edge: #0d1011;
+  --pod-fill: #f2f4f0;
+  --pod-off: #262c2d;
+  --pod-gap: #15191a;
+  border-radius: 4px;
+}
+.ck[data-design="race"] .ck-pod figcaption {
+  color: #8a938f;
+}
+.ck[data-design="race"] .ck-pod__val {
+  color: #f2f4f0;
+}
+.ck[data-design="race"] .ck-pod.is-limit {
+  background: var(--signal);
+}
+.ck[data-design="race"] .ck-pod.is-limit :is(figcaption, .ck-pod__val, .ck-pod__unit) {
+  color: var(--signal-ink);
+}
+.ck[data-design="race"] .ck-pod.is-limit .ck-pod__fill {
+  background: var(--signal-ink);
+}
+/* Motorrad: the TFT's rev-bar look, segments every 5 % */
+.ck[data-design="motorrad"] .ck-pod {
+  --pod-panel: #0a1012;
+  --pod-edge: var(--ck-edge);
+  --pod-fill: linear-gradient(90deg, #cfe3ea, #ffffff);
+  --pod-off: #121b1f;
+  --pod-gap: #050708;
+}
+.ck[data-design="motorrad"] .ck__console:is([data-gstyle="tile"], [data-gstyle="segment"]) .ck-pod__bar {
+  border-radius: 2px 7px 7px 2px;
+}
+.ck[data-design="motorrad"] .ck__console:is([data-gstyle="tile"], [data-gstyle="segment"]) .ck-pod__bar::after {
+  background: repeating-linear-gradient(90deg, transparent 0 calc(5% - 2px), var(--pod-gap) calc(5% - 2px) 5%);
 }
 
 /* picker */
@@ -287,8 +549,18 @@
   .ck__pods {
     grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
   }
-  .ck__console[data-gstyle="bar"] .ck__pods {
+  .ck__console:is([data-gstyle="bar"], [data-gstyle="segment"]) .ck__pods {
     grid-template-columns: repeat(auto-fit, minmax(128px, 1fr));
+  }
+  .ck__console[data-gstyle="tile"] .ck__pods {
+    grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
+  }
+  .ck__console[data-gstyle="tile"] .ck-pod__val {
+    font-size: var(--fs-20);
+  }
+  .ck[data-design="oldschool"] .ck__console[data-gstyle="round"] .ck-pod::after {
+    width: 60px;
+    height: 60px;
   }
   .ck[data-design="truck"] .ck__truck {
     grid-column: 1 / -1;
