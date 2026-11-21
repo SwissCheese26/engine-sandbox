@@ -8,11 +8,11 @@ _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `
 
 ### Neu
 
-- Neues Zusatzinstrument „Getriebeöl“, rund oder als Balken: gelb ab der Warnschwelle, rot ab dem Notlauf des Getriebesteuergeräts (beim Handschalter ab der Schadensgrenze), passend zur Getriebeart. Es erscheint, sobald ein Fahrzeug auf dem Prüfstand steht. ([#53](https://github.com/SwissCheese26/engine-sandbox/issues/53), [#83](https://github.com/SwissCheese26/engine-sandbox/issues/83))
+- Neues Zusatzinstrument „Getriebeöl“, rund oder als Balken: gelb ab der Warnschwelle, rot ab dem Notlauf des Getriebesteuergeräts (beim Handschalter ab der Schadensgrenze), passend zur Getriebeart. Es erscheint, sobald ein Fahrzeug auf dem Prüfstand steht. ([#53](https://github.com/SwissCheese26/engine-sandbox/issues/53), [#83](https://github.com/SwissCheese26/engine-sandbox/issues/83), [#109](https://github.com/SwissCheese26/engine-sandbox/issues/109))
 
 ### Geändert
 
-- Die Zusatzinstrumente passen sich jetzt dem Cockpit-Design an: elfenbeinfarbene Blätter mit Chromring im Oldschool, orange Beleuchtung in der Nachtfahrt, tiefe Röhren in der Sportlimousine und kräftige Lkw-Instrumente im Nutzfahrzeug. In Digital, Head-up, Renn-Dash und Motorrad erscheinen sie als Kacheln oder Segmentbalken im Stil des Displays. Grenzwerte bleiben überall gelb. ([#83](https://github.com/SwissCheese26/engine-sandbox/issues/83))
+- Die Zusatzinstrumente passen sich jetzt dem Cockpit-Design an: elfenbeinfarbene Blätter mit Chromring im Oldschool, orange Beleuchtung in der Nachtfahrt, tiefe Röhren in der Sportlimousine und kräftige Lkw-Instrumente im Nutzfahrzeug. In Digital, Head-up, Renn-Dash und Motorrad erscheinen sie als Kacheln oder Segmentbalken im Stil des Displays. Grenzwerte bleiben überall gelb. ([#83](https://github.com/SwissCheese26/engine-sandbox/issues/83), [#109](https://github.com/SwissCheese26/engine-sandbox/issues/109))
 
 ## 2026-11-20 – Engine Builder, Nutzfahrzeug-Cockpit, Getriebeöltemperatur und echte Launch Control
 
