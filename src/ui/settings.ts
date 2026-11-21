@@ -100,6 +100,8 @@ export interface Settings {
   autoHold: boolean;
   /** "Kurz erklärt" (#93): the cheat sheet as the last step of the Sandbox start. "Nicht mehr anzeigen" sets false. */
   sandboxIntro: boolean;
+  /** "Effekte (Rauch/Dampf)": faint tyre smoke and engine steam over the instruments (default on). */
+  effects: boolean;
 }
 
 export type GasRamp = 0 | 1 | 3;
@@ -120,7 +122,7 @@ export const FUEL_PRICE_MAX = 10;
 export const DEFAULT_SETTINGS: Settings = {
   preset: "metric-kw", custom: { ...METRIC }, layout: "pruefzelle", speedo: "standard", speedoCustomKmh: 240, cockpitDesign: "classic", ckFields: [...DEFAULT_FIELDS], ckGauges: [], ckGaugeStyle: "round", ckTuneBar: false, throttle: "spring", shiftPad: "auto",
   gasRamp: 0, startWarm: false, autoMeasure: true, pedalSide: "right", wakeLock: true, vibration: "auto", realism: "real",
-  fuelPrice: { diesel: 1.65, petrol: 1.75 }, limitHints: "off", sound: true, volume: 0.6, autoHold: true, sandboxIntro: true,
+  fuelPrice: { diesel: 1.65, petrol: 1.75 }, limitHints: "off", sound: true, volume: 0.6, autoHold: true, sandboxIntro: true, effects: true,
 };
 
 /** A stored volume, clamped to 0 … 1 in 5 % steps; anything else gives the default. */
@@ -180,6 +182,7 @@ export function validateSettings(raw: unknown): Settings {
     volume: clampVolume(r.volume),
     autoHold: typeof r.autoHold === "boolean" ? r.autoHold : d.autoHold,
     sandboxIntro: typeof r.sandboxIntro === "boolean" ? r.sandboxIntro : d.sandboxIntro,
+    effects: typeof r.effects === "boolean" ? r.effects : d.effects,
   };
 }
 
