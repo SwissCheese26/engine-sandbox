@@ -78,5 +78,6 @@ export type { AutoHoldInput } from "./parking-brake.ts";
 // issue #53: gearbox oil temperature
 export {
   GEARBOX_THERMAL, GEARBOX_WARM_C, GEARBOX_HYST_K, gearboxThermalKind, stepGearboxOil, gearboxHeatW, gearboxViscosityFactor, gearboxDragPenalty, gearboxWearRate,
+  AFTERMARKET_OIL_COOLER_WK, AUX_COOLER_EXPONENT,
 } from "./gearbox-thermal.ts";
 export type { GearboxOilInput, GearboxThermalKind, GearboxThermalSpec } from "./gearbox-thermal.ts";
