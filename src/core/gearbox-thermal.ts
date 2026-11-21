@@ -100,7 +100,21 @@ export interface GearboxOilInput {
   coolantC: number;
   /** Oil cooler fitted (only acts where the spec has one). */
   cooler: boolean;
+  /**
+   * Aftermarket air-to-oil cooler (#100 addendum): UA in W/K at 25 m/s road speed, 0/undefined = none. It sits in the
+   * ram air, so it scales with (v / 25 m/s)^AUX_COOLER_EXPONENT and does nothing at standstill (no fan), vehicle.md §8 [B19].
+   */
+  auxCoolerWK?: number;
 }
+
+/**
+ * Aftermarket stacked-plate air-to-oil cooler, Setrab ProLine STD Series 6 with 19 rows (vehicle.md §8 [B19]):
+ * ≈ 5 W/K per row at 3 m/s face velocity → 95 W/K, ×1.7 at 8 m/s → ≈ 160 W/K. A front-mounted cooler sees roughly a
+ * third of the road speed as face velocity [S], so 8 m/s ≈ 25 m/s (90 km/h) on the road.
+ */
+export const AFTERMARKET_OIL_COOLER_WK = 160;
+/** Air-side scaling of that cooler with face velocity: 1.7 from 3 to 8 m/s → ln 1.7 / ln(8/3) ≈ 0.54 [B19]. */
+export const AUX_COOLER_EXPONENT = 0.54;
 
 /** Heat into the oil, W (vehicle.md §8): (1 − η_eff)·|P| + churning(n, φ) + a·P_clutch + P_converter. */
 export function gearboxHeatW(spec: GearboxThermalSpec, oilC: number, x: GearboxOilInput): number {
@@ -120,8 +134,10 @@ export function stepGearboxOil(spec: GearboxThermalSpec, oilC: number, dt: numbe
   const q = gearboxHeatW(spec, t0, x);
   const uaAir = spec.ua0WK + spec.uaRamWK * (Math.max(0, x.airSpeedMs) / 25) ** 0.8;
   const uaCool = spec.uaEngineWK + (x.cooler ? spec.coolerWK : 0);
+  // the aftermarket air cooler rejects to ambient air like the casing (vehicle.md §8 [B19])
+  const uaAux = Math.max(0, x.auxCoolerWK ?? 0) * (Math.max(0, x.airSpeedMs) / 25) ** AUX_COOLER_EXPONENT;
   const k = dt / spec.heatCapacityJK;
-  return (t0 + k * (q + uaAir * x.ambientC + uaCool * x.coolantC)) / (1 + k * (uaAir + uaCool));
+  return (t0 + k * (q + (uaAir + uaAux) * x.ambientC + uaCool * x.coolantC)) / (1 + k * (uaAir + uaAux + uaCool));
 }
 
 /** Oil ageing / damage rate, 1/s (vehicle.md §8 [B18]): 2^((T − damageC)/10 K) / 600 s above the warning threshold. */
