@@ -49,7 +49,8 @@
 .cell[data-drive="ev"] :is(.stage__engine, .recorder, .bench-toggle) {
   display: none;
 }
-.cell.cell[data-drive="ev"] .cell__top .bench-toggle {
+.cell.cell[data-drive="ev"] .cell__top .bench-toggle,
+.cell.cell[data-drive="ev"] .shiftpad {
   display: none;
 }
 /* the Werkbank builds combustion engines: an electric car gets the whole width */
@@ -210,8 +211,10 @@
 .ck[data-design="etacho"] .ck__dial--speed :is(.ck__tube, .ck__read) {
   display: none;
 }
-.ck[data-design="etacho"] .ck__speed {
-  font-size: clamp(44px, 9vw, 72px);
+@media (min-width: 701px) {
+  .ck[data-design="etacho"] .ck__speed {
+    font-size: clamp(44px, 6vw, 72px);
+  }
 }
 .ck[data-design="etacho"] .ck__ev {
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));

@@ -86,6 +86,9 @@ export class RaceView implements LayoutView {
     this.out["oil-label"]!.textContent = ev ? "Motor" : "Öl";
     this.out["tank-label"]!.textContent = ev ? "Ladung" : "Tank";
     this.out["range-tile"]!.hidden = !ev;
+    // no rev limiter zone on the power bar
+    if (ev) this.bar.style.setProperty("--zone", "100%");
+    else if (this.cfg) this.bar.style.setProperty("--zone", `${(limitZoneRpm(this.cfg.revLimitRpm, this.summary.safeMaxRpm) / this.rpmMax) * 100}%`);
     const air = this.cfg && (this.cfg.cooling.type === "air" || this.cfg.cooling.type === "oil-air");
     this.out["water-label"]!.textContent = ev ? "Akku" : air ? "Kopf" : "Wasser";
     for (const k of Object.keys(this.last)) this.last[k] = "";
