@@ -90,6 +90,8 @@ export class App {
   /** Tyre smoke and engine steam over the stage (setting "Effekte (Rauch/Dampf)"). */
   private smoke = new SmokeOverlay(() => this.smokeAnchors());
   private stage!: HTMLElement;
+  private header!: HTMLElement;
+  private deck!: HTMLElement;
 
   constructor(private root: HTMLElement) {
     this.inputs.damage = getSettings().realism;
@@ -239,6 +241,8 @@ export class App {
     this.console.pedalsEl.prepend(this.shiftPad.el);
     this.console.setPedalSide(getSettings().pedalSide);
 
+    this.header = top;
+    this.deck = deck;
     cell.append(top, this.bench.el, stage, deck, this.announcer, this.smoke.el);
     this.root.replaceChildren(cell);
   }
@@ -584,9 +588,10 @@ export class App {
    * smoke still shows on phones where the cluster is taller than the screen.
    */
   private smokeAnchors(): SmokeAnchors {
+    // on phones the page scrolls under a sticky header and control bar: never paint over them
     const st = this.stage.getBoundingClientRect();
-    const top = Math.max(st.top, 0);
-    const bottom = Math.min(st.bottom, window.innerHeight);
+    const top = Math.max(st.top, this.header.getBoundingClientRect().bottom, 0);
+    const bottom = Math.min(st.bottom, this.deck.getBoundingClientRect().top, window.innerHeight);
     const left = Math.max(st.left, 0);
     const right = Math.min(st.right, window.innerWidth);
     if (bottom - top < 2 || right - left < 2) return { clip: null, tyre: null, engine: null };
