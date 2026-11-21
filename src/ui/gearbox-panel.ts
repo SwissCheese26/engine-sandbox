@@ -4,9 +4,14 @@
 // fitted tyre's speed index.
 // Issue #23: Umwelt- und Assistenz-Platte (environment-panel.ts) and the warning-lamp strip under the gear indicator.
 // Issue #53: gearbox oil temperature readout (amber from the warning threshold) and a note on overheat / protection mode.
+// Consolidation ("Dubletten"): one place per setting. Readouts (gear, speed, Vmax, 0–100, oil, tank content, trip)
+// stay at the top; settings live in their sections: "Getriebe" (type, final drive, oil cooler, ratios, traction
+// diagram), "Fahrzeug & Reifen" (vehicle kind, ready-made car, governor, body, tyres) and "Umwelt & Assistenten".
+// Every own change is stored for the loaded vehicle only (vehicle-custom.ts).
 import { TripPanel } from "./trip-panel.ts";
-import { Drivetrain, FuelTank, GEARBOXES, VEHICLES, theoreticalVmax, dynoSweep, SPEED_LIMIT_OPTIONS, isAutomaticType, isCommercialKind } from "../core/index.ts";
-import type { DrivetrainState, EngineConfig, EngineSummary, GearboxType, VehicleKind } from "../core/index.ts";
+import { Drivetrain, FuelTank, GEARBOXES, VEHICLES, SPEED_LIMIT_OPTIONS, isAutomaticType, isCommercialKind } from "../core/index.ts";
+import type { DrivetrainState, EngineConfig, EngineSummary, GearboxType } from "../core/index.ts";
+import { OIL_COOLER_LABEL, TANK_KEY, currentOilCooler, oilCoolerChoices, setOilCooler, type OilCooler } from "./vehicle-custom.ts";
 import { EnvironmentPanel, WarningLamps } from "./environment-panel.ts";
 import { VehiclePanel } from "./vehicle-panel.ts";
 import { GearPlate } from "./gear-plate.ts";
@@ -23,7 +28,6 @@ const TYPE_LABEL: Record<GearboxType, string> = {
   sequential: "Sequenziell, 6 Gänge, Quickshifter",
 };
 
-const LIMIT_KEY = "pruefzelle.vmaxLimit";
 /** Tyre warning hysteresis around the speed rating, so the note does not flicker at the rating (review PR #34). */
 const TYRE_WARN_ON_KMH = 1;
 const TYRE_WARN_OFF_KMH = 2;
@@ -41,7 +45,8 @@ export class GearboxPanel {
   readonly trip: TripPanel;
   readonly drivetrain: Drivetrain;
   private typeSel: HTMLSelectElement;
-  private vehicleSel: HTMLSelectElement;
+  private coolerSel: HTMLSelectElement;
+  private coolerRow: HTMLElement;
   private hintEl: HTMLElement;
   private wheelieEl: HTMLElement;
   private fdInput: HTMLInputElement;
@@ -50,7 +55,7 @@ export class GearboxPanel {
   private speedEl: HTMLElement;
   private vmaxEl: HTMLElement;
   private t100El: HTMLElement;
-  private calcEl: HTMLElement;
+  private govCalcEl: HTMLElement;
   private limitSel: HTMLSelectElement;
   private vmaxNoteEl: HTMLElement;
   private govNoteEl: HTMLElement;
@@ -123,13 +128,9 @@ export class GearboxPanel {
     el.setAttribute("aria-label", "Getriebe und Fahrzeug");
     el.hidden = true;
     el.innerHTML = `
-      <div class="gearbox__setup">
-        <h2 class="gearbox__title">Rollenprüfstand</h2>
-        <label class="gearbox__field"><span>Fahrzeugtyp</span>
-          <select data-control="vehicle">${(Object.keys(VEHICLES) as VehicleKind[])
-            .map((k) => `<option value="${k}">${VEHICLES[k].label}</option>`).join("")}</select>
-        </label>
-        <label class="gearbox__field"><span>Getriebe</span>
+      <h2 class="gearbox__title">Rollenprüfstand</h2>
+      <div class="gearbox__setup" hidden>
+        <label class="gearbox__field"><span>Getriebeart</span>
           <select data-control="gearbox">${(Object.keys(TYPE_LABEL) as GearboxType[])
             .map((t) => `<option value="${t}">${TYPE_LABEL[t]}</option>`).join("")}</select>
         </label>
@@ -137,12 +138,17 @@ export class GearboxPanel {
           <input type="range" min="2.5" max="5.5" step="0.05" data-control="final-drive" />
           <output class="num"></output>
         </label>
-        <label class="gearbox__field"><span>Vmax-Begrenzer</span>
+        <label class="gearbox__field" data-out="cooler-row"><span>Getriebeölkühler</span>
+          <select data-control="gearbox-cooler"></select>
+        </label>
+        <p class="gearbox__hint">Kürzer übersetzt zieht stärker und dreht früher in den Begrenzer, länger übersetzt bringt mehr Vmax, wenn die Leistung reicht. <span data-out="vehicle-hint"></span></p>
+      </div>
+      <div class="gearbox__vsetup" hidden>
+        <label class="gearbox__field"><span>Vmax-Begrenzer (Werk)</span>
           <select data-control="speed-limit">${SPEED_LIMIT_OPTIONS
             .map((v) => `<option value="${v ?? "off"}">aus (aufgehoben)</option>`).join("")}</select>
         </label>
-        <p class="gearbox__hint">Kürzer übersetzt zieht stärker und dreht früher in den Begrenzer, länger übersetzt bringt mehr Vmax, wenn die Leistung reicht. <span data-out="vehicle-hint"></span></p>
-        <p class="gearbox__calc num"></p>
+        <p class="gearbox__hint" data-out="governor-calc"></p>
       </div>
       <div class="gearbox__drive">
         <div class="gearbox__gear num" aria-live="off" title="Gang">N</div>
@@ -162,7 +168,7 @@ export class GearboxPanel {
         <div><dt>Vmax gemessen</dt><dd class="num"><span data-out="vmax">0</span> <span data-unit="speed">km/h</span><small class="gearbox__vmax-note" hidden> (abgeregelt)</small></dd></div>
         <div><dt data-out="sprint-label">0–100 km/h</dt><dd class="num"><span data-out="t100">–</span> s</dd></div>
         <div><dt>Getriebeöl</dt><dd class="num"><span data-out="gear-oil">–</span></dd></div>
-        <div class="gearbox__tank"><dt>Tank</dt><dd class="num"><span data-out="tank">–</span>
+        <div class="gearbox__tank"><dt>Tankinhalt</dt><dd class="num"><span data-out="tank">–</span>
           <button type="button" class="btn btn--small" data-control="refuel">Volltanken</button></dd></div>
       </dl>
       <div data-slot="trip"></div>
@@ -189,7 +195,8 @@ export class GearboxPanel {
     addEventListener("pagehide", () => this.saveTank(), { signal });
     document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && this.saveTank(), { signal });
     this.typeSel = q("[data-control=gearbox]");
-    this.vehicleSel = q("[data-control=vehicle]");
+    this.coolerSel = q("[data-control=gearbox-cooler]");
+    this.coolerRow = q("[data-out=cooler-row]");
     this.hintEl = q("[data-out=vehicle-hint]");
     this.wheelieEl = q("[data-out=wheelie]");
     this.fdInput = q("[data-control=final-drive]");
@@ -198,7 +205,7 @@ export class GearboxPanel {
     this.speedEl = q("[data-out=speed]");
     this.vmaxEl = q("[data-out=vmax]");
     this.t100El = q("[data-out=t100]");
-    this.calcEl = q(".gearbox__calc");
+    this.govCalcEl = q("[data-out=governor-calc]");
     this.limitSel = q("[data-control=speed-limit]");
     this.vmaxNoteEl = q(".gearbox__vmax-note");
     this.govNoteEl = q("[data-out=governor]");
@@ -220,14 +227,21 @@ export class GearboxPanel {
       this.environmentPanel?.sync();
     };
     this.gears = new GearPlate(this.drivetrain, cfg, summary);
-    // own ratios: the loaded library car becomes "eigenes Fahrzeug"
+    // own ratios: stored for the loaded vehicle only
     this.gears.onEdit = () => {
-      this.vehiclePanel.markOwn();
+      this.vehiclePanel.remember();
       // in N while rolling the car keeps rolling (review PR #90)
       if (this.drivetrain.state.speedKmh <= 0.5) this.onResetVehicle();
       this.syncSetup();
     };
     el.append(this.gears.el, this.vehiclePanel.el);
+    // one place per setting: gearbox type, final drive and oil cooler into "Getriebe", the governor into "Fahrzeug"
+    const setup = q(".gearbox__setup");
+    this.gears.setupSlot.append(...setup.childNodes);
+    setup.remove();
+    const vsetup = q(".gearbox__vsetup");
+    this.vehiclePanel.setupSlot.append(...vsetup.childNodes);
+    vsetup.remove();
     this.environmentPanel = new EnvironmentPanel(this.drivetrain);
     el.append(this.environmentPanel.el);
     q(".gearbox__gear").after(this.lamps.el);
@@ -235,41 +249,27 @@ export class GearboxPanel {
     this.cruiseAnchor = q(".gearbox__shift");
     this.cruiseHome();
 
-    this.vehicleSel.addEventListener("change", () => {
-      this.drivetrain.setVehicle(this.vehicleSel.value as VehicleKind);
-      this.gears.restore();
-      this.onResetVehicle();
-      this.vehiclePanel.sync();
-      this.environmentPanel.sync();
-      this.syncSetup();
-    });
     this.typeSel.addEventListener("change", () => {
       this.drivetrain.setType(this.typeSel.value as GearboxType);
-      this.gears.restore();
+      // the cooler choice follows the new gearbox ("Aus" only where it has one)
+      setOilCooler(this.drivetrain, currentOilCooler(this.drivetrain));
+      this.vehiclePanel.remember();
       this.syncSetup();
     });
     this.fdInput.addEventListener("input", () => {
       this.drivetrain.setFinalDrive(Number(this.fdInput.value));
       this.syncSetup();
     });
-    // the governor can be recoded at any time, also while driving (issue #32)
-    // the choice is remembered per browser (review PR #34)
-    try {
-      const saved = localStorage.getItem(LIMIT_KEY);
-      if (saved !== null && [...this.limitSel.options].some((o) => o.value === saved)) {
-        this.drivetrain.setSpeedLimit(saved === "off" ? null : Number(saved));
-      }
-    } catch {
-      // storage blocked: keep the default
-    }
+    this.fdInput.addEventListener("change", () => this.vehiclePanel.remember());
+    this.coolerSel.addEventListener("change", () => {
+      setOilCooler(this.drivetrain, this.coolerSel.value as OilCooler);
+      this.vehiclePanel.remember();
+      this.syncSetup();
+    });
+    // the governor can be recoded at any time, also while driving (issue #32); stored per vehicle
     this.limitSel.addEventListener("change", () => {
       this.drivetrain.setSpeedLimit(this.limitSel.value === "off" ? null : Number(this.limitSel.value));
-      try {
-        // the truck/bus limiter (85 / 100 km/h) is not the car's choice and is not remembered (review PR #82)
-        if (!isCommercialKind(this.drivetrain.kind)) localStorage.setItem(LIMIT_KEY, this.limitSel.value);
-      } catch {
-        // storage blocked: setting lasts for this session only
-      }
+      this.vehiclePanel.remember();
       this.syncSetup();
     });
     this.downBtn.addEventListener("click", () => this.drivetrain.shift(-1));
@@ -341,17 +341,13 @@ export class GearboxPanel {
   private syncSetup() {
     const s = this.drivetrain.state;
     const preset = VEHICLES[this.drivetrain.kind];
-    this.vehicleSel.value = this.drivetrain.kind;
-    const v = this.drivetrain.vehicle;
     const spec = this.drivetrain.gearbox;
-    // the loaded vehicle's own values (a library bike is not the preset's 270/350 kg)
-    const cwA = (v.dragCoefficient * v.frontalAreaM2).toFixed(2).replace(".", ",");
     const load = this.drivetrain.load;
-    this.hintEl.textContent = this.drivetrain.kind === "car"
-      ? `Fahrzeug: ${fmt0(v.massKg)} kg, cW ${v.dragCoefficient.toFixed(2).replace(".", ",")}, ${LAYOUT_SHORT[v.driveLayout ?? "fwd"]}.`
+    // mass, cW and drive are fields of "Fahrzeug & Reifen"; here only what the gearbox section adds
+    this.hintEl.textContent = this.drivetrain.kind === "car" ? ""
       : isCommercialKind(this.drivetrain.kind)
-        ? `${preset.label}: ${fmt0(v.massKg)} kg${load ? ` (Beladung ${Math.round(load.share * 100)} %)` : ""}, cW·A ${cwA} m², Motorbremse im Schub.`
-        : `${preset.label}: ${fmt0(v.massKg)} kg mit Fahrer, cW·A ${cwA} m², Quickshifter.`;
+        ? `${preset.label}${load ? ` (Beladung ${Math.round(load.share * 100)} %)` : ""}: Motorbremse im Schub.`
+        : `${preset.label}: Quickshifter.`;
     // gear count and kind of automatic follow the loaded car's gearbox (issue #22)
     for (const o of this.typeSel.options) {
       const t = o.value as GearboxType;
@@ -364,6 +360,15 @@ export class GearboxPanel {
     // only the gearboxes this vehicle can have (car: manual/DSG/CVT, motorcycle: sequential)
     for (const o of this.typeSel.options) o.hidden = o.disabled = !preset.gearboxes.includes(o.value as GearboxType);
     this.typeSel.value = s.type;
+    // oil cooler: "Serie", aftermarket air cooler, "Aus" only where the factory has one; none on a shared sump
+    const choices = oilCoolerChoices(this.drivetrain);
+    const key = choices.join("|");
+    if (this.coolerSel.dataset.choices !== key) {
+      this.coolerSel.dataset.choices = key;
+      this.coolerSel.innerHTML = choices.map((c) => `<option value="${c}">${OIL_COOLER_LABEL[c]}</option>`).join("");
+    }
+    this.coolerRow.hidden = !choices.length;
+    this.coolerSel.value = currentOilCooler(this.drivetrain);
     this.fdInput.value = String(s.finalDrive);
     this.limitSel.value = s.speedLimitKmh === null ? "off" : String(s.speedLimitKmh);
     this.fdOut.textContent = fmt1(s.finalDrive).replace(",0", ",00").replace(/,(\d)$/, ",$10");
@@ -371,26 +376,12 @@ export class GearboxPanel {
     const cvt = s.type === "cvt";
     this.downBtn.hidden = cvt;
     this.upBtn.hidden = cvt;
-    // theoretical top speed from the steady full-load curve
-    try {
-      const sweep = dynoSweep(this.cfg, { stepRpm: 100 });
-      const torqueAt = (rpm: number) => {
-        let best = sweep[0]!;
-        for (const p of sweep) if (Math.abs(p.rpm - rpm) < Math.abs(best.rpm - rpm)) best = p;
-        return best.torqueNm;
-      };
-      const r = theoreticalVmax(torqueAt, this.cfg.revLimitRpm, s.type, s.finalDrive, this.drivetrain.vehicle, spec);
-      // physical top speed without the governor; the governor note follows when it caps below that
-      const lim = s.speedLimitKmh;
-      const capped = lim !== null && r.vmaxKmh > lim
-        ? ` Der Vmax-Begrenzer regelt bei ${this.spd(lim)} ab.`
-        : "";
-      this.calcEl.textContent = (r.limitedBy === "limiter"
-        ? `Berechnete Vmax ohne Begrenzer ${this.spd(r.vmaxKmh)}, begrenzt durch den Drehzahlbegrenzer im ${r.gear}. Gang: länger übersetzen bringt mehr.`
-        : `Berechnete Vmax ohne Begrenzer ${this.spd(r.vmaxKmh)}, begrenzt durch den Luftwiderstand.`) + capped;
-    } catch {
-      this.calcEl.textContent = "";
-    }
+    // the computed Vmax is shown once, under the traction diagram; here only whether the governor caps it
+    const v = this.gears?.vmaxKmh ?? null;
+    const lim = s.speedLimitKmh;
+    this.govCalcEl.textContent = v !== null && lim !== null && v > lim
+      ? `Regelt bei ${this.spd(lim)} ab, ohne Begrenzer wären ${this.spd(v)} möglich (siehe Getriebe › Zugkraft).`
+      : "";
   }
 
   /** 0–60 mph: follows the drivetrain's 0–100 run (same start and abort rules) and stops it at 96,56 km/h. */
@@ -490,13 +481,12 @@ export class GearboxPanel {
     if (moving !== this.moving) {
       this.moving = moving;
       this.typeSel.disabled = moving;
-      this.vehicleSel.disabled = moving;
+      this.coolerSel.disabled = moving;
       this.fdInput.disabled = moving;
     }
   }
 }
 
-const TANK_KEY = "pruefzelle.tank";
 
 /** Saved tank and the vehicle it belongs to ("" = own vehicle). */
 function loadTank(): { tank: FuelTank; vehicle: string; kind: string } | null {

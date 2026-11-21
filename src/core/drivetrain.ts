@@ -439,6 +439,8 @@ export class Drivetrain {
   private gbProtect = false;
   private gbFailed = false;
   private gbCooler = true;
+  /** Aftermarket air-to-oil cooler, W/K at 25 m/s (0 = none, #100 addendum). */
+  private gbAuxCoolerWK = 0;
   private damageLevel: NonNullable<SimInputs["damage"]> = "real";
 
   constructor(
@@ -786,6 +788,15 @@ export class Drivetrain {
     return this.gbCooler;
   }
 
+  /** Aftermarket air-to-oil gearbox cooler (#100 addendum, vehicle.md §8 [B19]): UA in W/K at 25 m/s, 0 = none. */
+  setGearboxAuxCooler(wk: number) {
+    this.gbAuxCoolerWK = Number.isFinite(wk) ? Math.max(0, wk) : 0;
+  }
+
+  get gearboxAuxCoolerWK(): number {
+    return this.gbAuxCoolerWK;
+  }
+
   /**
    * Gearbox oil temperature, warning, protection mode and damage (issue #53, gearbox-thermal.ts, vehicle.md §8).
    * Heat from (1 − η)·P through the gear set, churning, clutch slip (wet: all, dry: share) and converter slip
@@ -832,6 +843,7 @@ export class Drivetrain {
     this.gbOilC = stepGearboxOil(spec, this.gbOilC, dt, {
       powerW, efficiency: this.spec.efficiency, clutchSlipW, converterSlipW, shaftRpm: Math.max(inputRpm, outputRpm),
       airSpeedMs: vRoad, ambientC: ambient, coolantC: Number.isFinite(engine.coolantC) ? engine.coolantC : ambient, cooler: this.gbCooler,
+      auxCoolerWK: this.gbAuxCoolerWK,
     });
     const T = this.gbOilC;
     this.gbWarn = this.gbWarn ? T >= spec.warnC - GEARBOX_HYST_K : T >= spec.warnC;

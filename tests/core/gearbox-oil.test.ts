@@ -1,7 +1,7 @@
 // Issue #53: gearbox oil temperature (src/core/gearbox-thermal.ts, docs/research/vehicle.md §8).
 import { describe, expect, test } from "bun:test";
 import {
-  Drivetrain, EngineSimulator, GEARBOX_THERMAL, converterTorques, defaultInputs, gearboxDragPenalty, gearboxThermalKind, gearboxViscosityFactor, gearboxWearRate,
+  AFTERMARKET_OIL_COOLER_WK, AUX_COOLER_EXPONENT, Drivetrain, EngineSimulator, GEARBOX_THERMAL, converterTorques, defaultInputs, gearboxDragPenalty, gearboxThermalKind, gearboxViscosityFactor, gearboxWearRate,
   stepGearboxOil, summarize,
 } from "../../src/core/index.ts";
 import type { EngineConfig, GearboxOilInput, GearboxType, SimInputs } from "../../src/core/index.ts";
@@ -196,5 +196,39 @@ describe("gearbox oil in the drivetrain", () => {
     dt.setDamageLevel("lenient");
     expect(dt.state.gearboxFailed).toBe(false);
     expect(dt.state.gearboxWear!).toBeLessThan(1);
+  });
+});
+
+describe("aftermarket air-to-oil cooler (#100 addendum, vehicle.md §8 [B19])", () => {
+  test("Setrab Series 6, 19 rows: ≈ 160 W/K at speed, exponent ≈ 0.54 from the 3 → 8 m/s correction", () => {
+    expect(AFTERMARKET_OIL_COOLER_WK).toBeGreaterThanOrEqual(150);
+    expect(AFTERMARKET_OIL_COOLER_WK).toBeLessThanOrEqual(400);
+    expect(AUX_COOLER_EXPONENT).toBeCloseTo(Math.log(1.7) / Math.log(8 / 3), 2);
+  });
+
+  test("steady state under load drops with the cooler (manual, hard motorway run, hot day)", () => {
+    // 200 km/h in 5th gear on a 35 °C day: heavy load on a manual box without a factory cooler
+    const hot = cruise(200, 0.86 * 3.45, 0.93, { ambientC: 35 });
+    const without = run("manual", hot, 3 * 3600).at(-1)!;
+    const withAux = run("manual", { ...hot, auxCoolerWK: AFTERMARKET_OIL_COOLER_WK }, 3 * 3600).at(-1)!;
+    expect(without).toBeGreaterThan(100);
+    expect(withAux).toBeLessThan(without - 15);
+    expect(withAux).toBeGreaterThan(35);
+  });
+
+  test("no ram air, no effect: at standstill the air cooler does nothing (no fan)", () => {
+    const x: GearboxOilInput = { powerW: 0, efficiency: 0.93, clutchSlipW: 2000, converterSlipW: 0, shaftRpm: 0, airSpeedMs: 0, ambientC: 20, coolantC: 90, cooler: true };
+    const spec = GEARBOX_THERMAL.manual;
+    expect(stepGearboxOil(spec, 90, 10, { ...x, auxCoolerWK: AFTERMARKET_OIL_COOLER_WK })).toBeCloseTo(stepGearboxOil(spec, 90, 10, x), 9);
+  });
+
+  test("drivetrain: setGearboxAuxCooler is stored and clamped", () => {
+    const cfg = defaultConfig();
+    const dt = new Drivetrain(cfg, summarize(cfg), "manual");
+    expect(dt.gearboxAuxCoolerWK).toBe(0);
+    dt.setGearboxAuxCooler(AFTERMARKET_OIL_COOLER_WK);
+    expect(dt.gearboxAuxCoolerWK).toBe(AFTERMARKET_OIL_COOLER_WK);
+    dt.setGearboxAuxCooler(-5);
+    expect(dt.gearboxAuxCoolerWK).toBe(0);
   });
 });
