@@ -85,7 +85,7 @@ export type { GearboxOilInput, GearboxThermalKind, GearboxThermalSpec } from "./
 export { EvSimulator, DRIVE_MODES, DRIVE_MODE_IDS, START_SOC, evRefRatio, evSystemPowerKw, evPackKwh, motorRpmAt } from "./electric.ts";
 export {
   CONSTANT_POWER_RATIO, INVERTER_EFFICIENCY, MOTOR_DERATE_C, MOTOR_MAX_C, baseRpm, electricPowerKw, motorDerate, motorEfficiency, motorLossKw,
-  motorMaxPowerKw, motorMaxTorque, torqueAtCurrent,
+  motorMaxPowerKw, motorMaxTorque, stepMotorTemp, torqueAtCurrent,
 } from "./electric-motor.ts";
 export {
   BATTERY_CUTOFF_C, BATTERY_DERATE_C, CELL_V_MAX, CELL_V_MIN, PACK_KWH_PER_KG, batteryLimits, cellOcv, chargeAcceptance, currentForPower,

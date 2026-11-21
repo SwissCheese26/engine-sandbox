@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import {
   Drivetrain, EvSimulator, batteryLimits, baseRpm, cellOcv, chargeAcceptance, currentForPower, defaultInputs, evPackKwh, evSystemPowerKw,
-  motorEfficiency, motorLossKw, motorMaxTorque, nominalV, packOcv, packResistance, stepBattery, summarize, torqueAtCurrent,
+  motorEfficiency, motorLossKw, motorMaxTorque, stepMotorTemp, nominalV, packOcv, packResistance, stepBattery, summarize, torqueAtCurrent,
 } from "../../src/core/index.ts";
 import type { EvMotorConfig, SimInputs } from "../../src/core/index.ts";
 import { defaultConfig } from "../../src/data/presets.ts";
 import { libraryCar } from "../../src/data/vehicle-library.ts";
-import { evTuningOf, maxTuning, tuneEv } from "../../src/data/ev-tuning.ts";
+import { estimateEv, evTuningOf, maxTuning, tuneEv, validTuning } from "../../src/data/ev-tuning.ts";
 import { driveEv, evRig } from "./ev-run.ts";
 
 // Electric drive (issue #108): motor curve, battery sag, regen, SoC drain and range, AWD split, drive modes, tuning.
@@ -231,29 +231,86 @@ describe("EvSimulator on the chassis dyno", () => {
 });
 
 describe("EV tuning (electric.md §6)", () => {
-  const plaid = libraryCar("ev-tesla-model-s-plaid").setup.ev!;
+  const plaidCar = libraryCar("ev-tesla-model-s-plaid");
+  const plaid = plaidCar.setup.ev!;
+  const factory = evTuningOf(plaid, "uhp");
   test("factory values reproduce the car", () => {
-    const t = tuneEv(plaid, evTuningOf(plaid));
-    expect(t.systemKw / evSystemPowerKw(plaid)).toBeCloseTo(1, 1);
-    expect(Math.abs(t.deltaKg)).toBeLessThan(5);
+    const t = tuneEv(plaid, factory);
+    expect(t.systemKw / evSystemPowerKw(plaid)).toBeCloseTo(1, 2);
+    expect(Math.abs(t.deltaKg)).toBeLessThan(1);
+    expect(t.ev.battery.seriesCells).toBe(plaid.battery.seriesCells);
+    expect(t.ev.motors.length).toBe(3);
   });
-  test("up to ≈ 3000 PS, only with 800 V; 400 V stops at the contactor current", () => {
+  test("1 … 4 motors, limits enforced", () => {
+    const v = validTuning({ ...factory, frontMotors: 4, rearMotors: 4, cRate: 99, motorScale: -1, tyre: "rubber" }, factory);
+    expect(v.frontMotors + v.rearMotors).toBe(4);
+    expect(v.cRate).toBe(15);
+    expect(v.motorScale).toBe(0.5);
+    expect(v.tyre).toBe("uhp");
+    expect(validTuning({ frontMotors: 0, rearMotors: 0 }, factory).rearMotors).toBe(1);
+  });
+  test("up to ≈ 3000 PS, only with 800 V; 400 V stops at the contactor current; the limit is named", () => {
     const max = tuneEv(plaid, maxTuning());
     expect(max.systemPs).toBeGreaterThan(2500);
     expect(max.systemPs).toBeLessThan(3300);
     expect(max.deltaKg).toBeGreaterThan(500);
+    expect(max.limit).toBe("battery");
     const lv = tuneEv(plaid, { ...maxTuning(), highVoltage: false });
     expect(lv.systemPs).toBeLessThan(1800);
     expect(lv.notes.join(" ")).toContain("800 V");
+    const inv = tuneEv(plaid, { ...factory, motorScale: 3, currentScale: 2 });
+    expect(inv.inverterA).toBe(2500);
+    expect(inv.notes.join(" ")).toContain("Wechselrichter");
+    // more current: more torque, but saturating
+    const cur = tuneEv(plaid, { ...factory, currentScale: 1.5 });
+    expect(cur.motorNm).toBeGreaterThan(450 * 1.25);
+    expect(cur.motorNm).toBeLessThan(450 * 1.5);
   });
-  test("a tuned car drives: more power, still traction-limited at launch", () => {
-    const car = structuredClone(libraryCar("ev-tesla-model-s-plaid"));
-    const t = tuneEv(plaid, maxTuning());
-    car.setup.ev = t.ev;
-    car.setup.vehicle.massKg += t.deltaKg;
+  test("cell type, voltage and cooling change the pack", () => {
+    const lfp = tuneEv(plaid, { ...factory, chemistry: "lfp" });
+    expect(lfp.ev.battery.chemistry).toBe("lfp");
+    expect(lfp.deltaKg).toBeGreaterThan(100); // LFP is heavier per kWh
+    const hv = tuneEv(plaid, { ...factory, highVoltage: true });
+    expect(hv.ev.battery.seriesCells).toBe(2 * plaid.battery.seriesCells);
+    const track = tuneEv(plaid, { ...factory, cooling: "track" });
+    expect(track.ev.coolingScale).toBe(2.5);
+    expect(track.ev.battery.coolingWPerK).toBe(1400);
+  });
+  test("better cooling: a hot motor and battery shed their heat faster", () => {
+    const m = plaid.motors[0]!;
+    let a = 160;
+    let b = 160;
+    for (let i = 0; i < 60; i++) {
+      a = stepMotorTemp(m, a, 5, 1, 20, 1);
+      b = stepMotorTemp(m, b, 5, 1, 20, 2.5);
+    }
+    expect(b).toBeLessThan(a - 10);
+    const serie = tuneEv(plaid, factory).ev.battery;
+    const track = tuneEv(plaid, { ...factory, cooling: "track" }).ev.battery;
+    let x = { soc: 0.8, tempC: 60, v: 400, a: 0 };
+    let y = { ...x };
+    for (let i = 0; i < 300; i++) {
+      x = stepBattery(serie, x, 0, 1, 20);
+      y = stepBattery(track, y, 0, 1, 20);
+    }
+    expect(y.tempC).toBeLessThan(x.tempC - 3);
+  });
+  test("estimate: factory Plaid ≈ the library run; a Plaid tuned beyond 2000 PS drives, traction-limited at launch", () => {
+    const f = estimateEv(plaidCar.setup, tuneEv(plaid, factory));
+    expect(f.t100!).toBeGreaterThan(2.5);
+    expect(f.t100!).toBeLessThan(3.1);
+    expect(f.rangeKm).toBeGreaterThan(450);
+    const big = tuneEv(plaid, { ...factory, frontMotors: 2, rearMotors: 2, motorScale: 2, currentScale: 1.5, packKwh: 150, cRate: 12, highVoltage: true, cooling: "track", tyre: "semi-slick" });
+    expect(big.systemPs).toBeGreaterThan(2000);
+    const e = estimateEv(plaidCar.setup, big);
+    expect(e.tractionLimited).toBe(true);
+    expect(e.t100!).toBeLessThan(3.5);
+    // driving it: much more power at speed than the factory car
+    const car = structuredClone(plaidCar);
+    car.setup.ev = big.ev;
+    car.setup.vehicle.massKg += big.deltaKg;
     car.setup.speedLimitKmh = null;
     const r = driveEv(car, 25);
-    expect(r.peakKw).toBeGreaterThan(1500);
-    expect(r.t100!).toBeGreaterThan(2.3); // μ·g still rules the start
+    expect(r.peakKw).toBeGreaterThan(1400);
   });
 });

@@ -143,5 +143,51 @@ export async function evChecks({ browser, base, outDir, failures, errors, label,
     rpm: !!document.querySelector('[data-gauge="rpm"]')?.getClientRects().length,
   }));
   if (ice.drive !== "ice" || !ice.key || !ice.rpm) fail(`zurück zum Verbrenner klappt nicht (${JSON.stringify(ice)})`);
+
+  // E-Tuner: Plaid beyond 2000 PS, live figures, apply, drive; stored per vehicle; back to the factory state
+  await page.selectOption('.vehicle [data-control="car"]', "ev-tesla-model-s-plaid");
+  await page.click('.vehicle [data-control="load-car"]');
+  await page.waitForSelector(".evp:not([hidden]) [data-tune=frontMotors]");
+  const set = async (k, v) => {
+    const sel = `.evp [data-tune="${k}"]`;
+    if ((await page.evaluate((s) => document.querySelector(s).tagName, sel)) === "SELECT") await page.selectOption(sel, String(v));
+    else await page.fill(sel, String(v));
+  };
+  for (const [k, v] of [["frontMotors", 2], ["rearMotors", 2], ["motorScale", 2], ["currentScale", 1.5], ["packKwh", 150], ["chemistry", "nca"], ["cRate", 12], ["highVoltage", 1], ["cooling", "track"], ["tyre", "semi-slick"]]) await set(k, v);
+  // leave the last field (its change event) before reading the live figures
+  await page.evaluate(() => document.activeElement?.blur());
+  await page.waitForTimeout(200);
+  await page.waitForFunction(() => /\d/.test(document.querySelector('.evp [data-o="t-t100"]')?.textContent ?? ""), null, { timeout: 5000 }).catch(() => {});
+  const live = await page.evaluate(() => Object.fromEntries(["t-power", "t-limit", "t-t100", "t-range", "t-mass"].map((k) => [k, document.querySelector(`.evp [data-o="${k}"]`)?.textContent ?? ""])));
+  const ps = num(live["t-power"].split("PS")[0]);
+  if (!(ps > 2000) || !/s$/.test(live["t-t100"]) || !/km/.test(live["t-range"]) || !/Akku|Wechselrichter|Motoren/.test(live["t-limit"])) fail(`E-Tuner zeigt keine Live-Werte über 2000 PS (${JSON.stringify(live)})`);
+  await page.locator(".evp__tune").screenshot({ path: join(outDir, `smoke-${label}-ev-tuner.png`) });
+  await page.click('.evp [data-control="tune-apply"]');
+  await page.waitForTimeout(200);
+  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("pruefzelle.evTuning") ?? "{}")["ev-tesla-model-s-plaid"]);
+  if (!stored || stored.frontMotors !== 2 || !stored.highVoltage) fail(`E-Tuner speichert nicht je Fahrzeug (${JSON.stringify(stored)}; ${await page.textContent(".evp [data-o=preview]")}; ${await page.evaluate(() => window.__pruefzelle?.gearbox.drivetrain.state.speedKmh)})`);
+  await page.click(".readybtn");
+  await page.mouse.click(2, 2);
+  await page.keyboard.down("w");
+  let tunedPeak = 0;
+  for (let i = 0; i < 16; i++) {
+    await page.waitForTimeout(250);
+    tunedPeak = Math.max(tunedPeak, num(await page.textContent('[data-gauge="ev-power"] .gauge__value')));
+  }
+  await page.keyboard.up("w");
+  const tunedKmh = await page.evaluate(() => window.__pruefzelle?.gearbox.drivetrain.state.speedKmh ?? 0);
+  if (!(tunedPeak > 1100) || !(tunedKmh > 120)) fail(`getunter Plaid fährt nicht mit mehr Leistung (${tunedPeak} kW, ${Math.round(tunedKmh)} km/h)`);
+  console.log(`${label}: E-Tuner ${ps} PS (${live["t-limit"]}, 0–100 ${live["t-t100"]}), gefahren ${tunedPeak} kW, ${Math.round(tunedKmh)} km/h`);
+  await page.keyboard.down("s");
+  await page.waitForFunction(() => (window.__pruefzelle?.gearbox.drivetrain.state.speedKmh ?? 99) < 0.5, null, { timeout: 30000 }).catch(() => fail("bremst nicht bis zum Stand (getunt)"));
+  await page.keyboard.up("s");
+  await page.click('.evp [data-control="tune-reset"]');
+  await page.waitForTimeout(300);
+  const back = await page.evaluate(() => ({
+    power: document.querySelector('.evp [data-o="t-power"]')?.textContent ?? "",
+    stored: JSON.parse(localStorage.getItem("pruefzelle.evTuning") ?? "{}")["ev-tesla-model-s-plaid"] ?? null,
+    motors: window.__pruefzelle?.gearbox.drivetrain.ev?.motors.length,
+  }));
+  if (!/^1\.0\d\d PS/.test(back.power) || back.stored || back.motors !== 3) fail(`„Auf Werkszustand zurücksetzen“ klappt nicht (${JSON.stringify(back)})`);
   await page.close();
 }

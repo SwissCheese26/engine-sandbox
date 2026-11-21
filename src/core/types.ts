@@ -580,6 +580,8 @@ export interface EvConfig {
   ratedKwhPer100?: number;
   /** Auxiliary load (12 V, pumps, electronics), kW. */
   auxKw?: number;
+  /** Motor cooling relative to series (bigger pump/radiator, oil spray), default 1. Battery: EvBatteryConfig.coolingWPerK. */
+  coolingScale?: number;
 }
 
 export type EvDriveMode = "chill" | "sport" | "plaid";

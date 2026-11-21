@@ -3,6 +3,8 @@
 import { EngineSimulator, EvSimulator, TERRAIN_LABELS, defaultInputs, summarize } from "../core/index.ts";
 import type { EvConfig, EvDriveMode } from "../core/index.ts";
 import { EvPanel } from "./ev-panel.ts";
+import { clearEvTuning, loadEvTuning, saveEvTuning } from "./ev-tuning-store.ts";
+import { tuneEv, type TunedEv } from "../data/ev-tuning.ts";
 import { nextDriveMode } from "./layouts/ev-logic.ts";
 import { customSetup, loadOwnVehicle, saveOwnVehicle, setOwnVehicleActive, takePendingSetup, type PendingSetup } from "./sandbox-setup.ts";
 import { ShiftPad } from "./shift-pad.ts";
@@ -147,16 +149,25 @@ export class App {
   private syncDrive() {
     const ev = this.gearbox.drivetrain.ev;
     if (ev === this.evCfg) return;
-    const sameCar = this.evTuning && !!ev && !!this.evSim;
+    let sameCar = this.evTuning && !!ev && !!this.evSim;
     this.evTuning = false;
-    this.evCfg = ev;
+    // a newly loaded electric car comes with its stored E-Tuner setup (per vehicle)
+    const car = ev ? VEHICLE_LIBRARY.find((c) => c.id === this.gearbox.vehiclePanel.carId && c.setup.ev) ?? null : null;
+    const stored = car && !sameCar ? loadEvTuning(car) : null;
+    if (car && stored) {
+      const t = tuneEv(car.setup.ev!, stored);
+      this.applyTuned(t, car.setup.vehicle.massKg + t.deltaKg);
+      sameCar = false;
+    }
+    const evNow = this.gearbox.drivetrain.ev;
+    this.evCfg = evNow;
     if (!sameCar) this.console.switchOff();
-    if (ev) {
-      if (sameCar) this.evSim!.setConfig(structuredClone(ev) as EvConfig, true);
-      else this.evSim = new EvSimulator(structuredClone(ev) as EvConfig);
+    if (evNow) {
+      if (sameCar) this.evSim!.setConfig(structuredClone(evNow) as EvConfig, true);
+      else this.evSim = new EvSimulator(structuredClone(evNow) as EvConfig);
     } else this.evSim = null;
-    if (!sameCar) this.evPanel.setCar(ev as EvConfig | null, this.gearbox.drivetrain.vehicle.massKg);
-    const on = !!ev;
+    if (!sameCar) this.evPanel.setCar(car, stored ?? undefined);
+    const on = !!evNow;
     this.cell.dataset.drive = on ? "ev" : "ice";
     this.root.dataset.drive = on ? "ev" : "ice";
     this.console.setElectric(on);
@@ -166,6 +177,16 @@ export class App {
     for (const v of this.views.values()) if (v instanceof CockpitView) v.setElectric(ev as EvConfig | null);
     if (on) this.cell.classList.remove("bench-open");
     this.toasts.clear();
+  }
+
+  /** E-Tuner (#108): motors, battery, cooling on the drivetrain, the mass and the tyre type of the vehicle. */
+  private applyTuned(t: TunedEv, massKg: number): boolean {
+    const d = this.gearbox.drivetrain;
+    if (!d.setEv(t.ev)) return false;
+    d.setVehicleParams({ massKg });
+    if (d.tyre.type !== t.tuning.tyre) d.setTyre({ ...d.tyre, type: t.tuning.tyre });
+    this.gearbox.vehiclePanel.sync();
+    return true;
   }
 
   private setEvMode(m: EvDriveMode) {
@@ -314,16 +335,26 @@ export class App {
       this.evSim?.setSoc(soc);
       this.announce(`Akku auf ${Math.round(soc * 100)} % geladen.`);
     };
+    this.evPanel.onFactory = () => {
+      if (this.gearbox.drivetrain.state.speedKmh > 0.5) return false;
+      clearEvTuning(this.gearbox.vehiclePanel.carId);
+      // reloads the car as delivered (also mass and tyres); syncDrive then sees a new electric configuration
+      this.gearbox.vehiclePanel.resetFactory();
+      this.syncDrive();
+      this.announce("E-Tuner: Werkszustand.");
+      return true;
+    };
     this.evPanel.onTune = (t, massKg) => {
       const d = this.gearbox.drivetrain;
       if (d.state.speedKmh > 0.5) return false;
       this.evTuning = true;
-      if (!d.setEv(t.ev)) {
+      if (!this.applyTuned(t, massKg)) {
         this.evTuning = false;
         return false;
       }
-      d.setVehicleParams({ massKg });
-      this.gearbox.vehiclePanel.sync();
+      // stored per vehicle: the E-Tuner record, mass and tyre with the vehicle's own changes
+      saveEvTuning(this.gearbox.vehiclePanel.carId, t.tuning);
+      this.gearbox.vehiclePanel.remember();
       this.syncDrive();
       this.announce(`Umgebaut: ${Math.round(t.systemPs)} PS, ${Math.round(massKg)} kg.`);
       return true;

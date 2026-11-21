@@ -228,7 +228,7 @@ export class EvSimulator {
         const loss = Math.abs(t) > 1e-6 || rpms[i]! > 1 ? motorLossKw(m, rpms[i]!, t) : 0;
         pm += mech;
         pdc += electricPowerKw(mech, loss);
-        this.motorC[i] = stepMotorTemp(m, this.motorC[i]!, loss, h, ambientC);
+        this.motorC[i] = stepMotorTemp(m, this.motorC[i]!, loss, h, ambientC, ev.coolingScale ?? 1);
       });
       this.bat = stepBattery(b, this.bat, pdc, h, ambientC);
       if (pdc > 0) this.energy += (pdc * h) / 3600;

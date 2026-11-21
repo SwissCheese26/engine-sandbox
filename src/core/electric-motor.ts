@@ -119,13 +119,14 @@ export const MOTOR_DERATE_C = 150;
 export const MOTOR_MAX_C = 180;
 export const MOTOR_COOLANT_C = 45;
 
-export function stepMotorTemp(m: EvMotorConfig, tempC: number, lossKw: number, dt: number, ambientC: number): number {
+export function stepMotorTemp(m: EvMotorConfig, tempC: number, lossKw: number, dt: number, ambientC: number, coolingScale = 1): number {
   const C = 200 * m.peakPowerKw;
-  const ua = 0.25 * m.peakPowerKw;
+  const ua0 = 0.25 * m.peakPowerKw;
+  const ua = ua0 * Math.max(0.2, coolingScale);
   // the coolant cannot be colder than the ambient air
   const cool = Math.max(MOTOR_COOLANT_C, ambientC);
   // below the coolant temperature the circuit warms the motor up only slowly (pump heat, warm-up)
-  const q = lossKw * 1000 - ua * (tempC - cool) * (tempC > cool ? 1 : 0.2);
+  const q = lossKw * 1000 - (tempC > cool ? ua * (tempC - cool) : 0.2 * ua0 * (tempC - cool));
   return tempC + (q / C) * dt;
 }
 
