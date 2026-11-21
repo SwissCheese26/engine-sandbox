@@ -455,11 +455,52 @@ async function gearsChecks(page, label) {
   if (sizes.overflow > 0) failures.push(`${label}: Gänge-Platte scrollt horizontal (${sizes.overflow} px)`);
   await page.locator(".gears").screenshot({ path: join(outDir, `smoke-${label}-traction.png`) });
   console.log(`${label}: Zugkraftdiagramm ${ink} Pixel, ${verdict}`);
-  // back to the free-revving bench and the generic 6-speed for the later steps
-  await page.selectOption('select[data-control="gear-count"]', "6");
-  await page.evaluate(() => localStorage.removeItem("pruefzelle.gearRatios"));
+  await perCarChecks(page, label);
+  // back to the free-revving bench and the factory gearbox for the later steps
+  await page.locator('[data-control="factory-reset"]').scrollIntoViewIfNeeded();
+  await page.click('[data-control="factory-reset"]');
+  await page.waitForTimeout(150);
+  const after = await page.locator('[data-out="gear-inputs"] input').count();
+  if (after !== 6) failures.push(`${label}: Werkszustand stellt die Gänge nicht zurück (${after} statt 6)`);
   await mode("free");
   await page.waitForTimeout(150);
+}
+
+/**
+ * Settings count per vehicle ("Dubletten"): 9 own gears on car A stay with A. Vehicle B shows its factory gears,
+ * back on A the 9 gears are there again; nothing global is left behind. One "Getriebe" section, one vehicle select.
+ */
+async function perCarChecks(page, label) {
+  const count = () => page.locator('[data-out="gear-inputs"] input').count();
+  const kind = async (k) => {
+    await page.locator('select[data-control="vehicle"]').scrollIntoViewIfNeeded();
+    await page.selectOption('select[data-control="vehicle"]', k);
+    await page.waitForTimeout(150);
+  };
+  const dup = await page.evaluate(() => ({
+    vehicle: document.querySelectorAll('select[data-control="vehicle"]').length,
+    gearbox: document.querySelectorAll('select[data-control="gearbox"]').length,
+    inGears: !!document.querySelector('.gears select[data-control="gearbox"]') && !!document.querySelector(".gears canvas"),
+    heads: [...document.querySelectorAll(".gearbox h3")].map((h) => h.textContent.trim()),
+  }));
+  if (dup.vehicle !== 1 || dup.gearbox !== 1 || !dup.inGears) failures.push(`${label}: Getriebe/Fahrzeug doppelt oder verstreut (${JSON.stringify(dup)})`);
+  if (dup.heads.filter((h) => /Getriebe|Gänge/.test(h)).length !== 1) failures.push(`${label}: mehr als ein Getriebe-Abschnitt (${dup.heads.join(", ")})`);
+  await kind("car");
+  await page.locator('select[data-control="gear-count"]').scrollIntoViewIfNeeded();
+  await page.selectOption('select[data-control="gear-count"]', "9");
+  await page.waitForTimeout(150);
+  const a9 = await count();
+  await kind("truck");
+  const b = await count();
+  const bFactory = await page.evaluate(() => window.__pruefzelle?.gearbox.drivetrain.gearbox.ratios.length);
+  await kind("car");
+  const a = await count();
+  const global = await page.evaluate(() => localStorage.getItem("pruefzelle.gearRatios"));
+  const resetOn = await page.evaluate(() => !document.querySelector('[data-control="factory-reset"]').disabled);
+  if (a9 !== 9 || b === 9 || b !== bFactory || a !== 9 || global !== null || !resetOn) {
+    failures.push(`${label}: Gänge nicht pro Fahrzeug (A ${a9} → B ${b}/${bFactory} → A ${a}, global ${global}, Reset ${resetOn})`);
+  }
+  console.log(`${label}: pro Fahrzeug A 9 Gänge → B ${b} (Werk) → A ${a}`);
 }
 
 /**
