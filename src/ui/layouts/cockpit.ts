@@ -352,7 +352,7 @@ export class CockpitView implements LayoutView {
     }
     const t = dialTheme(id);
     for (const d of [this.speedo, this.tacho, ...Object.values(this.minis).map((m) => m.dial)]) d.setTheme(t);
-    this.extras.setTheme(t);
+    this.extras.setDesign(id);
     for (const k of Object.keys(this.last)) this.last[k] = "";
     this.redraw();
   }

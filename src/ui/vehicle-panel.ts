@@ -1,8 +1,11 @@
 // Fahrzeug-Platte on the chassis dyno (issue #22): body and chassis data, tyres, ready-made cars.
 // Everything here can only be changed at standstill (like the gearbox). The plate edits the Drivetrain of the
 // Getriebe-Pult; loading a ready-made car also asks the app to load its engine (onLoadCar).
-import { SPEED_INDEX, TYRE_TYPES, frontAxleShare, isCommercialKind, isMotorcycleKind, speedRatingKmh } from "../core/index.ts";
-import type { CarSetup, Drivetrain, DriveLayout, SpeedIndex, TyreSetup, TyreType, VehicleParams } from "../core/index.ts";
+// Own changes stay with the vehicle they were made on (vehicle-custom.ts): a library car stays that car ("angepasst")
+// and gets its changes back when it is loaded again; "Auf Werkszustand zurücksetzen" forgets them.
+import { DEFAULT_SPEED_LIMIT_KMH, SPEED_INDEX, TYRE_TYPES, VEHICLES, frontAxleShare, isCommercialKind, isMotorcycleKind, speedRatingKmh } from "../core/index.ts";
+import type { CarSetup, Drivetrain, DriveLayout, SpeedIndex, TyreSetup, TyreType, VehicleKind, VehicleParams } from "../core/index.ts";
+import { captureCustom, clearCustom, loadVehicle, saveCustom, setupSig, vehicleKey } from "./vehicle-custom.ts";
 import { VEHICLE_LIBRARY, type LibraryCar } from "../data/vehicle-library.ts";
 import { prefs } from "./settings.ts";
 import { TyreSizePicker, tyreClassOf } from "./tyre-size-picker.ts";
@@ -40,10 +43,25 @@ const FIELDS: NumField[] = [
 export class VehiclePanel {
   readonly el: HTMLElement;
   private carSel: HTMLSelectElement;
-  /** Library id of the loaded vehicle, "" for an own one (the tank level is saved per vehicle). */
+  private kindSel: HTMLSelectElement;
+  private resetBtn: HTMLButtonElement;
+  private customOut: HTMLElement;
+  /** Library id of the loaded vehicle, "" for an own one (tank and own changes are saved per vehicle). */
+  private loadedId = "";
+  /** Puts the factory state of the loaded vehicle on the drivetrain; own vehicles carry the signature of their setup. */
+  private factory: () => void = () => this.presetFactory("car");
+  private sig: string | undefined = "preset:car";
+  /** The loaded vehicle carries own changes. */
+  private custom = false;
   get carId(): string {
-    return this.carSel.value;
+    return this.loadedId;
   }
+  /** Storage key of the loaded vehicle's own changes. */
+  get vehicleKey(): string {
+    return vehicleKey(this.loadedId, this.drivetrain.kind);
+  }
+  /** Slot for further vehicle settings of the Getriebe-Pult (Vmax governor). */
+  readonly setupSlot: HTMLElement;
   private loadBtn: HTMLButtonElement;
   private layoutSel: HTMLSelectElement;
   private tyreSel: HTMLSelectElement;
@@ -68,6 +86,10 @@ export class VehiclePanel {
     el.className = "vehicle";
     el.innerHTML = `
       <h3 class="vehicle__title">Fahrzeug &amp; Reifen</h3>
+      <label class="gearbox__field vehicle__kind"><span>Fahrzeugtyp</span>
+        <select data-control="vehicle">${(Object.keys(VEHICLES) as VehicleKind[])
+          .map((k) => `<option value="${k}">${VEHICLES[k].label}</option>`).join("")}</select>
+      </label>
       <div class="vehicle__car">
         <label class="gearbox__field"><span>Fertiges Fahrzeug</span>
           <select data-control="car">
@@ -84,6 +106,11 @@ export class VehiclePanel {
         <button type="button" class="btn btn--small" data-control="load-car">Laden</button>
       </div>
       <p class="vehicle__note" data-out="car-note"></p>
+      <div class="vehicle__custom">
+        <span class="vehicle__hint" data-out="custom-state" role="status"></span>
+        <button type="button" class="btn btn--small" data-control="factory-reset" title="Eigene Änderungen an diesem Fahrzeug verwerfen">Auf Werkszustand zurücksetzen</button>
+      </div>
+      <div class="vehicle__setup" data-slot="vehicle-setup"></div>
       <label class="gearbox__field vehicle__load" data-out="load-row" hidden><span>Beladung</span>
         <input type="range" min="0" max="100" step="5" data-control="load" aria-describedby="load-out" />
         <output class="num" id="load-out" data-out="load"></output>
@@ -95,7 +122,7 @@ export class VehiclePanel {
             <small>${f.unit}</small>
           </label>`).join("")}
         <label class="vehicle__num vehicle__num--wide"><span>Antrieb</span>
-          <select data-control="layout">${(Object.keys(LAYOUT_LABEL) as DriveLayout[])
+          <select data-control="drive-layout">${(Object.keys(LAYOUT_LABEL) as DriveLayout[])
             .map((k) => `<option value="${k}">${LAYOUT_LABEL[k]}</option>`).join("")}</select>
         </label>
       </div>
@@ -116,7 +143,11 @@ export class VehiclePanel {
     const q = <T extends Element>(s: string) => el.querySelector<T>(s)!;
     this.carSel = q("[data-control=car]");
     this.loadBtn = q("[data-control=load-car]");
-    this.layoutSel = q("[data-control=layout]");
+    this.layoutSel = q("[data-control=drive-layout]");
+    this.kindSel = q("[data-control=vehicle]");
+    this.resetBtn = q("[data-control=factory-reset]");
+    this.customOut = q("[data-out=custom-state]");
+    this.setupSlot = q("[data-slot=vehicle-setup]");
     this.tyreSel = q("[data-control=tyre]");
     // tyre size from three lists (no free text): Breite / Querschnitt R Zoll, lists per vehicle class
     this.sizePicker = new TyreSizePicker({ cls: tyreClassOf(drivetrain.kind), value: drivetrain.tyre.size, describedBy: "tyre-size-help" });
@@ -132,6 +163,7 @@ export class VehiclePanel {
     this.loadInput.addEventListener("input", () => {
       if (this.moving) return this.sync();
       this.drivetrain.setLoad(Number(this.loadInput.value) / 100);
+      this.remember();
       this.sync();
       this.onChange();
     });
@@ -146,7 +178,64 @@ export class VehiclePanel {
     this.indexSel.addEventListener("change", () => this.editTyre({ speedIndex: this.indexSel.value as SpeedIndex }));
     this.sizePicker.onChange = (size) => this.editTyre({ size });
     this.loadBtn.addEventListener("click", () => this.loadSelected());
+    this.kindSel.addEventListener("change", () => this.selectKind(this.kindSel.value as VehicleKind));
+    this.resetBtn.addEventListener("click", () => this.resetFactory());
+    // the start vehicle (generic car): its own changes of the last visit come back
+    this.load(() => {}, "", this.drivetrain.kind, `preset:${this.drivetrain.kind}`);
+    this.factory = () => this.presetFactory("car");
     this.sync();
+  }
+
+  /** Factory state of a vehicle-kind preset (Fahrzeugtyp): the car gets the default governor back. */
+  private presetFactory(kind: VehicleKind) {
+    this.drivetrain.setVehicle(kind);
+    if (kind === "car") this.drivetrain.setSpeedLimit(DEFAULT_SPEED_LIMIT_KMH);
+  }
+
+  /** Loads a vehicle: factory state, then its own stored changes. */
+  private load(factory: () => void, id: string, kind: VehicleKind, sig?: string) {
+    this.loadedId = id;
+    this.factory = factory;
+    this.sig = sig;
+    this.carSel.value = id;
+    // the key of the vehicle being loaded (the drivetrain still has the previous kind until the factory ran)
+    const r = loadVehicle(this.drivetrain, factory, vehicleKey(id, kind), sig);
+    this.custom = r.custom;
+    this.failedNote = r.failed.length ? `Gespeicherte Änderung nicht übernommen: ${r.failed.join(", ")}.` : "";
+  }
+  private failedNote = "";
+
+  /** Fahrzeugtyp: the preset of that kind ("eigenes Fahrzeug"), with its own changes of the last visit. */
+  selectKind(kind: VehicleKind) {
+    if (this.moving) return this.sync();
+    this.load(() => this.presetFactory(kind), "", kind, `preset:${kind}`);
+    this.carNote.textContent = "";
+    this.sync();
+    this.onChange();
+  }
+
+  /** Stores the vehicle as it is now as its own changes (after any edit here, in the gearbox section or the cooler). */
+  remember() {
+    this.custom = true;
+    saveCustom(this.vehicleKey, captureCustom(this.drivetrain, this.sig));
+    this.failedNote = "";
+    this.syncCustom();
+  }
+
+  /** "Auf Werkszustand zurücksetzen": forgets the own changes of the loaded vehicle and loads it as delivered. */
+  resetFactory() {
+    if (this.moving) return;
+    clearCustom(this.vehicleKey);
+    this.load(this.factory, this.loadedId, this.drivetrain.kind, this.sig);
+    this.sync();
+    this.onChange();
+  }
+
+  private syncCustom() {
+    const car = VEHICLE_LIBRARY.find((c) => c.id === this.loadedId);
+    const who = car ? car.name : "Eigenes Fahrzeug";
+    this.customOut.textContent = this.failedNote || (this.custom ? `${who}: eigene Änderungen (nur für dieses Fahrzeug gespeichert).` : `${who}: Werkszustand.`);
+    this.resetBtn.disabled = this.moving || !this.custom;
   }
 
   private loadSelected() {
@@ -167,7 +256,6 @@ export class VehiclePanel {
   selectCarForEngine(engineId: string): LibraryCar | null {
     const car = VEHICLE_LIBRARY.find((c) => c.engineId === engineId);
     if (!car || this.moving) return null;
-    this.carSel.value = car.id;
     this.applyCar(car);
     return car;
   }
@@ -176,7 +264,6 @@ export class VehiclePanel {
   selectCar(id: string): LibraryCar | null {
     const car = VEHICLE_LIBRARY.find((c) => c.id === id);
     if (!car || this.moving) return null;
-    this.carSel.value = car.id;
     this.applyCar(car);
     return car;
   }
@@ -184,8 +271,9 @@ export class VehiclePanel {
   /** Guided start (#93): an own vehicle built in the wizard ("eigenes Fahrzeug", like any own edit). */
   applyOwn(setup: CarSetup): boolean {
     if (this.moving || !VehiclePanel.withinLimits(setup)) return false;
-    this.drivetrain.applyCar(structuredClone(setup));
-    this.markOwn();
+    // own changes come back only on the same own vehicle (a newly built one starts as built)
+    this.load(() => this.drivetrain.applyCar(structuredClone(setup)), "", setup.kind ?? "car", setupSig(setup));
+    this.carNote.textContent = "";
     this.sync();
     this.onChange();
     return true;
@@ -202,7 +290,7 @@ export class VehiclePanel {
   }
 
   private applyCar(car: LibraryCar) {
-    this.drivetrain.applyCar(structuredClone(car.setup));
+    this.load(() => this.drivetrain.applyCar(structuredClone(car.setup)), car.id, car.setup.kind ?? "car");
     const f = car.factory;
     this.carNote.textContent = f.t0to100S === null
       ? `${car.name}: Vmax ${spd(f.vmaxKmh)}${f.vmaxGoverned ? " (abgeregelt)" : ""}, leer ${fmt(f.kerbKg, 0)} kg${f.grossKg ? `, zulässig ${fmt(f.grossKg, 0)} kg` : ""}.`
@@ -237,17 +325,10 @@ export class VehiclePanel {
     }
   }
 
-  /** Own changes elsewhere (gear ratios, issue #14): the loaded library car becomes "eigenes Fahrzeug". */
-  markOwn() {
-    this.carSel.value = "";
-    this.carNote.textContent = "";
-  }
-
   private edit(p: Partial<VehicleParams>) {
     if (this.moving) return this.sync();
     this.drivetrain.setVehicleParams(p);
-    this.carSel.value = "";
-    this.carNote.textContent = "";
+    this.remember();
     this.sync();
     this.onChange();
   }
@@ -255,6 +336,7 @@ export class VehiclePanel {
   private editTyre(p: Partial<TyreSetup>) {
     if (this.moving) return this.sync();
     this.drivetrain.setTyre({ ...this.drivetrain.tyre, ...p });
+    this.remember();
     this.sync();
     this.onChange();
   }
@@ -286,6 +368,7 @@ export class VehiclePanel {
     }
     // motorcycles drive the rear wheel; the layout is fixed there
     const bike = isMotorcycleKind(this.drivetrain.kind);
+    this.kindSel.value = this.drivetrain.kind;
     this.layoutSel.value = v.driveLayout ?? "fwd";
     this.layoutSel.dataset.fixed = bike ? "1" : "";
     this.tyreSel.value = t.type;
@@ -295,6 +378,7 @@ export class VehiclePanel {
     this.lastTemp = "";
     this.updateTyreHint();
     this.setLocked(this.moving);
+    this.syncCustom();
   }
 
   private updateTyreHint() {
@@ -310,7 +394,9 @@ export class VehiclePanel {
   private setLocked(moving: boolean) {
     const bike = isMotorcycleKind(this.drivetrain.kind);
     for (const c of this.el.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>("input, select, button")) {
-      c.disabled = moving || (c === this.layoutSel && bike);
+      // the Vmax governor (slot) can be recoded while driving (issue #32); the Getriebe-Pult locks what it owns
+      if (this.setupSlot.contains(c)) continue;
+      c.disabled = moving || (c === this.layoutSel && bike) || (c === this.resetBtn && !this.custom);
     }
   }
 

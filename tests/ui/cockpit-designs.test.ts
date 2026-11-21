@@ -2,7 +2,8 @@
 // the chosen units.
 import { beforeEach, describe, expect, test } from "bun:test";
 import {
-  COCKPIT_DESIGNS, DEFAULT_DIAL_THEME, DEFAULT_FIELDS, FIELD_IDS, FIELD_PRESETS, dialTheme, isCockpitChoice, resolveDesign, validateFields,
+  COCKPIT_DESIGNS, DEFAULT_DIAL_THEME, DEFAULT_FIELDS, FIELD_IDS, FIELD_PRESETS, dialTheme, gaugeDisplay, gaugeKind, gaugeStyleHint, isCockpitChoice,
+  resolveDesign, validateFields, type CockpitDesignId, type GaugeDisplay,
 } from "../../src/ui/layouts/designs.ts";
 import { driveModeWord, fieldAriaLabel, fieldAvailable, fieldLabel, formatField, nextField, rangeKm, shownField, type FieldInputs } from "../../src/ui/layouts/fields-logic.ts";
 import { DEFAULT_SETTINGS, PRESETS, resetSettingsCache, validateSettings } from "../../src/ui/settings.ts";
@@ -59,6 +60,35 @@ describe("settings: cockpit design and fields", () => {
     expect(resolveDesign("digital", "superbike")).toBe("digital");
     expect(resolveDesign("classic", "truck")).toBe("classic");
     expect(resolveDesign("truck", "car")).toBe("truck");
+  });
+});
+
+describe("console gauges take on the design (#83)", () => {
+  // design → what "Rund" and "Balken" show in it
+  const EXPECTED: Record<CockpitDesignId, [GaugeDisplay, GaugeDisplay]> = {
+    classic: ["round", "bar"], "night-orange": ["round", "bar"], italian: ["round", "bar"], oldschool: ["round", "bar"], truck: ["round", "bar"],
+    digital: ["tile", "segment"], hud: ["tile", "segment"], race: ["tile", "segment"], motorrad: ["tile", "segment"],
+  };
+  test("every design maps to a gauge style", () => {
+    for (const d of COCKPIT_DESIGNS) {
+      expect([gaugeDisplay(d.id, "round"), gaugeDisplay(d.id, "bar")]).toEqual(EXPECTED[d.id]);
+      expect(gaugeKind(d.id)).toBe(d.gauges);
+    }
+    expect(Object.keys(EXPECTED).sort()).toEqual(COCKPIT_DESIGNS.map((d) => d.id).sort());
+  });
+  test("screen designs never draw round dials and explain it in the picker hint", () => {
+    for (const id of ["digital", "hud", "race", "motorrad"] as const) {
+      expect(gaugeKind(id)).toBe("screen");
+      expect(gaugeDisplay(id, "round")).not.toBe("round");
+      expect(gaugeStyleHint(id)).toMatch(/keine Rundinstrumente.*Kachel.*Segmentbalken/);
+    }
+    for (const id of ["classic", "night-orange", "italian", "oldschool", "truck"] as const) expect(gaugeStyleHint(id)).toBe("");
+  });
+  test("round pods use the design's dial theme: chrome (Oldschool), tunnel (Sportlimousine), glow (Nachtfahrt), bar needle (Lkw/Bus)", () => {
+    expect(dialTheme("oldschool")).toMatchObject({ ring: "chrome", glass: true });
+    expect(dialTheme("italian").ring).toBe("tunnel");
+    expect(dialTheme("night-orange").glow).toBeGreaterThan(DEFAULT_DIAL_THEME.glow);
+    expect(dialTheme("truck").needle).toBe("bar");
   });
 });
 

@@ -18,6 +18,7 @@ import { createRequire } from "node:module";
 import { extname, join, normalize, resolve } from "node:path";
 import { builderChecks } from "./builder.mjs";
 import { evChecks } from "./ev.mjs";
+import { smokeFxChecks } from "./smoke-fx.mjs";
 
 const require = createRequire(import.meta.url);
 let playwright;
@@ -456,11 +457,52 @@ async function gearsChecks(page, label) {
   if (sizes.overflow > 0) failures.push(`${label}: Gänge-Platte scrollt horizontal (${sizes.overflow} px)`);
   await page.locator(".gears").screenshot({ path: join(outDir, `smoke-${label}-traction.png`) });
   console.log(`${label}: Zugkraftdiagramm ${ink} Pixel, ${verdict}`);
-  // back to the free-revving bench and the generic 6-speed for the later steps
-  await page.selectOption('select[data-control="gear-count"]', "6");
-  await page.evaluate(() => localStorage.removeItem("pruefzelle.gearRatios"));
+  await perCarChecks(page, label);
+  // back to the free-revving bench and the factory gearbox for the later steps
+  await page.locator('[data-control="factory-reset"]').scrollIntoViewIfNeeded();
+  await page.click('[data-control="factory-reset"]');
+  await page.waitForTimeout(150);
+  const after = await page.locator('[data-out="gear-inputs"] input').count();
+  if (after !== 6) failures.push(`${label}: Werkszustand stellt die Gänge nicht zurück (${after} statt 6)`);
   await mode("free");
   await page.waitForTimeout(150);
+}
+
+/**
+ * Settings count per vehicle ("Dubletten"): 9 own gears on car A stay with A. Vehicle B shows its factory gears,
+ * back on A the 9 gears are there again; nothing global is left behind. One "Getriebe" section, one vehicle select.
+ */
+async function perCarChecks(page, label) {
+  const count = () => page.locator('[data-out="gear-inputs"] input').count();
+  const kind = async (k) => {
+    await page.locator('select[data-control="vehicle"]').scrollIntoViewIfNeeded();
+    await page.selectOption('select[data-control="vehicle"]', k);
+    await page.waitForTimeout(150);
+  };
+  const dup = await page.evaluate(() => ({
+    vehicle: document.querySelectorAll('select[data-control="vehicle"]').length,
+    gearbox: document.querySelectorAll('select[data-control="gearbox"]').length,
+    inGears: !!document.querySelector('.gears select[data-control="gearbox"]') && !!document.querySelector(".gears canvas"),
+    heads: [...document.querySelectorAll(".gearbox h3")].map((h) => h.textContent.trim()),
+  }));
+  if (dup.vehicle !== 1 || dup.gearbox !== 1 || !dup.inGears) failures.push(`${label}: Getriebe/Fahrzeug doppelt oder verstreut (${JSON.stringify(dup)})`);
+  if (dup.heads.filter((h) => /Getriebe|Gänge/.test(h)).length !== 1) failures.push(`${label}: mehr als ein Getriebe-Abschnitt (${dup.heads.join(", ")})`);
+  await kind("car");
+  await page.locator('select[data-control="gear-count"]').scrollIntoViewIfNeeded();
+  await page.selectOption('select[data-control="gear-count"]', "9");
+  await page.waitForTimeout(150);
+  const a9 = await count();
+  await kind("truck");
+  const b = await count();
+  const bFactory = await page.evaluate(() => window.__pruefzelle?.gearbox.drivetrain.gearbox.ratios.length);
+  await kind("car");
+  const a = await count();
+  const global = await page.evaluate(() => localStorage.getItem("pruefzelle.gearRatios"));
+  const resetOn = await page.evaluate(() => !document.querySelector('[data-control="factory-reset"]').disabled);
+  if (a9 !== 9 || b === 9 || b !== bFactory || a !== 9 || global !== null || !resetOn) {
+    failures.push(`${label}: Gänge nicht pro Fahrzeug (A ${a9} → B ${b}/${bFactory} → A ${a}, global ${global}, Reset ${resetOn})`);
+  }
+  console.log(`${label}: pro Fahrzeug A 9 Gänge → B ${b} (Werk) → A ${a}`);
 }
 
 /**
@@ -780,19 +822,24 @@ async function cockpitDesigns(page, label) {
 async function cockpitExtras(page, label) {
   const deckH0 = await deckHeight(page);
   await page.click(".ck__extras > summary");
-  for (const id of ["oilP", "oilT", "lambda", "egt"]) await page.check(`.ck__extras [data-gauge="${id}"]`);
+  // gearbox oil (#53) is offered on the chassis dyno, where the cockpit drives here
+  for (const id of ["oilP", "oilT", "gearOil", "lambda", "egt"]) await page.check(`.ck__extras [data-gauge="${id}"]`);
   await page.check('.ck__extras [data-control="ck-tune"]');
   await page.waitForTimeout(250);
   const pods = await page.$$eval(".ck-pod:not([hidden])", (n) => n.map((e) => e.dataset.pod));
-  if (pods.join("|") !== "oilP|oilT|lambda|egt") failures.push(`${label}: Zusatzinstrumente falsch (${pods.join(", ")})`);
+  if (pods.join("|") !== "oilP|oilT|gearOil|lambda|egt") failures.push(`${label}: Zusatzinstrumente falsch (${pods.join(", ")})`);
   if (!(await page.isVisible('.ck__tune [data-tune="limit"]'))) failures.push(`${label}: Tuning-Leiste ohne Leistungsgrenze`);
   if (label !== "desktop") {
     const minH = await page.$$eval(".ck__extras > summary, .ck__extras .ck-chk", (n) => Math.min(...n.map((e) => e.getBoundingClientRect().height)));
     if (minH < 44) failures.push(`${label}: Zusatzanzeigen: Bedienelement unter 44 px (${minH})`);
   }
   await page.locator(".ck").screenshot({ path: join(outDir, `smoke-${label}-design-extras-round.png`) });
+  await page.click(".ck__extras > summary");
+  await extrasPerDesign(page, label, "round");
+  await page.click(".ck__extras > summary");
   await page.check('.ck__extras input[name="ck-gstyle"][value="bar"]');
   await page.click(".ck__extras > summary");
+  await extrasPerDesign(page, label, "bar");
   await page.selectOption('select[data-control="ck-design"]', "digital");
   await page.waitForTimeout(300);
   const bar = await page.evaluate(() => ({
@@ -801,14 +848,48 @@ async function cockpitExtras(page, label) {
     sw: document.documentElement.scrollWidth - window.innerWidth,
     stored: JSON.parse(localStorage.getItem("pruefzelle.settings") ?? "{}"),
   }));
-  if (bar.style !== "bar" || bar.bars !== 4) failures.push(`${label}: Balkenanzeigen fehlen (${JSON.stringify({ style: bar.style, bars: bar.bars })})`);
+  // the digital design shows "Balken" as its own segment bars
+  if (bar.style !== "segment" || bar.bars !== 5) failures.push(`${label}: Balkenanzeigen fehlen (${JSON.stringify({ style: bar.style, bars: bar.bars })})`);
   if (bar.sw > 0) failures.push(`${label}: Zusatzanzeigen scrollen horizontal (${bar.sw} px)`);
-  if (JSON.stringify(bar.stored.ckGauges) !== JSON.stringify(["oilP", "oilT", "lambda", "egt"]) || bar.stored.ckGaugeStyle !== "bar" || bar.stored.ckTuneBar !== true) {
+  if (JSON.stringify(bar.stored.ckGauges) !== JSON.stringify(["oilP", "oilT", "gearOil", "lambda", "egt"]) || bar.stored.ckGaugeStyle !== "bar" || bar.stored.ckTuneBar !== true) {
     failures.push(`${label}: Zusatzanzeigen nicht gespeichert (${JSON.stringify([bar.stored.ckGauges, bar.stored.ckGaugeStyle, bar.stored.ckTuneBar])})`);
   }
   await page.locator(".ck").screenshot({ path: join(outDir, `smoke-${label}-design-extras-bar.png`) });
   await deckStaysStill(page, label, deckH0);
   await page.selectOption('select[data-control="ck-design"]', "auto");
+}
+
+const SCREEN_DESIGNS = ["digital", "hud", "race", "motorrad"];
+
+/**
+ * #83 the extra gauges take on each design: round pods (canvas) in the dial designs, tiles ("Rund") or segment bars
+ * ("Balken") without any canvas in the screen designs, with the hint in the picker. One screenshot of the console per
+ * design, no horizontal scroll.
+ */
+async function extrasPerDesign(page, label, style) {
+  for (const id of DESIGNS) {
+    await page.selectOption('select[data-control="ck-design"]', id);
+    await page.waitForTimeout(250);
+    const r = await page.evaluate(() => {
+      const c = document.querySelector(".ck__console");
+      const pods = [...c.querySelectorAll(".ck-pod:not([hidden])")];
+      return {
+        shown: c.dataset.gstyle,
+        canvases: pods.filter((p) => p.querySelector("canvas").getBoundingClientRect().width > 0).length,
+        pods: pods.length,
+        hint: c.querySelector("[data-ck=gstyle-hint]").hidden ? "" : c.querySelector("[data-ck=gstyle-hint]").textContent,
+        sw: document.documentElement.scrollWidth - window.innerWidth,
+      };
+    });
+    const screen = SCREEN_DESIGNS.includes(id);
+    const want = screen ? (style === "round" ? "tile" : "segment") : style;
+    if (r.shown !== want) failures.push(`${label}: Zusatzinstrumente im Design ${id} als ${r.shown} statt ${want}`);
+    if (screen && r.canvases > 0) failures.push(`${label}: Design ${id} zeigt runde Zusatzinstrumente`);
+    if (!screen && style === "round" && r.canvases !== r.pods) failures.push(`${label}: Design ${id} ohne runde Zusatzinstrumente (${r.canvases}/${r.pods})`);
+    if (screen !== /keine Rundinstrumente/.test(r.hint)) failures.push(`${label}: Hinweis zur Darstellung im Design ${id} falsch („${r.hint}“)`);
+    if (r.sw > 0) failures.push(`${label}: Zusatzinstrumente im Design ${id} scrollen horizontal (${r.sw} px)`);
+    await page.locator(".ck__console").screenshot({ path: join(outDir, `smoke-${label}-extras-${style}-${id}.png`) });
+  }
 }
 
 /** #83: "Automatisch nach Fahrzeug" shows the truck design after loading the truck (engine off, car stopped). */
@@ -958,6 +1039,8 @@ try {
   for (const [label, viewport] of [["desktop", { width: 1440, height: 900 }], ["small", { width: 360, height: 740 }]]) if (!skipped) await builderChecks({ browser, base, outDir, failures, errors, label, viewport });
   // electric cars (#108): Plaid via the guided start, Ready, full throttle, every cockpit design (tests/e2e/ev.mjs)
   for (const [label, viewport] of [["desktop", { width: 1440, height: 900 }], ["small", { width: 360, height: 740 }]]) if (!skipped) await evChecks({ browser, base, outDir, failures, errors, label, viewport });
+  // Rauch/Dampf: burnout smoke in every cockpit design and the Prüfzelle (tests/e2e/smoke-fx.mjs)
+  for (const [label, viewport] of [["desktop", { width: 1440, height: 900 }], ["small", { width: 360, height: 740 }]]) if (!skipped) await smokeFxChecks({ browser, base, outDir, failures, errors, label, viewport });
 } catch (e) {
   failures.push(`Ausnahme: ${e?.stack ?? e}`);
 } finally {

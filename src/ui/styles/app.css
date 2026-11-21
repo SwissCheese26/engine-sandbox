@@ -102,6 +102,10 @@ kbd {
 .cell__top .bench-toggle {
   display: none;
 }
+/* the verb is a flex item of the inline-flex .btn, which strips its leading space ("Werkbanköffnen"): keep it */
+.bench-toggle__verb {
+  white-space: pre;
+}
 
 /* ── Buttons ───────────────────────────────────────────────────────────── */
 .btn {
@@ -1576,7 +1580,8 @@ kbd {
 /* ── Getriebe-Pult (Rollenprüfstand) ───────────────────────────────────── */
 .gearbox {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) auto minmax(0, 1fr);
+  /* readouts on top (gear and drive | values), the setting sections as full rows below */
+  grid-template-columns: minmax(0, 1fr) minmax(12rem, 20rem);
   gap: var(--space-5);
   align-items: center;
   background: var(--hammer-deep);
@@ -1584,13 +1589,10 @@ kbd {
   padding: var(--space-3) var(--space-4);
 }
 .gearbox__title {
+  grid-column: 1 / -1;
   font-size: var(--fs-20);
   font-weight: 600;
   margin-bottom: var(--space-2);
-}
-.gearbox__setup {
-  display: grid;
-  gap: var(--space-2);
 }
 .gearbox__field {
   display: grid;
@@ -1720,6 +1722,25 @@ kbd {
 .gears > .vehicle__title {
   grid-column: 1 / -1;
 }
+/* "Getriebe": type, final drive and oil cooler above the ratios, the traction diagram beside them */
+.gears__left,
+.gears__setup {
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+}
+.gears__setup:empty {
+  display: none;
+}
+.gears__sub {
+  font-size: var(--fs-14);
+  font-weight: 600;
+  color: var(--alu-shade);
+  margin: var(--space-2) 0 0;
+}
+.gearbox__field[hidden] {
+  display: none;
+}
 .gears__editor {
   display: grid;
   gap: var(--space-2);
@@ -1769,6 +1790,21 @@ kbd {
   .gears__row {
     grid-template-columns: 1fr 1fr;
   }
+}
+/* own changes of this vehicle and "Auf Werkszustand zurücksetzen" */
+.vehicle__custom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+.vehicle__kind,
+.vehicle__setup {
+  max-width: 44rem;
+}
+.vehicle__setup {
+  display: grid;
+  gap: var(--space-1, 4px);
 }
 /* Fahrzeug-Platte (issue #22): full row under the Getriebe-Pult */
 .vehicle {
