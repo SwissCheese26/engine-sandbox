@@ -12,7 +12,7 @@ beforeEach(() => resetSettingsCache());
 
 const METRIC = PRESETS["metric-kw"].units;
 const IMPERIAL = PRESETS.imperial.units;
-const ALL = { turbo: true, vehicle: true, intakeAir: true };
+const ALL = { turbo: true, vehicle: true, intakeAir: true, commercial: true, adblue: true, lean: true };
 
 const inputs = (o: Partial<FieldInputs> = {}): FieldInputs => ({
   coolantC: 92, oilC: 104, oilPressureBar: 3.4, boostBar: 1.25, egtC: 720, fuelFlowLh: 6, speedKmh: 100, running: true,
@@ -123,8 +123,13 @@ describe("field cycling", () => {
     // the field exists and is stored, but without a value from the core it is skipped (no faked temperature)
     expect(validateFields(["intake", "oilT", "egt"])[0]).toBe("intake");
     expect(fieldAvailable("intake", { turbo: true, vehicle: true })).toBe(false);
-    expect(shownField("intake", { turbo: true, vehicle: true })).toBe("coolant");
-    expect(nextField("ambient", 1, { turbo: true, vehicle: true })).toBe("coolant");
+    // the next one is the board-net voltage (#83), which every vehicle has
+    expect(shownField("intake", { turbo: true, vehicle: true })).toBe("battery");
+    // air pressure, retarder, AdBlue and lean only where the vehicle has them
+    for (const id of ["air", "retarder", "adblue", "lean"] as const) expect(fieldAvailable(id, { turbo: true, vehicle: true })).toBe(false);
+    expect(fieldAvailable("air", { turbo: true, vehicle: true, commercial: true })).toBe(true);
+    expect(shownField("lean", { turbo: true, vehicle: true })).toBe("coolant");
+    expect(nextField("ambient", 1, { turbo: true, vehicle: true })).toBe("battery");
     expect(fieldAvailable("intake", ALL)).toBe(true);
     expect(nextField("ambient", 1, ALL)).toBe("intake");
   });

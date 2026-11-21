@@ -36,6 +36,16 @@ export interface FieldInputs {
   gearboxOilWarn?: boolean;
   /** Charge-air temperature in the intake manifold, °C, when the core reports it (#83); NaN/undefined = unknown. */
   intakeAirC?: number;
+  /** Vehicle systems (#83, core vehicle-systems.ts): board-net voltage V, air reservoir bar and its warning, retarder
+   *  stage, AdBlue level 0 … 1 and its reserve, lean angle ° (+ left) and whether the tyres could hold it. */
+  batteryV?: number;
+  airBar?: number;
+  airWarn?: boolean;
+  retarderStage?: number;
+  adblueShare?: number;
+  adblueReserve?: boolean;
+  leanDeg?: number;
+  leanLimit?: boolean;
 }
 
 /** What the engine and the dyno can deliver; fields that cannot show anything are skipped while cycling. */
@@ -44,6 +54,12 @@ export interface FieldContext {
   vehicle: boolean;
   /** The core reports the intake air temperature (#83). Until it does, the field is never offered (no faked value). */
   intakeAir?: boolean;
+  /** Truck or bus on the chassis dyno: air brake and retarder (#83). */
+  commercial?: boolean;
+  /** SCR diesel in a vehicle: AdBlue tank (#83). */
+  adblue?: boolean;
+  /** Motorcycle on a route with curves: lean angle (#83). */
+  lean?: boolean;
 }
 
 export function fieldAvailable(id: FieldId, c: FieldContext): boolean {
@@ -54,6 +70,10 @@ export function fieldAvailable(id: FieldId, c: FieldContext): boolean {
     case "gearOil":
     case "sprint": return c.vehicle;
     case "intake": return !!c.intakeAir;
+    case "air":
+    case "retarder": return !!c.commercial;
+    case "adblue": return !!c.adblue;
+    case "lean": return !!c.lean;
     default: return true;
   }
 }
@@ -91,6 +111,7 @@ const NAMES: Record<FieldId, string> = {
   coolant: "Kühlmittel", oilT: "Öltemperatur", gearOil: "Getriebeöl", oilP: "Öldruck", boost: "Ladedruck", egt: "Abgastemperatur",
   fuelNow: "Verbrauch", range: "Reichweite", power: "Leistung", torque: "Drehmoment", lambda: "Lambda", road: "Höhe/Steigung",
   sprint: "0–100 km/h", ambient: "Außentemperatur", intake: "Ansaugluft",
+  battery: "Batterie", air: "Druckluft", retarder: "Retarder", adblue: "AdBlue", lean: "Schräglage",
 };
 
 /** Label of a field (no value), e.g. for the accessible name and the settings. */
@@ -119,6 +140,14 @@ export function formatField(id: FieldId, v: FieldInputs, u: UnitPrefs, lim?: Par
     case "egt": return out(T(v.egtC), u.temp, v.egtC > (lim?.egtMaxC ?? Infinity));
     case "ambient": return out(T(v.ambientC), u.temp);
     case "intake": return out(T(v.intakeAirC ?? Number.NaN), u.temp);
+    case "battery": return out(num(v.batteryV ?? Number.NaN, 1), "V");
+    case "air": return out(P(v.airBar ?? Number.NaN, u.pressure === "bar" ? 1 : 0), u.pressure, !!v.airWarn);
+    case "retarder": return out(num(v.retarderStage ?? Number.NaN), "Stufe");
+    case "adblue": return out(num((v.adblueShare ?? Number.NaN) * 100), "%", !!v.adblueReserve);
+    case "lean": {
+      const d = v.leanDeg ?? Number.NaN;
+      return out(num(Math.abs(d)), Math.abs(d) < 0.5 ? "°" : d > 0 ? "° L" : "° R", !!v.leanLimit);
+    }
     case "fuelNow": {
       // per distance while driving, per hour at standstill (like a real board computer)
       if (v.speedKmh > 5) {

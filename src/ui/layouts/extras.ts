@@ -3,11 +3,12 @@
 // is stored in the settings (ckGauges, ckGaugeStyle, ckTuneBar). Values and scales come from extras-logic.ts.
 // The look follows the cockpit design: dial designs draw the pods in their DialTheme and tokens, screen designs
 // (digital, head-up, Renn-Dash, motorcycle) show them as their own tiles or segment bars (gaugeDisplay, designs.ts).
-import { GEARBOX_THERMAL, gearboxThermalKind, type EngineConfig, type EngineSummary, type GearboxThermalSpec } from "../../core/index.ts";
+import { GEARBOX_THERMAL, gearboxThermalKind, systemFactor, type EngineConfig, type EngineSummary, type GearboxThermalSpec } from "../../core/index.ts";
 import { getSettings, prefs, setSettings } from "../settings.ts";
 import { Dial, type DialScale } from "./dial.ts";
 import { GAUGE_IDS, GAUGE_LABEL, GAUGE_SHORT, dialTheme, gaugeDisplay, gaugeStyleHint, type CockpitDesignId, type GaugeId } from "./designs.ts";
-import { gaugeAvailable, gaugeFraction, gaugeScale, gaugeValue, toggleGauge, tuneItems } from "./extras-logic.ts";
+import { gaugeAvailable, gaugeFraction, gaugeScale, gaugeUnavailableHint, gaugeUnit, gaugeValue, toggleGauge, tuneItems, type GaugeContext } from "./extras-logic.ts";
+import { systemReadings } from "./systems-logic.ts";
 import { formatField, type FieldInputs } from "./fields-logic.ts";
 import type { Frame } from "./view.ts";
 
@@ -42,6 +43,8 @@ export class CockpitExtras {
   private gearKind = "";
   private gearOil = false;
   private hint: HTMLElement;
+  /** Board-net factor of the vehicle (24 V trucks/buses = 2) for the voltmeter scale (#83). */
+  private sys: 1 | 2 = 1;
 
   constructor() {
     const el = document.createElement("div");
@@ -124,8 +127,8 @@ export class CockpitExtras {
     if (!this.cfg || !this.summary) return;
     const u = prefs();
     for (const p of this.pods) {
-      const g = gaugeScale(p.id, this.summary.limits, this.cfg.fuel, u, this.gear ?? undefined);
-      const unit = p.id === "lambda" ? "λ" : p.id === "oilP" || p.id === "boost" ? u.pressure : u.temp;
+      const g = gaugeScale(p.id, this.summary.limits, this.cfg.fuel, u, this.gear ?? undefined, this.sys);
+      const unit = gaugeUnit(p.id, u);
       p.scale = { ...g, caption: unit, ends: true };
       p.dial.setScale(p.scale);
       p.unit.textContent = unit;
@@ -166,11 +169,17 @@ export class CockpitExtras {
       this.syncUnits();
     }
     this.gearOil = Number.isFinite(gearboxOilC);
-    const avail = { turbo: this.turbo, gearOil: this.gearOil };
+    const r = systemReadings(f, this.cfg);
+    const sys = systemFactor(vehicle ? d.kind : "car");
+    if (sys !== this.sys) {
+      this.sys = sys;
+      this.syncUnits();
+    }
+    const avail: GaugeContext = { turbo: this.turbo, gearOil: this.gearOil, ...r.has };
     // which pods are shown, the style and the tuning bar: only touched when the choice changes
     const shown = gaugeDisplay(this.design, st.ckGaugeStyle);
     const round = shown === "round";
-    const key = `${st.ckGauges.join(",")}|${shown}|${st.ckTuneBar}|${this.turbo}|${this.gearOil}`;
+    const key = `${st.ckGauges.join(",")}|${shown}|${st.ckTuneBar}|${this.turbo}|${this.gearOil}|${Object.values(r.has).join("")}`;
     if (key !== this.shownKey) {
       this.shownKey = key;
       this.el.dataset.gstyle = shown;
@@ -185,7 +194,7 @@ export class CockpitExtras {
         const box = this.boxes.get(p.id)!;
         box.checked = st.ckGauges.includes(p.id);
         box.disabled = !gaugeAvailable(p.id, avail);
-        box.closest("label")!.title = !box.disabled ? "" : p.id === "gearOil" ? "Nur mit Fahrzeug auf dem Prüfstand" : "Saugmotor: kein Ladedruck";
+        box.closest("label")!.title = !box.disabled ? "" : gaugeUnavailableHint(p.id);
       }
       this.el.classList.toggle("has-pods", this.pods.some((p) => !p.wrap.hidden));
       this.el.querySelectorAll<HTMLInputElement>('input[name="ck-gstyle"]').forEach((r) => (r.checked = r.value === st.ckGaugeStyle));
@@ -194,8 +203,8 @@ export class CockpitExtras {
       this.tuneKey = "";
       for (const p of this.pods) if (!p.wrap.hidden) p.dial.draw(true);
     }
-    const fi = { coolantC: s.coolantC, oilC: s.oilC, oilPressureBar: s.oilPressureBar, boostBar: s.boostBar, egtC: s.egtC, lambda: s.lambda, running: s.running, gearboxOilC, gearboxOilWarn: vehicle && !!d.state.gearboxOilWarn } as FieldInputs;
-    const gi = { boostBar: s.boostBar, oilPressureBar: s.oilPressureBar, oilC: s.oilC, lambda: s.lambda, egtC: s.egtC, gearboxOilC };
+    const fi = { coolantC: s.coolantC, oilC: s.oilC, oilPressureBar: s.oilPressureBar, boostBar: s.boostBar, egtC: s.egtC, lambda: s.lambda, running: s.running, gearboxOilC, gearboxOilWarn: vehicle && !!d.state.gearboxOilWarn, ...r } as unknown as FieldInputs;
+    const gi = { boostBar: s.boostBar, oilPressureBar: s.oilPressureBar, oilC: s.oilC, lambda: s.lambda, egtC: s.egtC, gearboxOilC, ...r };
     for (const p of this.pods) {
       if (p.wrap.hidden) continue;
       const v = gaugeValue(p.id, gi, u);
