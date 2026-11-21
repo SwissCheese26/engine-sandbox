@@ -12,8 +12,6 @@ import { fmt, tickStep } from "./format.ts";
 import { prefs } from "./settings.ts";
 import { toUnit } from "./units.ts";
 
-/** Old global key of own ratios; migrated per vehicle by vehicle-custom.ts. */
-export const RATIOS_KEY = "pruefzelle.gearRatios";
 /** Hints of the gear plate (issue #91): locked while rolling in gear; open with the parking brake applied. */
 export const GEAR_LOCKED_HINT = "Anhalten (Handbremse) oder N";
 export const GEAR_HELD_HINT = "Handbremse aktiv – Übersetzungen änderbar";

@@ -3,7 +3,10 @@
 // comes back on that vehicle. Library vehicles are keyed by their id, an own vehicle by "own:<kind>" together with a
 // signature of the setup it was built from (a newly built own vehicle starts from its own factory state).
 // Pure module (no DOM); the storage is passed in, so it is unit-tested.
-import { AFTERMARKET_OIL_COOLER_WK, GEARBOX_THERMAL, GEAR_COUNT_MIN, gearboxThermalKind } from "../core/index.ts";
+import {
+  AFTERMARKET_OIL_COOLER_WK, GEARBOX_THERMAL, GEAR_COUNT_MIN, GEAR_RATIO_MAX, GEAR_RATIO_MIN, SPEED_INDEX, SPEED_LIMIT_OPTIONS, TYRE_TYPES, VEHICLES, gearboxThermalKind,
+} from "../core/index.ts";
+import { customSetup, loadOwnVehicle } from "./sandbox-setup.ts";
 import type { CarSetup, Drivetrain, DriveLayout, GearboxType, TyreSetup, VehicleKind, VehicleParams } from "../core/index.ts";
 
 export const CUSTOM_KEY = "pruefzelle.vehicleCustom";
@@ -16,6 +19,16 @@ export const TANK_KEY = "pruefzelle.tank";
 const GEARBOX_TYPES: readonly GearboxType[] = ["manual", "dsg", "automatic", "cvt", "sequential"];
 const LAYOUTS: readonly DriveLayout[] = ["fwd", "rwd", "awd"];
 const BODY_KEYS = ["massKg", "dragCoefficient", "frontalAreaM2", "cgHeightM", "cgToRearAxleM", "wheelbaseM"] as const;
+/** Plausible ranges of stored values: the vehicle panel's field limits (vehicle-panel.ts FIELDS); outside → dropped. */
+const BODY_RANGE: Record<(typeof BODY_KEYS)[number], [number, number]> = {
+  massKg: [150, 44000], dragCoefficient: [0.15, 0.9], frontalAreaM2: [0.3, 12], cgHeightM: [0.3, 2.2], cgToRearAxleM: [0.2, 6.8], wheelbaseM: [1.2, 7],
+};
+const TANK_RANGE: [number, number] = [2, 1200];
+/** Final drive: the core clamps to 2 … 6. */
+const FINAL_DRIVE_RANGE: [number, number] = [2, 6];
+/** Tyre sizes of the picker lists (car, motorcycle, truck/bus) with margin. */
+const TYRE_RANGE = { widthMm: [80, 455], aspectPct: [25, 100], rimInch: [10, 24.5] } as const;
+const inRange = (x: unknown, [lo, hi]: readonly [number, number]): x is number => isNum(x) && x >= lo && x <= hi;
 
 export type BodyEdit = Partial<Pick<VehicleParams, (typeof BODY_KEYS)[number] | "driveLayout">>;
 
@@ -90,29 +103,31 @@ const isType = (x: unknown): x is GearboxType => typeof x === "string" && (GEARB
 export function parseCustom(raw: unknown): VehicleCustom | null {
   if (!raw || typeof raw !== "object") return null;
   const r = raw as Record<string, unknown>;
-  if (typeof r.kind !== "string") return null;
+  if (typeof r.kind !== "string" || !(r.kind in VEHICLES)) return null;
   const out: VehicleCustom = { kind: r.kind as VehicleKind };
   if (typeof r.sig === "string") out.sig = r.sig;
   if (isType(r.gearbox)) out.gearbox = r.gearbox;
   const rt = r.ratios as Record<string, unknown> | undefined;
-  if (rt && isType(rt.type) && Array.isArray(rt.ratios) && rt.ratios.length >= GEAR_COUNT_MIN && rt.ratios.every(isNum)) {
+  if (rt && isType(rt.type) && Array.isArray(rt.ratios) && rt.ratios.length >= GEAR_COUNT_MIN && rt.ratios.every((x) => inRange(x, [GEAR_RATIO_MIN, GEAR_RATIO_MAX]))) {
     out.ratios = { type: rt.type, ratios: [...(rt.ratios as number[])] };
   }
-  if (isNum(r.finalDrive)) out.finalDrive = r.finalDrive;
+  if (inRange(r.finalDrive, FINAL_DRIVE_RANGE)) out.finalDrive = r.finalDrive;
   const t = r.tyre as Record<string, unknown> | undefined;
   const size = t?.size as Record<string, unknown> | undefined;
-  if (t && typeof t.type === "string" && typeof t.speedIndex === "string" && size && isNum(size.widthMm) && isNum(size.aspectPct) && isNum(size.rimInch)) {
+  if (t && typeof t.type === "string" && t.type in TYRE_TYPES && typeof t.speedIndex === "string" && t.speedIndex in SPEED_INDEX && size
+    && inRange(size.widthMm, TYRE_RANGE.widthMm) && inRange(size.aspectPct, TYRE_RANGE.aspectPct) && inRange(size.rimInch, TYRE_RANGE.rimInch)) {
     out.tyre = { type: t.type, speedIndex: t.speedIndex, size: { widthMm: size.widthMm, aspectPct: size.aspectPct, rimInch: size.rimInch } } as TyreSetup;
   }
   const b = r.body as Record<string, unknown> | undefined;
   if (b && typeof b === "object") {
     const body: BodyEdit = {};
-    for (const k of BODY_KEYS) if (isNum(b[k])) body[k] = b[k] as number;
+    for (const k of BODY_KEYS) if (inRange(b[k], BODY_RANGE[k])) body[k] = b[k] as number;
     if (typeof b.driveLayout === "string" && (LAYOUTS as readonly string[]).includes(b.driveLayout)) body.driveLayout = b.driveLayout as DriveLayout;
     if (Object.keys(body).length) out.body = body;
   }
-  if (isNum(r.tankL)) out.tankL = r.tankL;
-  if (r.speedLimitKmh === null || isNum(r.speedLimitKmh)) out.speedLimitKmh = r.speedLimitKmh as number | null;
+  if (inRange(r.tankL, TANK_RANGE)) out.tankL = r.tankL;
+  // only the governor settings the select offers
+  if (r.speedLimitKmh === null || (isNum(r.speedLimitKmh) && SPEED_LIMIT_OPTIONS.includes(r.speedLimitKmh))) out.speedLimitKmh = r.speedLimitKmh as number | null;
   if (r.oilCooler === "serie" || r.oilCooler === "zubehoer" || r.oilCooler === "aus") out.oilCooler = r.oilCooler;
   return out;
 }
@@ -146,8 +161,8 @@ export function loadCustom(key: string, sig?: string, st: Store | null = default
   migrateLegacy(st);
   const c = loadAll(st)[key] ?? null;
   if (!c) return null;
-  // an entry without sig (migrated) belongs to whatever own vehicle of that kind comes next
-  if (sig !== undefined && c.sig !== undefined && c.sig !== sig) return null;
+  // an own vehicle's changes belong to exactly the setup they were made on
+  if (sig !== undefined && c.sig !== sig) return null;
   return c;
 }
 
@@ -189,9 +204,11 @@ export function migrateLegacy(st: Store | null = defaultStore()) {
     active = null;
   }
   const all = loadAll(st);
-  if (active) {
+  if (active && active.kind in VEHICLES) {
     const key = vehicleKey(active.vehicle, active.kind);
-    const entry: VehicleCustom = all[key] ?? { kind: active.kind };
+    // an own vehicle: the one that was active (the wizard-built one, else the Fahrzeugtyp preset), never every own one
+    const sig = active.vehicle ? undefined : activeOwnSig(active.kind, st);
+    const entry: VehicleCustom = all[key] ?? { kind: active.kind, ...(sig !== undefined ? { sig } : {}) };
     let changed = false;
     try {
       const r = JSON.parse(ratiosText ?? "null") as Record<string, unknown> | null;
@@ -220,6 +237,16 @@ export function migrateLegacy(st: Store | null = defaultStore()) {
   } catch {
     // storage blocked
   }
+}
+
+/** Signature of the own vehicle of this kind that is loaded on start: the stored wizard vehicle when it was the last setup, else the preset. */
+function activeOwnSig(kind: VehicleKind, st: Store): string {
+  const own = loadOwnVehicle(st);
+  if (own?.active) {
+    const setup = customSetup(own.custom);
+    if ((setup.kind ?? "car") === kind) return setupSig(setup);
+  }
+  return `preset:${kind}`;
 }
 
 /** Snapshot of the vehicle as it is now on the drivetrain (stored after every own change). */

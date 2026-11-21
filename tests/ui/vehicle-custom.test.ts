@@ -4,6 +4,7 @@ import { AFTERMARKET_OIL_COOLER_WK, Drivetrain, gradedRatios, summarize } from "
 import type { CarSetup } from "../../src/core/index.ts";
 import { defaultConfig } from "../../src/data/presets.ts";
 import { VEHICLE_LIBRARY } from "../../src/data/vehicle-library.ts";
+import { OWN_VEHICLE_KEY, customSetup, defaultCustom } from "../../src/ui/sandbox-setup.ts";
 import {
   CUSTOM_KEY, LEGACY_LIMIT_KEY, LEGACY_RATIOS_KEY, TANK_KEY, captureCustom, clearCustom, loadAll, loadCustom, loadVehicle,
   migrateLegacy, oilCoolerChoices, parseCustom, saveCustom, setOilCooler, setupSig, vehicleKey, type Store,
@@ -110,6 +111,39 @@ describe("own changes stay with their vehicle", () => {
     expect(loadCustom(A.id, undefined, st)).toBeNull();
   });
 
+  test("corrupt entry: out-of-range tyre, body, governor and ratios are dropped, valid parts stay", () => {
+    const st = memStore({
+      [CUSTOM_KEY]: JSON.stringify({
+        [A.id]: {
+          kind: "car",
+          tyre: { type: "rocket", speedIndex: "W", size: { widthMm: 225, aspectPct: 45, rimInch: 17 } },
+          body: { massKg: -5, dragCoefficient: 9, frontalAreaM2: 2.1, wheelbaseM: Number.MAX_VALUE, driveLayout: "6x6" },
+          speedLimitKmh: 999,
+          ratios: { type: "manual", ratios: [3.5, 2, 1.3, 1, 1e9] },
+          finalDrive: 40,
+          tankL: 0,
+          oilCooler: "zubehoer",
+        },
+        broken: { kind: "spaceship", finalDrive: 3.5 },
+        badTyre: { kind: "car", tyre: { type: "winter", speedIndex: "Z9", size: { widthMm: 5000, aspectPct: 45, rimInch: 17 } } },
+      }),
+    });
+    const all = loadAll(st);
+    expect(all[A.id]).toEqual({ kind: "car", body: { frontalAreaM2: 2.1 }, oilCooler: "zubehoer" });
+    expect(all.broken).toBeUndefined();
+    expect(all.badTyre).toEqual({ kind: "car" });
+    // loading the car with the corrupt entry: factory values everywhere except the valid parts
+    const d = rig();
+    const f = rig();
+    f.applyCar(structuredClone(A.setup));
+    expect(loadLib(d, A, st).custom).toBe(true);
+    expect(d.vehicle.massKg).toBe(f.vehicle.massKg);
+    expect(d.state.speedLimitKmh).toBe(f.state.speedLimitKmh);
+    expect(d.gearbox.ratios).toEqual(f.gearbox.ratios);
+    expect(d.tyre).toEqual(f.tyre);
+    expect(d.vehicle.frontalAreaM2).toBe(2.1);
+  });
+
   test("stored data is shape-checked: broken entries and parts are dropped", () => {
     expect(parseCustom(null)).toBeNull();
     expect(parseCustom({ kind: 3 })).toBeNull();
@@ -143,12 +177,19 @@ describe("migration of the old global keys", () => {
     expect(d.state.gearCount).toBe(factoryRatios(rig(), B).length);
   });
 
-  test("own vehicle active: attached to own:<kind> without a signature", () => {
-    const st = memStore({
-      [LEGACY_RATIOS_KEY]: JSON.stringify({ kind: "car", type: "manual", ratios: [3.5, 2, 1.3, 1, 0.8] }),
-      [TANK_KEY]: JSON.stringify({ capacityL: 50, levelL: 50, vehicle: "", kind: "car" }),
-    });
-    expect(loadCustom("own:car", "any-sig", st)?.ratios?.ratios).toHaveLength(5);
+  test("own vehicle active: attached to that own vehicle only (its signature), not to every own vehicle of the kind", () => {
+    const legacy = JSON.stringify({ kind: "car", type: "manual", ratios: [3.5, 2, 1.3, 1, 0.8] });
+    const tank = JSON.stringify({ capacityL: 50, levelL: 50, vehicle: "", kind: "car" });
+    // no wizard vehicle stored: the Fahrzeugtyp preset "Auto" was active
+    const preset = memStore({ [LEGACY_RATIOS_KEY]: legacy, [TANK_KEY]: tank });
+    expect(loadCustom("own:car", "preset:car", preset)?.ratios?.ratios).toHaveLength(5);
+    expect(loadCustom("own:car", "some-other-own-car", preset)).toBeNull();
+    // the wizard-built own vehicle was the last setup: the ratios go to exactly that one
+    const own = defaultCustom("car");
+    const wizard = memStore({ [LEGACY_RATIOS_KEY]: legacy, [TANK_KEY]: tank, [OWN_VEHICLE_KEY]: JSON.stringify({ custom: own, active: true }) });
+    const sig = setupSig(customSetup(own));
+    expect(loadCustom("own:car", sig, wizard)?.ratios?.ratios).toHaveLength(5);
+    expect(loadCustom("own:car", "preset:car", wizard)).toBeNull();
   });
 
   test("unknown active vehicle (no tank record) or another kind: dropped", () => {
