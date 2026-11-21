@@ -4,11 +4,12 @@ Alle sichtbaren Änderungen an der Prüfzelle, neueste zuerst. Aufbau nach [Keep
 
 _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `bun scripts/changelog.ts` ausführen._
 
-## 2026-11-21 – Zusatzinstrumente im Look jedes Cockpits, Getriebeöl als Zusatzinstrument
+## 2026-11-21 – Zusatzinstrumente im Look jedes Cockpits, Reifenqualm und Dampf
 
 ### Neu
 
 - Neues Zusatzinstrument „Getriebeöl“, rund oder als Balken: gelb ab der Warnschwelle, rot ab dem Notlauf des Getriebesteuergeräts (beim Handschalter ab der Schadensgrenze), passend zur Getriebeart. Es erscheint, sobald ein Fahrzeug auf dem Prüfstand steht. ([#53](https://github.com/SwissCheese26/engine-sandbox/issues/53), [#83](https://github.com/SwissCheese26/engine-sandbox/issues/83), [#109](https://github.com/SwissCheese26/engine-sandbox/issues/109))
+- Drehen die Räder durch oder blockieren sie, steigt unter den Instrumenten ein Hauch Reifenqualm auf, je mehr Schlupf und Tempo, desto mehr. Wird der Motor zu heiß, dampft es über dem Cockpit bzw. dem Motor-Schnittbild, bei kritischer Hitze oder Motorschaden dichter. Ein Motorschaden oder viel zu heißes Öl zeigt sich als bläulicher Rauch, ein rußender Diesel als dunkle Wolke. Abschalten lässt sich das unter Einstellungen › Effekte (Rauch/Dampf). ([#110](https://github.com/SwissCheese26/engine-sandbox/issues/110), [#114](https://github.com/SwissCheese26/engine-sandbox/issues/114))
 
 ### Geändert
 
