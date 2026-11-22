@@ -192,6 +192,8 @@ export interface LampInput {
   airLow?: boolean;
   /** AdBlue (#83, SCR in a vehicle): reserve / empty (limp mode); undefined = no SCR. */
   adblue?: { reserve: boolean; empty: boolean };
+  /** The ECU heats the catalyst (#135, EngineState.coldStart === "cat-heating"). */
+  catHeating?: boolean;
 }
 
 export interface LampSet {
@@ -214,6 +216,8 @@ export interface LampSet {
   air: Lamp;
   /** AdBlue (amber, #83): on at the reserve, blinking when empty (limp mode). */
   adblue: Lamp;
+  /** Catalyst heating after a cold start (green status lamp, #135): on while EngineState.coldStart is "cat-heating". */
+  cat: Lamp;
 }
 
 /** Bulb check after ignition on, s (typical cluster: 2 … 4 s). */
@@ -239,10 +243,10 @@ export function glowTimeS(coolantC: number): number {
  * - brake air pressure (red, #83) below the warning pressure; AdBlue (amber) at the reserve, blinking when empty.
  */
 export function clusterLamps(x: LampInput): LampSet {
-  const off: LampSet = { abs: "off", esp: "off", espOff: "off", ice: "off", oil: "off", battery: "off", engine: "off", coolant: "off", glow: "off", fuel: "off", park: "off", gearbox: "off", air: "off", adblue: "off" };
+  const off: LampSet = { abs: "off", esp: "off", espOff: "off", ice: "off", oil: "off", battery: "off", engine: "off", coolant: "off", glow: "off", fuel: "off", park: "off", gearbox: "off", air: "off", adblue: "off", cat: "off" };
   if (!x.ignition) return off;
   if (x.sinceIgnitionS < BULB_CHECK_S && !x.running) {
-    return { abs: "on", esp: "on", espOff: "off", ice: x.ice ? "on" : "off", oil: "on", battery: "on", engine: "on", coolant: "on", glow: x.diesel ? "on" : "off", fuel: x.fuelReserve === undefined ? "off" : "on", park: x.parkingBrake === undefined ? "off" : "on", gearbox: x.gearbox === undefined ? "off" : "on", air: x.airLow === undefined ? "off" : "on", adblue: x.adblue === undefined ? "off" : "on" };
+    return { abs: "on", esp: "on", espOff: "off", ice: x.ice ? "on" : "off", oil: "on", battery: "on", engine: "on", coolant: "on", glow: x.diesel ? "on" : "off", fuel: x.fuelReserve === undefined ? "off" : "on", park: x.parkingBrake === undefined ? "off" : "on", gearbox: x.gearbox === undefined ? "off" : "on", air: x.airLow === undefined ? "off" : "on", adblue: x.adblue === undefined ? "off" : "on", cat: "off" };
   }
   const l = { ...off };
   l.battery = x.running ? "off" : "on";
@@ -261,6 +265,7 @@ export function clusterLamps(x: LampInput): LampSet {
   if (x.gearbox) l.gearbox = x.gearbox.failed ? "on" : x.gearbox.protect ? "blink" : x.gearbox.hot ? "on" : "off";
   l.air = x.airLow ? "on" : "off";
   if (x.adblue) l.adblue = x.adblue.empty ? "blink" : x.adblue.reserve ? "on" : "off";
+  l.cat = x.running && x.catHeating ? "on" : "off";
   return l;
 }
 

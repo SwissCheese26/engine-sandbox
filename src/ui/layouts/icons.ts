@@ -5,6 +5,8 @@ export { ICON as BASE_ICON } from "../environment-panel.ts";
 const S = `fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"`;
 
 export const ICON2 = {
+  /** Catalyst heating (#135): catalyst can with monolith channels and heat waves above (no ISO symbol exists). */
+  cat: `<svg viewBox="0 0 40 28" aria-hidden="true"><path ${S} d="M3 20h6M31 20h6M9 14h22v12H9zM14 14v12M20 14v12M26 14v12M13 9c-2-2 2-3 0-6M20 9c-2-2 2-3 0-6M27 9c-2-2 2-3 0-6"/></svg>`,
   // fuel pump (ISO 7000-0245)
   fuel: `<svg viewBox="0 0 40 28" aria-hidden="true"><path ${S} d="M9 25V5h13v20M7 25h17M12 9h7v5h-7M22 10h4l3 3v9a2 2 0 0 0 4 0V11l-4-4"/></svg>`,
   /** Oil can with drop: oil pressure. */

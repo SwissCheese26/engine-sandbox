@@ -21,6 +21,10 @@ import { BRAKE_MAX_G, drivenAxleLoadN, drivenBrakeN as drivenBrakeForceN, wheeli
 export { BRAKE_MAX_G };
 import type { EngineConfig, EngineState, SimInputs, VehicleCoupling, Warning } from "./types.ts";
 import { converterTorques } from "./converter.ts";
+import {
+  CAT_HEAT_MAX_S, CAT_HEAT_MIN_S, CAT_HEAT_RETARD_DEG, COLD_START_COOLANT_C, IDLE_RAMP_S, POST_INJ_SHARE, catHeatIdleRpm, fastIdleAddRpm,
+  catTauS, conversionHeatC, hasCatHeating, lightOffC, postInjectionDeltaC,
+} from "./cold-start.ts";
 
 const clamp = (x: number, lo: number, hi: number) => (x < lo ? lo : x > hi ? hi : x);
 const fin = (x: number, fallback: number) => (Number.isFinite(x) ? x : fallback);
@@ -76,6 +80,14 @@ interface Internal {
   vSpeed: number;
   /** Catalyst substrate temperature °C (issue #16, only tracked with exhaust.catalyst). */
   catC: number;
+  /**
+   * Cold start (issue #135): catalyst modelled with its thermal mass (false = warm start, old issue #16 path), time
+   * since the engine runs, catalyst heating latched at the start, ramped idle offset 1/min.
+   */
+  coldCat: boolean;
+  runT: number;
+  catHeat: boolean;
+  idleAdd: number;
   /** Issue #22: driven-wheel circumferential speed m/s, wheel spin / locked flags, last tyre force and acceleration. */
   vWheel: number;
   spin: boolean;
@@ -104,7 +116,7 @@ export function createVehicleBody(ambientC = 20): VehicleBody {
   return {
     rpm: 0, crank: 0, pManKpa: 101.325, turbo: { shaftRpm: 0, boostBar: 0 }, thermal: { coolantC: ambientC, oilC: ambientC, egtC: ambientC },
     knockRetard: 0, idleI: 0, dynoI: 0, running: false, armed: false, stallT: 0, stalled: false, limiterCut: false, relLoad: 0, load: 0,
-    boostCut: 0, initialised: true, wear: 0, destroyed: false, vSpeed: 0, catC: ambientC, vWheel: 0, spin: false, locked: false, tyreF: 0,
+    boostCut: 0, initialised: true, wear: 0, destroyed: false, vSpeed: 0, catC: ambientC, coldCat: false, runT: 0, catHeat: false, idleAdd: 0, vWheel: 0, spin: false, locked: false, tyreF: 0,
     aLong: 0, vBrk: 0, absF: 0, absRef: 0, absRelease: false, absT: 9, absCycles: 0, grip: 1,
   };
 }
@@ -184,7 +196,7 @@ export class EngineSimulator {
       rpm: 0, crank: 0, pManKpa: 101.325, turbo: { shaftRpm: 0, boostBar: 0 },
       thermal: { coolantC: amb, oilC: amb, egtC: amb }, knockRetard: 0, idleI: this.idleU0, dynoI: 0,
       running: false, armed: false, stallT: 0, stalled: false, limiterCut: false, relLoad: 0, load: 0, boostCut: 0,
-      initialised: false, wear: 0, destroyed: false, vSpeed: 0, catC: amb, vWheel: 0, spin: false, locked: false, tyreF: 0, aLong: 0,
+      initialised: false, wear: 0, destroyed: false, vSpeed: 0, catC: amb, coldCat: false, runT: 0, catHeat: false, idleAdd: 0, vWheel: 0, spin: false, locked: false, tyreF: 0, aLong: 0,
       vBrk: 0, absF: 0, absRef: 0, absRelease: false, absT: 9, absCycles: 0, grip: 1,
     };
     this.lastOut = null;
@@ -223,6 +235,8 @@ export class EngineSimulator {
         : { coolantC: ambientC, oilC: ambientC, egtC: ambientC };
       x.pManKpa = ambientKpa;
       x.catC = x.thermal.egtC;
+      // cold start (issue #135): the catalyst warms with its own thermal mass; a warm start keeps the issue #16 path
+      x.coldCat = !input.startWarm;
       x.initialised = true;
     }
     const s: EngineState = { ...this.s, warnings: this.s.warnings, damage: this.s.damage };
@@ -255,6 +269,27 @@ export class EngineSimulator {
     const Vl = m.Vh * 1000;
     const T0 = 80 + 60 * Vl; // starter torque at standstill (diesel.md §3.11)
     const idle = cfg.idleRpm;
+    // --- cold-start strategy (issue #135, petrol.md "Nachtrag: Kaltstart" §K2/§K4): catalyst heating is decided
+    // once when the engine starts (cold coolant, catalyst below light-off) and ends after ≥ 20 s once the catalyst
+    // model reaches light-off (at the latest after 60 s); the cold fast idle follows the coolant temperature.
+    // Air-cooled engines (#25): the head sensor reads the head, not a coolant jacket; cold both are at ambient, warm
+    // the head runs ≈ 120 … 150 °C. Mapped linearly so that 20 °C ≙ 20 °C and a head ≥ 120 °C ≙ ≥ 70 °C (fully warm,
+    // no fast idle left, review PR #137).
+    const coolIdleC = isAirCooled(cfg) ? 20 + (x.thermal.coolantC - 20) * 0.5 : x.thermal.coolantC;
+    if (!x.running) {
+      x.runT = 0;
+      x.catHeat = hasCatHeating(cfg) && coolIdleC < COLD_START_COOLANT_C && x.catC < lightOffC(cfg);
+    } else {
+      x.runT += dt;
+      if (x.catHeat && x.runT >= CAT_HEAT_MIN_S && (x.catC >= lightOffC(cfg) || x.runT >= CAT_HEAT_MAX_S)) x.catHeat = false;
+    }
+    const fastAdd = fastIdleAddRpm(cfg, coolIdleC);
+    const idleAddTarget = Math.max(fastAdd, x.catHeat ? catHeatIdleRpm(cfg) - idle : 0);
+    // the ECU ramps the idle target (no step when a phase ends); before the start it applies at once (start flare)
+    x.idleAdd = x.running ? x.idleAdd + (idleAddTarget - x.idleAdd) * (1 - Math.exp(-dt / IDLE_RAMP_S)) : idleAddTarget;
+    const idleT = idle + x.idleAdd;
+    // petrol: catalyst-heating spark retard, fades out with the pedal (driver torque demand)
+    const catRetard = x.catHeat && m.p && x.running ? CAT_HEAT_RETARD_DEG * clamp(1 - pedal / 0.5, 0, 1) : 0;
     const peakBrake = 5 * fullLoadAt(m, cfg.revLimitRpm * 0.6).torque + 200;
     const kpDyno = m.J * 0.105 * 30; // Nm/rpm, ≈ 30 rad/s bandwidth
     const kiDyno = kpDyno * 8;
@@ -295,9 +330,9 @@ export class EngineSimulator {
         else if (rpm < lim) x.limiterCut = false;
       }
       // overrun fuel cut (petrol.md §3.4), diesel: zero quantity anyway at zero pedal above idle
-      const overrun = pedal < 0.01 && rpm > idle + 300 && x.running;
+      const overrun = pedal < 0.01 && rpm > idleT + 300 && x.running;
       // --- idle governor (PI, diesel.md §3.11), acts as a minimum command
-      const e = (idle - rpm) / idle;
+      const e = (idleT - rpm) / idle;
       // all-speed governor: may command the full quantity to avoid stalling (diesel); petrol idle valve ≤ 30 %
       const uMaxIdle = m.fuel === "diesel" ? 1 : 0.3;
       // gains relative to the idle feed-forward; diesel with an extra absolute anti-stall share [S]
@@ -308,14 +343,15 @@ export class EngineSimulator {
       op.rpm = rpm;
       // petrol idle torque reserve (review #17 B3) [S]: the ECU idles ≈ 15 °CA retarded from MBT so that
       // spark advance can catch load steps instantly; fades out over 300 rpm above idle / with pedal.
-      const reserve = m.p && x.running ? 15 * clamp(1 - pedal / 0.05, 0, 1) * clamp(1 - (rpm - idle) / 300, 0, 1) : 0;
-      op.knockRetardDeg = x.knockRetard + reserve + launchRetard;
+      const reserve = m.p && x.running ? 15 * clamp(1 - pedal / 0.05, 0, 1) * clamp(1 - (rpm - idleT) / 300, 0, 1) : 0;
+      // catalyst heating (issue #135, §K2) replaces the idle reserve by a much later spark
+      op.knockRetardDeg = x.knockRetard + Math.max(reserve, catRetard) + launchRetard;
       op.combust = combust;
       op.fuelCut = x.limiterCut || (overrun && m.fuel === "petrol") || input.fuelEmpty === true;
       // pops & bangs (issue #16): in overrun (pedal 0, rpm > idle + 500) a little fuel with very late spark instead
       // of the full fuel cut; never on the rev limiter and only with a running, firing engine
       // an empty tank has no pop fuel either
-      const popW = pops && overrun && !x.limiterCut && combust && input.fuelEmpty !== true ? clamp((rpm - idle - 500) / 500, 0, 1) : 0;
+      const popW = pops && overrun && !x.limiterCut && combust && input.fuelEmpty !== true ? clamp((rpm - idleT - 500) / 500, 0, 1) : 0;
       op.afterfireFuel = pops ? pops.fuel * popW : 0;
       afterfireSum += pops ? pops.intensity * popW : 0;
       // ECU torque limit (issue #18): quantity cap (diesel) / manifold pressure cap (petrol) from the steady table
@@ -427,7 +463,10 @@ export class EngineSimulator {
     if (!out) return (this.s = s);
     const rpm = x.rpm;
     const torque = tOutSum / nSub;
-    const fuelGs = fuelSum / nSub;
+    // diesel heating mode (issue #135, diesel.md "Nachtrag: Kaltstart-Heizmodus" §K5): post-injection adds fuel
+    // that burns late without work; it heats the exhaust ahead of the oxidation catalyst
+    const postGs = x.catHeat && m.d && x.running ? POST_INJ_SHARE * (fuelSum / nSub) : 0;
+    const fuelGs = fuelSum / nSub + postGs;
     // --- turbo (PR #12 stepTurbo): pedal demand; idle governor fuel does not demand boost
     // Boost request from the actual load, not the pedal (review #17 B2): diesel from the injected quantity
     // relative to the (ungoverned) full-load quantity, petrol from the torque load (×1.1 so full load demands
@@ -458,7 +497,13 @@ export class EngineSimulator {
     if (cfg.exhaust.catalyst) {
       const afFuel = (afFuelSum / nSub) * (rpm / 120);
       const exo = afFuel > 0 && out.exhaustMassFlowKgS > 1e-6 ? (0.15 * afFuel * out.fuelLhv) / (out.exhaustMassFlowKgS * 1200) : 0;
-      x.catC += (x.thermal.egtC + exo - x.catC) * (1 - Math.exp(-dt / 6));
+      // cold start (issue #135, §K3): substrate τ = C_cat/(ṁ·c_p), post-injection heat (diesel) and conversion heat
+      const gasC = x.thermal.egtC;
+      const post = postGs > 0 ? postInjectionDeltaC(postGs, out.fuelLhv, out.exhaustMassFlowKgS) : 0;
+      // conversion heat once lit (§K3); only on the cold-start path so the warm path (issue #16) stays as it was
+      const conv = x.coldCat && x.running ? conversionHeatC(cfg, x.catC) : 0;
+      const tauCat = x.coldCat ? catTauS(cfg, out.exhaustMassFlowKgS) : 6;
+      x.catC += (gasC + post + conv + exo - x.catC) * (1 - Math.exp(-dt / tauCat));
       catOver = x.catC > CAT_OVERHEAT_C;
     } else x.catC = x.thermal.egtC;
     const full = fullLoadAt(m, Math.max(rpm, 300)).torque;
@@ -510,6 +555,8 @@ export class EngineSimulator {
     s.knock = m.fuel === "petrol" ? out.knock : 0;
     s.smoke = m.fuel === "diesel" ? out.smoke : 0;
     s.afterfire = x.running ? clamp(afterfire, 0, 1) : 0;
+    s.catalystC = cfg.exhaust.catalyst ? x.catC : undefined;
+    s.coldStart = !x.running ? undefined : x.catHeat ? "cat-heating" : x.idleAdd > 25 ? "fast-idle" : undefined;
     s.torqueLimited = limitedAny && pedal > 0.5;
     s.engineBrakeActive = ebAny;
     // --- limits (PR #12 evaluateLimits): warnings, wear, fatal damage

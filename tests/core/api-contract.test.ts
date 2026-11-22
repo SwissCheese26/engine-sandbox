@@ -23,7 +23,8 @@ describe("core API contract", () => {
     test(`${fuel}: simulator starts and idles`, () => {
       const cfg = defaultConfig(fuel);
       const sim = new EngineSimulator(cfg);
-      const input = { ...defaultInputs(), ignition: true, starter: true };
+      // warm start: a cold start idles higher on purpose (catalyst heating, #135)
+      const input = { ...defaultInputs(), ignition: true, starter: true, startWarm: true };
       for (let i = 0; i < 120; i++) sim.step(1 / 60, input);
       input.starter = false;
       for (let i = 0; i < 600; i++) sim.step(1 / 60, input);

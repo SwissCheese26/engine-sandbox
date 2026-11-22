@@ -67,14 +67,17 @@ export function runPhases(sim: EngineSimulator, phases: Phase[], dt = 1 / 60): E
   return s;
 }
 
-/** Ignition on, starter for `crankS` seconds, then idle for `idleS` seconds. */
-export function startEngine(cfg: EngineConfig, idleS = 10, crankS = 2, dt = 1 / 60): EngineSimulator {
+/**
+ * Ignition on, starter for `crankS` seconds, then idle for `idleS` seconds. `extra` is merged into both phases, e.g.
+ * `{ startWarm: true }` for the warm idle (a cold start idles higher, issue #135).
+ */
+export function startEngine(cfg: EngineConfig, idleS = 10, crankS = 2, dt = 1 / 60, extra: Partial<SimInputs> = {}): EngineSimulator {
   const sim = new EngineSimulator(cfg);
   runPhases(
     sim,
     [
-      { seconds: crankS, input: { ignition: true, starter: true } },
-      { seconds: idleS, input: { ignition: true } },
+      { seconds: crankS, input: { ignition: true, starter: true, ...extra } },
+      { seconds: idleS, input: { ignition: true, ...extra } },
     ],
     dt,
   );

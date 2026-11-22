@@ -73,8 +73,8 @@ describe("design selection: truck/bus design", () => {
 });
 
 describe("additional gauges", () => {
-  test("ids: engine values plus intake air, battery, air pressure, retarder, AdBlue and lean (#83)", () => {
-    expect([...GAUGE_IDS]).toEqual(["boost", "oilP", "oilT", "gearOil", "lambda", "egt", "intake", "battery", "air", "retarder", "adblue", "lean"]);
+  test("ids: engine values plus catalyst (#135), intake air, battery, air pressure, retarder, AdBlue and lean (#83)", () => {
+    expect([...GAUGE_IDS]).toEqual(["boost", "oilP", "oilT", "gearOil", "lambda", "egt", "cat", "intake", "battery", "air", "retarder", "adblue", "lean"]);
     expect(isGaugeId("voltage")).toBe(false);
     expect(isGaugeId("intake")).toBe(true);
   });

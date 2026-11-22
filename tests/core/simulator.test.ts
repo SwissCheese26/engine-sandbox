@@ -21,8 +21,9 @@ const ENGINES: [string, EngineConfig][] = [
 
 describe("start and idle", () => {
   for (const [name, cfg] of ENGINES) {
-    spec(`${name}: starts and idles within ±15 % of idleRpm`, () => {
-      const sim = startEngine(cfg, 15);
+    // warm start: the cold start idles higher on purpose (catalyst heating, fast idle; cold-start.test.ts, #135)
+    spec(`${name}: starts warm and idles within ±15 % of idleRpm`, () => {
+      const sim = startEngine(cfg, 15, 2, 1 / 60, { startWarm: true });
       expect(sim.state.running).toBe(true);
       const rpm = sample(sim, 5, {}, (s) => s.rpm);
       for (const r of rpm) {
@@ -59,7 +60,7 @@ describe("start and idle", () => {
 
   spec("idle fuel flow is small (0.3 … 2.0 l/h for 2 l engines)", () => {
     for (const fuel of ["diesel", "petrol"] as const) {
-      const sim = startEngine(defaultConfig(fuel), 10);
+      const sim = startEngine(defaultConfig(fuel), 10, 2, 1 / 60, { startWarm: true });
       const f = mean(sample(sim, 2, {}, (s) => s.fuelFlowLh));
       expect(f).toBeGreaterThan(0.3);
       expect(f).toBeLessThan(2.0);
@@ -97,9 +98,9 @@ describe("throttle response and limiter", () => {
       expect(peak).toBeGreaterThan(cfg.revLimitRpm * 0.9);
     });
 
-    spec(`${fuel}: releasing the pedal returns to idle (±15 %)`, () => {
+    spec(`${fuel}: releasing the pedal returns to idle (±15 %, warm engine)`, () => {
       const cfg = defaultConfig(fuel);
-      const sim = startEngine(cfg, 3);
+      const sim = startEngine(cfg, 3, 2, 1 / 60, { startWarm: true });
       runPhases(sim, [{ seconds: 3, input: { ignition: true, pedal: 1 } }, { seconds: 12, input: { ignition: true, pedal: 0 } }]);
       expect(sim.state.running).toBe(true);
       expect(Math.abs(sim.state.rpm - cfg.idleRpm)).toBeLessThan(cfg.idleRpm * 0.15);

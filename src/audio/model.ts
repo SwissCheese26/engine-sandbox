@@ -434,6 +434,12 @@ export interface ControlFrame {
   tyreSqueal?: number;
   squealHz?: number;
   absCycles?: number;
+  /**
+   * Issue #135, optional (default 0): rough combustion 0 … 1 of the catalyst-heating mode (EngineState.coldStart).
+   * The very late spark (≈ 10° ATDC) burns slowly in an expanding volume, so the cycle-to-cycle variation grows
+   * (COV of IMEP ≈ 2 % → 5 … 8 %, Heywood, ICE Fundamentals §9.4; docs/research/petrol.md Nachtrag Kaltstart §K2).
+   */
+  rough?: number;
 }
 
 /**
@@ -567,6 +573,8 @@ export class ControlTracker {
       tyreSqueal: sq.level,
       squealHz: sq.hz,
       absCycles: Number.isFinite(s.absCycles) ? s.absCycles! : 0,
+      // catalyst heating (#135): late spark, rougher idle; fades with the pedal like the retard in the core
+      rough: v.fuel === "petrol" && s.running && !s.destroyed && s.coldStart === "cat-heating" ? clamp(1 - p / 0.5, 0, 1) : 0,
     };
   }
 }

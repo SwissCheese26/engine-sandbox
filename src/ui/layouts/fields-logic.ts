@@ -38,6 +38,9 @@ export interface FieldInputs {
   gearboxOilWarn?: boolean;
   /** Charge-air temperature in the intake manifold, °C, when the core reports it (#83); NaN/undefined = unknown. */
   intakeAirC?: number;
+  /** Catalyst temperature, °C (#135, EngineState.catalystC); NaN/undefined = no catalyst. Flag: catalyst heating. */
+  catalystC?: number;
+  catHeating?: boolean;
   /** Vehicle systems (#83, core vehicle-systems.ts): board-net voltage V, air reservoir bar and its warning, retarder
    *  stage, AdBlue level 0 … 1 and its reserve, lean angle ° (+ left) and whether the tyres could hold it. */
   batteryV?: number;
@@ -62,6 +65,8 @@ export interface FieldContext {
   adblue?: boolean;
   /** Motorcycle on a route with curves: lean angle (#83). */
   lean?: boolean;
+  /** The engine has a catalyst and the core reports its temperature (#135). */
+  cat?: boolean;
 }
 
 export function fieldAvailable(id: FieldId, c: FieldContext): boolean {
@@ -76,6 +81,7 @@ export function fieldAvailable(id: FieldId, c: FieldContext): boolean {
     case "retarder": return !!c.commercial;
     case "adblue": return !!c.adblue;
     case "lean": return !!c.lean;
+    case "cat": return !!c.cat;
     default: return true;
   }
 }
@@ -113,7 +119,7 @@ const NAMES: Record<FieldId, string> = {
   coolant: "Kühlmittel", oilT: "Öltemperatur", gearOil: "Getriebeöl", oilP: "Öldruck", boost: "Ladedruck", egt: "Abgastemperatur",
   fuelNow: "Verbrauch", range: "Reichweite", power: "Leistung", torque: "Drehmoment", lambda: "Lambda", road: "Höhe/Steigung",
   sprint: "0–100 km/h", ambient: "Außentemperatur", intake: "Ansaugluft",
-  battery: "Batterie", air: "Druckluft", retarder: "Retarder", adblue: "AdBlue", lean: "Schräglage",
+  battery: "Batterie", air: "Druckluft", retarder: "Retarder", adblue: "AdBlue", lean: "Schräglage", cat: "Kat-Temp",
 };
 
 /** Label of a field (no value), e.g. for the accessible name and the settings. */
@@ -142,6 +148,8 @@ export function formatField(id: FieldId, v: FieldInputs, u: UnitPrefs, lim?: Par
     case "egt": return out(T(v.egtC), u.temp, v.egtC > (lim?.egtMaxC ?? Infinity));
     case "ambient": return out(T(v.ambientC), u.temp);
     case "intake": return out(T(v.intakeAirC ?? Number.NaN), u.temp);
+    // catalyst (#135): signal colour while it is still being heated (below light-off)
+    case "cat": return out(T(v.catalystC ?? Number.NaN), u.temp, !!v.catHeating);
     case "battery": return out(num(v.batteryV ?? Number.NaN, 1), "V");
     case "air": return out(P(v.airBar ?? Number.NaN, u.pressure === "bar" ? 1 : 0), u.pressure, !!v.airWarn);
     case "retarder": return out(num(v.retarderStage ?? Number.NaN), "Stufe");
@@ -194,6 +202,12 @@ export function driveModeWord(gasRampS: number): string {
  * Intake air temperature from an engine state, °C, or NaN. The core computes the charge-air temperature internally
  * (cycle.ts manifoldTempK) but does not report it yet; this reads `intakeAirC` once the contract carries it (#105).
  */
+/** Catalyst temperature from an engine state, °C, or NaN (no catalyst, #135). */
+export function catalystOf(s: object): number {
+  const v = (s as { catalystC?: unknown }).catalystC;
+  return typeof v === "number" && Number.isFinite(v) ? v : Number.NaN;
+}
+
 export function intakeAirOf(s: object): number {
   const v = (s as { intakeAirC?: unknown }).intakeAirC;
   return typeof v === "number" && Number.isFinite(v) ? v : Number.NaN;

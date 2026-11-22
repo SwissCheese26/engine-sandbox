@@ -23,6 +23,8 @@ export interface GaugeContext {
   adblue?: boolean;
   /** Motorcycle on a route with curves (#83). */
   lean?: boolean;
+  /** Engine with a catalyst (#135). */
+  cat?: boolean;
 }
 
 /**
@@ -39,6 +41,7 @@ export function gaugeAvailable(id: GaugeId, c: GaugeContext): boolean {
     case "retarder": return !!c.commercial;
     case "adblue": return !!c.adblue;
     case "lean": return !!c.lean;
+    case "cat": return !!c.cat;
     default: return true;
   }
 }
@@ -52,6 +55,7 @@ export function gaugeUnavailableHint(id: GaugeId): string {
     case "retarder": return "Nur Lkw und Bus auf dem Prüfstand";
     case "adblue": return "Nur Diesel mit SCR im Fahrzeug";
     case "lean": return "Nur Motorrad auf einer kurvigen Strecke";
+    case "cat": return "Motor ohne Katalysator";
     default: return "";
   }
 }
@@ -112,6 +116,12 @@ export function gaugeScale(id: GaugeId, lim: EngineLimits, fuel: FuelKind, u: Un
       const b = T(1100);
       return { min: a, max: b, major: (b - a) / 5, minor: (b - a) / 10, zone: { from: T(Math.min(1100, lim.egtMaxC)), to: b } };
     }
+    case "cat": {
+      // 0–1000 °C, yellow from the overheat threshold 900 °C (core simulator.ts CAT_OVERHEAT_C)
+      const a = T(0);
+      const b = T(1000);
+      return { min: a, max: b, major: (b - a) / 5, minor: (b - a) / 10, zone: { from: T(900), to: b } };
+    }
     case "intake": {
       const a = T(-20);
       const b = T(100);
@@ -145,6 +155,8 @@ export interface GaugeInputs {
   gearboxOilC?: number;
   /** Vehicle systems (#83); NaN/undefined where the vehicle has none. */
   intakeAirC?: number;
+  /** Catalyst temperature (#135), NaN/undefined without a catalyst. */
+  catalystC?: number;
   batteryV?: number;
   airBar?: number;
   retarderStage?: number;
@@ -177,6 +189,7 @@ export function gaugeValue(id: GaugeId, v: GaugeInputs, u: UnitPrefs): number {
     case "lambda": return v.lambda;
     case "egt": return toUnit("temp", v.egtC, u.temp);
     case "intake": return toUnit("temp", v.intakeAirC ?? Number.NaN, u.temp);
+    case "cat": return toUnit("temp", v.catalystC ?? Number.NaN, u.temp);
     case "battery": return v.batteryV ?? Number.NaN;
     case "air": return toUnit("pressure", v.airBar ?? Number.NaN, u.pressure);
     case "retarder": return v.retarderStage ?? Number.NaN;

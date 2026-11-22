@@ -40,7 +40,7 @@ export interface EvLampInput {
  * lamp (amber) means "power reduced" (battery or motor hot, battery nearly empty), the fuel lamp means low charge.
  */
 export function evLamps(base: LampSet, x: EvLampInput): LampSet & { ready: "on" | "off" } {
-  const l: LampSet & { ready: "on" | "off" } = { ...base, oil: "off", coolant: "off", glow: "off", battery: "off", gearbox: "off", ready: x.ready ? "on" : "off" };
+  const l: LampSet & { ready: "on" | "off" } = { ...base, oil: "off", coolant: "off", glow: "off", battery: "off", gearbox: "off", cat: "off", ready: x.ready ? "on" : "off" };
   if (!x.ignition) return { ...l, engine: "off", fuel: "off" };
   const reduced = x.warnings.some((w) => w === "battery-hot" || w === "motor-hot" || w === "battery-low");
   l.engine = reduced ? "on" : "off";

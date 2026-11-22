@@ -166,6 +166,14 @@ export interface CoolingConfig {
   oilCooler: boolean;
 }
 
+/**
+ * Emissions standard (issue #135, contract #134): decides the cold-start strategy. Euro 3+ petrol engines heat the
+ * catalyst actively after a cold start (raised idle, retarded spark), Euro 5+ diesels run a heating mode with
+ * post-injection; older engines only a choke-like fast idle (docs/research/petrol.md "Nachtrag: Kaltstart").
+ * Non-EU engines use the comparable era.
+ */
+export type EmissionsStandard = "pre-euro" | "euro1" | "euro2" | "euro3" | "euro4" | "euro5" | "euro6";
+
 export interface EngineConfig {
   /** Stable id, used for presets and URLs. */
   id: string;
@@ -181,6 +189,8 @@ export interface EngineConfig {
   revLimitRpm: number;
   /** Idle speed target. */
   idleRpm: number;
+  /** Emissions standard (issue #135). Optional; unset = derived from the hardware (core `emissionsOf`). */
+  emissions?: EmissionsStandard;
   /**
    * ECU torque limit at the flywheel in Nm (issue #18): the ECU reduces boost / fuel quantity / throttle so that
    * the brake torque stays at or below this value (gearbox protection, typical for modern turbo engines).
@@ -477,6 +487,14 @@ export interface EngineState {
   roadGrip?: number;
   /** Electric cars (issue #108): battery, motor and energy state. Unset for combustion engines. */
   ev?: EvState;
+  /** Catalyst substrate temperature, °C (issue #135). Only with `exhaust.catalyst`. */
+  catalystC?: number;
+  /**
+   * Cold-start strategy of the ECU (issue #135): "cat-heating" = catalyst heating (petrol: raised idle and retarded
+   * spark; diesel: raised idle and post-injection), "fast-idle" = cold fast idle above the warm idle speed.
+   * Unset = normal operation.
+   */
+  coldStart?: "cat-heating" | "fast-idle";
 }
 
 /** One point of a steady-state full-load dyno sweep. */

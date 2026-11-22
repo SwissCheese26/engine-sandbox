@@ -1,4 +1,4 @@
-import type { EngineConfig } from "../core/types.ts";
+import type { EmissionsStandard, EngineConfig } from "../core/types.ts";
 import { REFERENCE_ENGINES, type ReferenceEngine } from "./reference-engines.ts";
 
 /**
@@ -384,12 +384,32 @@ const META: Record<string, { maker: string; cars: string; years: string }> = {
   "ref-ferrari-f136fb-458": { maker: "Ferrari", cars: "458 Italia", years: "2009–2015" },
 };
 
+/**
+ * Emissions standard per library engine (issue #135): EU type approval of the first model years; non-EU engines get
+ * the comparable era (JDM 1989/91 ≈ Euro 1, US 1994 ≈ Euro 1, US 2008 ≈ Euro 4); motorcycles their own Euro stage,
+ * trucks Euro VI → "euro6". Decides the cold-start strategy (core cold-start.ts).
+ */
+const EMISSIONS: Record<string, EmissionsStandard> = {
+  "ref-vw-19-tdi-pd-96kw": "euro3", "ref-bmw-n57d30o1": "euro5", "ref-mercedes-om654-220d": "euro6", "ref-psa-16-hdi-dv6ted4": "euro4",
+  "ref-cummins-6bt-59": "euro1", "ref-honda-k20a-type-r": "euro3", "ref-vw-ea888-gen3-chhb": "euro6", "ref-bmw-s54b32": "euro3",
+  "ref-gm-ls3-62": "euro4", "ref-ferrari-f136fb-458": "euro5",
+  "lib-bmw-m57d30tu2": "euro4", "lib-vw-ea189-20tdi-103kw": "euro5", "lib-toyota-1kd-ftv": "euro3", "lib-toyota-2jz-gte": "euro1",
+  "lib-nissan-rb26dett": "euro1", "lib-subaru-ej257": "euro4", "lib-bmw-s65b40": "euro4", "lib-toyota-1kr-fe": "euro4",
+  "lib-vw-ea888-evo4-dnf": "euro6", "lib-vw-ea111-14tfsi-caxc": "euro5", "lib-bmw-n13b16": "euro5",
+  "lib-honda-cbr1000rr-sc59": "euro3", "lib-yamaha-r1-cp4": "euro3", "lib-ducati-1199-superquadro": "euro3", "lib-harley-m8-107": "euro4",
+  "lib-bmw-r1250-boxer": "euro5", "lib-ktm-690-lc4": "euro4", "lib-triumph-765-triple": "euro4",
+  "lib-mercedes-om471": "euro6", "lib-scania-dc16": "euro6", "lib-mercedes-om936": "euro6",
+};
+
+const withEmissions = <T extends ReferenceEngine>(e: T): T =>
+  EMISSIONS[e.config.id] && !e.config.emissions ? { ...e, config: { ...e.config, emissions: EMISSIONS[e.config.id] } } : e;
+
 export const ENGINE_LIBRARY: LibraryEngine[] = [
   ...REFERENCE_ENGINES.map((r) => ({ ...r, ...(META[r.config.id] ?? { maker: "", cars: "", years: "" }) })),
   ...EXTRA,
   ...COMMERCIAL,
   ...MOTO,
-].sort((a, b) => (a.config.fuel === b.config.fuel ? a.config.name.localeCompare(b.config.name, "de") : a.config.fuel === "diesel" ? -1 : 1));
+].map(withEmissions).sort((a, b) => (a.config.fuel === b.config.fuel ? a.config.name.localeCompare(b.config.name, "de") : a.config.fuel === "diesel" ? -1 : 1));
 
 /** Deep copy of a library engine's config, ready to edit on the bench. */
 export function libraryConfig(id: string): EngineConfig {

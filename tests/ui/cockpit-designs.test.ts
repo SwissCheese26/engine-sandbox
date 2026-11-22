@@ -12,7 +12,7 @@ beforeEach(() => resetSettingsCache());
 
 const METRIC = PRESETS["metric-kw"].units;
 const IMPERIAL = PRESETS.imperial.units;
-const ALL = { turbo: true, vehicle: true, intakeAir: true, commercial: true, adblue: true, lean: true };
+const ALL = { turbo: true, vehicle: true, intakeAir: true, commercial: true, adblue: true, lean: true, cat: true };
 
 const inputs = (o: Partial<FieldInputs> = {}): FieldInputs => ({
   coolantC: 92, oilC: 104, oilPressureBar: 3.4, boostBar: 1.25, egtC: 720, fuelFlowLh: 6, speedKmh: 100, running: true,

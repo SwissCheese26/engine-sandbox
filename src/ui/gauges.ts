@@ -6,6 +6,7 @@ import { fitCanvas, reducedMotion, tokens } from "./canvas.ts";
 import { setText } from "./dom.ts";
 import { evConsumption } from "./ev-fields.ts";
 import { clamp, fmt, mixHex, niceCeil, tickStep } from "./format.ts";
+import { ICON2 } from "./layouts/icons.ts";
 import { UNITS, makeSwitchable, saveUnit, savedUnit, type UnitOpt } from "./units.ts";
 import { FALLBACK_LIMITS as L, egtLimitC, lambdaLimit } from "./limits-fallback.ts";
 
@@ -235,6 +236,8 @@ interface MeterDef {
   units?: readonly UnitOpt[];
   /** Config-dependent label (e.g. "Zylinderkopf" for air cooling, issue #25). */
   labelFor?: (cfg: EngineConfig) => string;
+  /** Status lamp next to the label (#135: "Kat heizt"), green while `on` is true. */
+  lamp?: { label: string; icon: string; on: (s: EngineState) => boolean };
 }
 
 class Meter {
@@ -248,6 +251,7 @@ class Meter {
   private alarm = false;
   private unitIdx = 0;
   private lastState?: EngineState;
+  private lampEl: HTMLElement | null = null;
 
   constructor(readonly def: MeterDef) {
     this.el = document.createElement("div");
@@ -255,6 +259,16 @@ class Meter {
     this.el.dataset.meter = def.id;
     this.el.innerHTML = `<span class="meter__label"></span><output class="num meter__value"></output><span class="meter__unit"></span><span class="meter__track" aria-hidden="true"><span class="meter__fill"></span><span class="meter__mark"></span></span>`;
     this.el.querySelector(".meter__label")!.textContent = def.label;
+    if (def.lamp) {
+      this.lampEl = document.createElement("span");
+      this.lampEl.className = "meter__lamp";
+      this.lampEl.dataset.state = "off";
+      this.lampEl.setAttribute("role", "img");
+      this.lampEl.setAttribute("aria-label", `${def.lamp.label}: aus`);
+      this.lampEl.title = def.lamp.label;
+      this.lampEl.innerHTML = def.lamp.icon;
+      this.el.querySelector(".meter__label")!.append(" ", this.lampEl);
+    }
     this.el.querySelector(".meter__unit")!.textContent = def.unit;
     this.fill = this.el.querySelector(".meter__fill")!;
     this.mark = this.el.querySelector(".meter__mark")!;
@@ -293,6 +307,13 @@ class Meter {
 
   update(s: EngineState, dt: number, active: Set<WarningCode>) {
     this.lastState = s;
+    if (this.lampEl && this.def.lamp) {
+      const st = s.running && this.def.lamp.on(s) ? "on" : "off";
+      if (this.lampEl.dataset.state !== st) {
+        this.lampEl.dataset.state = st;
+        this.lampEl.setAttribute("aria-label", `${this.def.lamp.label}: ${st === "on" ? "an" : "aus"}`);
+      }
+    }
     const v = this.def.value(s);
     const ok = Number.isFinite(v);
     const tau = reducedMotion() ? 0.35 : 0.08;
@@ -355,6 +376,9 @@ export class InstrumentPanel {
       new Meter({ ...T("coolant", "Kühlmittel", (c) => (airCooled(c) ? 300 : 130), (c) => (airCooled(c) ? 220 : L.coolantMaxC), (s) => s.coolantC, ["overheat-coolant"]), labelFor: (c: EngineConfig) => (airCooled(c) ? "Zylinderkopf" : "Kühlmittel") }),
       new Meter(T("oil", "Öl", 160, () => L.oilMaxC, (s) => s.oilC, ["overheat-oil"])),
       new Meter(T("egt", "Abgas", 1100, egtLimitC, (s) => s.egtC, ["egt-high"])),
+      // catalyst temperature (#135): only with a catalyst; limit = overheat threshold 900 °C (core simulator.ts)
+      new Meter({ ...T("cat", "Kat", 1000, () => 900, (s) => s.catalystC ?? Number.NaN, ["catalyst-overheat"]), visible: (c: EngineConfig) => c.exhaust.catalyst,
+        lamp: { label: "Kat heizt", icon: ICON2.cat, on: (s) => s.coldStart === "cat-heating" } }),
       new Meter({ id: "oilp", label: "Öldruck", unit: "bar", decimals: 1, min: 0, max: () => 8, limit: () => L.oilPressureMinBar, lowLimit: true, value: (s) => s.oilPressureBar, warns: ["low-oil-pressure"], units: UNITS.pressure(1) }),
       new Meter({ id: "flow", label: "Verbrauch", unit: "l/h", decimals: 1, min: 0, max: (c) => niceCeil(Math.max(10, c.block.cylinders * c.block.boreMm * 0.25)), limit: () => Infinity, value: (s) => s.fuelFlowLh, warns: [], units: UNITS.fuelFlow }),
       new Meter({ id: "bsfc", label: "Spezifisch", unit: "g/kWh", decimals: 0, min: 150, max: () => 500, limit: () => Infinity, value: (s) => s.bsfcGkWh, warns: [], units: UNITS.bsfc }),
