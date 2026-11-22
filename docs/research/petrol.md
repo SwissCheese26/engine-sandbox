@@ -339,6 +339,26 @@ Hinweise:
 - Quelle: LSX Magazine, „LS3 x 3 – Comparing Three Performance Cams on the Engine Dyno“ (https://www.lsxmag.com/tech-stories/ls3-x-3-comparing-three-performance-cams-on-the-engine-dyno/). Serien-Nocke 204°/211°, Hub 0,551"/0,525", LSA 117°. Für einen Serien-Stoßstangen-V8 ist das scharf, daher camProfile 0,55 [S]. Das Saugrohr ist mit 280 mm auf das Drehmomentmaximum bei 4600 1/min abgestimmt [S].
 - Ergebnis: 316 kW @ 5850, 583 Nm @ 4750 (vorher 289 kW @ 5150, 580 Nm @ 4350). Ziel laut Datenblatt: 321 kW @ 5900, 575 Nm @ 4600.
 
+### 7b. VW EA888 evo4 DNF, 245 kW (Cupra Leon VZ 333 PS, Issue #131)
+- Werksdaten: CUPRA „Technical Data CUPRA Leon Sportstourer“, EG22, Stand 16.05.2023 (https://smc.prod.aem-cloud.seat.com/content/dam/seat-media-center/models-all-brands/cupra-models/cupra-leon-sportstourer/technical-data/Technical_Data_CUPRA_Leon_Sportstourer.pdf): 1984 cm³, 82,5 × 92,8 mm, ε 9,3, 245 kW @ 5600–6500, 420 Nm @ 2100–5500, 1651 kg fahrfertig ohne Fahrer, 250 km/h (6. Gang), Reifen 225/40 R18 oder 235/35 R19, Tank 55 l.
+- ADAC-Autokatalog Leon Sportstourer 2.0 TSI VZ 4Drive DSG ab 07/24 (https://www.adac.de/rund-ums-fahrzeug/autokatalog/marken-modelle/cupra/leon/1generation-facelift/336446): Motorcode DNF, 1651 kg EU, 0–100 in 4,8 s, 250 km/h, 235/35 R19, 55 l, 7-Gang-DSG, Radstand 2689 mm, 4656 × 1799 × 1439 mm.
+- VW Newsroom, Golf R (EA888 LK3 evo4, 333 PS @ 5600–6500, 420 Nm @ 2100–5500, wassergekühlte Abgasführung im Kopf, zweistufiger Auslass-Ventilhub): https://www.volkswagen-newsroom.com/en/the-new-golf-r-and-golf-r-variant-world-premiere-18466/the-turbocharged-engine-superior-333-ps-and-420-nm-18473
+- Nicht veröffentlicht, geschätzt [S]: Lader (größer als IS20/IS38-Klasse; Verdichtereintritt 48 mm, Turbine A/R 0,4), Ladedruck 1,7 bar (auf 245 kW gefittet), Nocken 0,45, Saugrohr 260 mm, cW 0,30, Stirnfläche 2,22 m² (0,85 · Breite · Höhe), DQ381-Übersetzungen 3,40/2,19/1,52/1,10/0,86/0,69/0,57 mit Achse 4,47 (so gewählt, dass 250 km/h im 6. Gang bei ≈ 6300 1/min liegen wie im Datenblatt).
+- Wie beim CHHB ist das 420-Nm-Plateau eine ECU-Grenze (`ecuTorqueLimitNm: 420`). Modell: 399 Nm @ 2000, 420 Nm @ 2500–5000, 246 kW @ 6000. Fahrzeug: 4,97 s (+3,5 %), 250,8 km/h (Begrenzer).
+
+### 7c. VW EA111 1.4 TFSI CAXC, 90 kW (Audi A1 8X, Issue #131)
+- Der 122-PS-Motor ist der reine Turbo (CAX/CAXC); Twincharger (Turbo + Kompressor) sind die 136/185-PS-Versionen. Ab 11/2014 folgt der EA211 mit 125 PS, deshalb gilt der Eintrag für 07/2010–11/2014.
+- ADAC-Autokatalog A1 1.4 TFSI Attraction S tronic (7-Gang) 07/10–11/14 (https://www.adac.de/rund-ums-fahrzeug/autokatalog/marken-modelle/audi/a1/8x/222375): CAX, Turbo, 90 kW @ 5000, 200 Nm @ 1500, 1200 kg EU, 8,9 s, 203 km/h, 205/55 R15, 45 l, Radstand 2469 mm, 3954 × 1740 × 1417 mm. Gewählt ist die S-tronic-Variante, weil der A1 1.4 TFSI überwiegend mit S tronic verkauft wurde [S].
+- Bohrung × Hub 76,5 × 75,6 mm, ε 10,0 (EA111 1.4 TFSI, Audi/VW Selbststudienprogramm 405).
+- DQ200-Übersetzungen 3,765/2,273/1,531/1,133/1,176/0,956/0,795, Achsen 4,438/3,227 (gearboxlist.com, Golf 1.4 TSI: https://gearboxlist.com/volkswagen/dq200/). Für den A1 nicht separat belegt [S]; 5.–7. Gang auf die Achse 4,438 umgerechnet.
+- Geschätzt [S]: Lader K03-Klasse (Eintritt 29 mm, A/R 0,45), Ladedruck 1,0 bar, cW 0,32, Stirnfläche 2,10 m². Der kleine Lader begrenzt oberhalb ≈ 4500 1/min, deshalb liegt die Nennleistung bei 5000 und nicht am Begrenzer. Modell: 200 Nm @ 1500–4000, 91,5 kW @ 4400. Fahrzeug: 9,10 s (+2,2 %), 196 km/h (−3,5 %).
+
+### 7d. BMW N13B16, 100 kW (BMW 116i F20, Issue #131)
+- Gewählt ist der N13 mit 136 PS (2011–2015), nicht der spätere B38 (1.5 Dreizylinder, 109 PS).
+- ADAC-Autokatalog 116i Sport Line 5-Türer 09/11–03/13 (https://www.adac.de/rund-ums-fahrzeug/autokatalog/marken-modelle/bmw/1er-reihe/f20-f21/228500): N13B16A, 1598 cm³, 100 kW @ 4400, 220 Nm @ 1350, 1365 kg EU, 8,5 s, 210 km/h, 205/55 R16 H, 52 l, 6-Gang-Schaltgetriebe, Radstand 2690 mm, 4324 × 1765 × 1421 mm.
+- Bohrung × Hub 77 × 85,8 mm, ε 10,5 (Prince-Familie, BMW-Pressemappe N13).
+- Geschätzt [S]: Übersetzungen 4,110/2,248/1,403/1,000/0,802/0,659 und Achse 3,91 (BMW-Datenblatt war nicht abrufbar; Achse so gewählt, dass 210 km/h bei ≈ 4500 1/min liegen), Lader (Eintritt 30 mm, A/R 0,45), Ladedruck 0,8 bar, cW 0,30, Stirnfläche 2,13 m². Modell: 220 Nm @ 1500–4000, 99 kW @ 4300. Fahrzeug: 9,27 s (+9,0 %), 203 km/h (−3,2 %).
+
 ## 6. Akustik (Benzin und Diesel, für prozedurale Synthese)
 
 ### 6.1 Grundfrequenz

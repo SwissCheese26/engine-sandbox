@@ -112,6 +112,59 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
     source: "VW Preisliste/Technische Daten Golf VI 2.0 TDI 103 kW (9,3 s, 210 km/h)",
   },
   {
+    id: "car-cupra-leon-st-vz-333", name: "Cupra Leon Sportstourer VZ 2.0 TSI 4Drive (333 PS, DSG)", maker: "Cupra", years: "2024–",
+    engineId: "lib-vw-ea888-evo4-dnf",
+    setup: {
+      tankL: 55,
+      // cW 0.30 and A 2.22 m² (0.85 · 1.799 m · 1.439 m) [S]; front share 0.60, CG 0.55 m [S]; wheelbase 2.689 m (ADAC)
+      vehicle: body(1651, 0.3, 2.22, "awd", 0.6, 0.55, 2.689),
+      tyre: tyre("uhp", 235, 35, 19, "Y"),
+      gearbox: "dsg",
+      // DQ381 7-speed: ratios for this application not published [S, DQ381 class spread]; final 4.47 [S] chosen so
+      // that 250 km/h falls in 6th at ≈ 6300 rpm as the Cupra data sheet states ("250 km/h, 6. Gang").
+      // 4Drive (Haldex) modelled as permanent AWD; efficiency 0.88 like the other AWD cars.
+      gearboxSpec: box([3.4, 2.19, 1.52, 1.1, 0.86, 0.69, 0.57], 4.47, 0.88, 0.1),
+      speedLimitKmh: 250,
+    },
+    factory: { kerbKg: 1651, kerbNorm: "EU", t0to100S: 4.8, vmaxKmh: 250, vmaxGoverned: true },
+    source: "CUPRA Technical Data Leon Sportstourer (EG22, 05/2023) und ADAC-Autokatalog Leon ST 2.0 TSI VZ 4Drive DSG ab 07/24 (245 kW, 420 Nm, 1651 kg EU, 4,8 s, 250 km/h abgeregelt, 235/35 R19, 55 l); cW, Stirnfläche, Übersetzungen [S]",
+  },
+  {
+    id: "car-audi-a1-8x-14tfsi", name: "Audi A1 8X 1.4 TFSI (122 PS, S tronic)", maker: "Audi", years: "2010–2014",
+    engineId: "lib-vw-ea111-14tfsi-caxc",
+    setup: {
+      tankL: 45,
+      // cW 0.32 and A 2.10 m² (0.85 · 1.740 m · 1.417 m) [S]; front share 0.62, CG 0.52 m [S]; wheelbase 2.469 m (ADAC)
+      vehicle: body(1200, 0.32, 2.1, "fwd", 0.62, 0.52, 2.469),
+      tyre: tyre("standard", 205, 55, 15, "V"),
+      gearbox: "dsg",
+      // DQ200 7-speed (0AM): 3.765/2.273/1.531/1.133/1.176/0.956/0.795, finals 4.438 (1–4) and 3.227 (5–7)
+      // [gearboxlist.com DQ200, Golf 1.4 TSI; same box in the A1, A1-specific finals not published, S]; 5th–7th
+      // converted to the single final drive 4.438 (× 3.227/4.438)
+      gearboxSpec: box([3.765, 2.273, 1.531, 1.133, 0.855, 0.695, 0.578], 4.438, 0.92, 0.1),
+      speedLimitKmh: null,
+    },
+    factory: { kerbKg: 1200, kerbNorm: "EU", t0to100S: 8.9, vmaxKmh: 203, vmaxGoverned: false },
+    source: "ADAC-Autokatalog Audi A1 1.4 TFSI Attraction S tronic (7-Gang) 07/10–11/14 (CAX, 90 kW, 200 Nm, 1200 kg EU, 8,9 s, 203 km/h, 205/55 R15, 45 l); cW, Stirnfläche [S]",
+  },
+  {
+    id: "car-bmw-116i-f20", name: "BMW 116i F20 (136 PS, Handschalter)", maker: "BMW", years: "2011–2015",
+    engineId: "lib-bmw-n13b16",
+    setup: {
+      tankL: 52,
+      // cW 0.30 and A 2.13 m² (0.85 · 1.765 m · 1.421 m) [S]; front share 0.52 (BMW ≈ 50:50), CG 0.52 m [S]
+      vehicle: body(1365, 0.3, 2.13, "rwd", 0.52, 0.52, 2.69),
+      tyre: tyre("standard", 205, 55, 16, "H"),
+      gearbox: "manual",
+      // 6-speed manual: 4.110/2.248/1.403/1.000/0.802/0.659, final 3.91 [S: typical BMW 6MT spread, final chosen so
+      // that 210 km/h falls at ≈ 4500 rpm near the power peak; BMW data sheet not reachable]
+      gearboxSpec: box([4.11, 2.248, 1.403, 1.0, 0.802, 0.659], 3.91, 0.93, 0.25),
+      speedLimitKmh: null,
+    },
+    factory: { kerbKg: 1365, kerbNorm: "EU", t0to100S: 8.5, vmaxKmh: 210, vmaxGoverned: false },
+    source: "ADAC-Autokatalog BMW 116i Sport Line 5-Türer 09/11–03/13 (N13B16A, 100 kW, 220 Nm, 1365 kg EU, 8,5 s, 210 km/h, 205/55 R16 H, 52 l, 6-Gang); cW, Stirnfläche, Übersetzungen [S]",
+  },
+  {
     id: "car-citroen-c1-10", name: "Citroën C1 1.0 (68 PS, Basis)", maker: "Citroën", years: "2008–2012", engineId: "lib-toyota-1kr-fe",
     setup: {
       tankL: 35,
