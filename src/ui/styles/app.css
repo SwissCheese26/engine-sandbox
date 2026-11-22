@@ -1128,6 +1128,9 @@ kbd {
   animation: toast-in 200ms ease-out;
   transition: opacity 200ms ease, transform 200ms ease;
 }
+.toast--info {
+  border-left-color: var(--cold);
+}
 .toast--critical {
   border-left-color: var(--ink-torque);
   background: rgba(60, 20, 18, 0.86);

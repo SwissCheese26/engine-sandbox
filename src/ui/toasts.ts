@@ -40,6 +40,10 @@ export function toastInputs({ state: s, outOfFuel, gearbox }: ToastSources): Toa
   for (const d of s.damage.slice(-3)) {
     if (!d.fatal) out.push({ key: `d:${d.code}:${d.t.toFixed(1)}`, severity: "warning", always: true, text: `Schaden: ${d.message}` });
   }
+  // catalyst heating after a cold start (#135): a calm note, only with the toast setting on
+  if (s.running && s.coldStart === "cat-heating") {
+    out.push({ key: "cat-heating", severity: "info", text: "Kat heizt: erhöhter Leerlauf und späte Zündung, bis der Katalysator warm ist." });
+  }
   for (const w of s.warnings) {
     if (w.severity === "info") continue;
     out.push({ key: `w:${w.code}:${w.severity}`, severity: w.severity, always: w.severity === "critical", text: w.message });

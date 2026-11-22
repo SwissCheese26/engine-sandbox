@@ -135,6 +135,8 @@ export const FIELD_IDS = [
   "coolant", "oilT", "gearOil", "oilP", "boost", "egt", "fuelNow", "range", "power", "torque", "lambda", "road", "sprint", "ambient",
   // intake air (#83, #105), board-net voltage; air pressure, retarder (trucks, buses), AdBlue (SCR), lean (bikes on a curved route)
   "intake", "battery", "air", "retarder", "adblue", "lean",
+  // catalyst temperature (#135), engines with a catalyst
+  "cat",
 ] as const;
 export type FieldId = (typeof FIELD_IDS)[number];
 export type FieldSet = [FieldId, FieldId, FieldId];
@@ -160,18 +162,20 @@ export function validateFields(raw: unknown): FieldSet {
  * Gauges the console strip can show: values of EngineState and of the vehicle systems (core vehicle-systems.ts,
  * #83). Each is offered only where the vehicle has it (gaugeAvailable).
  */
-export const GAUGE_IDS = ["boost", "oilP", "oilT", "gearOil", "lambda", "egt", "intake", "battery", "air", "retarder", "adblue", "lean"] as const satisfies readonly FieldId[];
+export const GAUGE_IDS = ["boost", "oilP", "oilT", "gearOil", "lambda", "egt", "cat", "intake", "battery", "air", "retarder", "adblue", "lean"] as const satisfies readonly FieldId[];
 export type GaugeId = (typeof GAUGE_IDS)[number];
 export type GaugeStyle = "round" | "bar";
 
 export const GAUGE_LABEL: Record<GaugeId, string> = {
   boost: "Ladedruck", oilP: "Öldruck", oilT: "Öltemperatur", gearOil: "Getriebeöl", lambda: "Lambda", egt: "Abgastemperatur",
   intake: "Ansauglufttemperatur", battery: "Batteriespannung", air: "Druckluft (Vorrat)", retarder: "Retarderstufe", adblue: "AdBlue-Füllstand", lean: "Schräglage",
+  cat: "Katalysatortemperatur",
 };
 /** Captions under the gauges (narrow on phones); the full name is the tooltip and the picker label. */
 export const GAUGE_SHORT: Record<GaugeId, string> = {
   boost: "Ladedruck", oilP: "Öldruck", oilT: "Öltemp.", gearOil: "Getr.-Öl", lambda: "Lambda", egt: "Abgas",
   intake: "Ansaugl.", battery: "Batterie", air: "Druckluft", retarder: "Retarder", adblue: "AdBlue", lean: "Schräglage",
+  cat: "Kat-Temp",
 };
 
 /** What the console shows for the chosen style in a design: "tile" and "segment" are the screen equivalents. */

@@ -355,6 +355,8 @@ export class InstrumentPanel {
       new Meter({ ...T("coolant", "Kühlmittel", (c) => (airCooled(c) ? 300 : 130), (c) => (airCooled(c) ? 220 : L.coolantMaxC), (s) => s.coolantC, ["overheat-coolant"]), labelFor: (c: EngineConfig) => (airCooled(c) ? "Zylinderkopf" : "Kühlmittel") }),
       new Meter(T("oil", "Öl", 160, () => L.oilMaxC, (s) => s.oilC, ["overheat-oil"])),
       new Meter(T("egt", "Abgas", 1100, egtLimitC, (s) => s.egtC, ["egt-high"])),
+      // catalyst temperature (#135): only with a catalyst; limit = overheat threshold 900 °C (core simulator.ts)
+      new Meter({ ...T("cat", "Kat", 1000, () => 900, (s) => s.catalystC ?? Number.NaN, ["catalyst-overheat"]), visible: (c: EngineConfig) => c.exhaust.catalyst }),
       new Meter({ id: "oilp", label: "Öldruck", unit: "bar", decimals: 1, min: 0, max: () => 8, limit: () => L.oilPressureMinBar, lowLimit: true, value: (s) => s.oilPressureBar, warns: ["low-oil-pressure"], units: UNITS.pressure(1) }),
       new Meter({ id: "flow", label: "Verbrauch", unit: "l/h", decimals: 1, min: 0, max: (c) => niceCeil(Math.max(10, c.block.cylinders * c.block.boreMm * 0.25)), limit: () => Infinity, value: (s) => s.fuelFlowLh, warns: [], units: UNITS.fuelFlow }),
       new Meter({ id: "bsfc", label: "Spezifisch", unit: "g/kWh", decimals: 0, min: 150, max: () => 500, limit: () => Infinity, value: (s) => s.bsfcGkWh, warns: [], units: UNITS.bsfc }),

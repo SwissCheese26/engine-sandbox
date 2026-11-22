@@ -6,7 +6,7 @@
 import { validateConfig } from "../core/index.ts";
 import type {
   Aspiration, BlockMaterial, ConrodType, CoolingType, CrankshaftType, CylinderLayout, DieselFuel, DieselInjection, EngineConfig,
-  ExhaustManifold, FuelKind, Intercooler, OverrunPops, PetrolFuel, PetrolMixture, PistonType, V8Crank, Valvetrain, VariableValveTiming,
+  EmissionsStandard, ExhaustManifold, FuelKind, Intercooler, OverrunPops, PetrolFuel, PetrolMixture, PistonType, V8Crank, Valvetrain, VariableValveTiming,
   Warning,
 } from "../core/index.ts";
 import { ENGINE_LIBRARY, libraryConfig } from "../data/engine-library.ts";
@@ -54,6 +54,7 @@ const RODS = list<ConrodType>()(["cast-steel", "forged-steel", "titanium"]);
 const V8_CRANKS = list<V8Crank>()(["crossplane", "flatplane"]);
 const VALVETRAINS = list<Valvetrain>()(["ohv", "sohc", "dohc"]);
 const VVT = list<VariableValveTiming>()(["none", "intake-cam", "dual-cam", "cam-switching"]);
+const EMISSIONS = list<EmissionsStandard>()(["pre-euro", "euro1", "euro2", "euro3", "euro4", "euro5", "euro6"]);
 const ASPIRATIONS = list<Aspiration>()([
   "naturally-aspirated", "turbo", "twin-turbo-parallel", "twin-turbo-sequential", "supercharger-roots", "supercharger-centrifugal", "e-turbo",
 ]);
@@ -159,6 +160,8 @@ export function parseEngineConfig(raw: unknown): EngineConfig | null {
       fuel, block, head, induction, fuelSystem, exhaust, cooling,
       revLimitRpm: r.num("revLimitRpm"), idleRpm: r.num("idleRpm"),
       ecuTorqueLimitNm: r.opt("ecuTorqueLimitNm", r.num), ecuPowerLimitKw: r.opt("ecuPowerLimitKw", r.num), engineBrake,
+      // emissions standard (#135): optional, unknown values are dropped (the core derives a default)
+      emissions: EMISSIONS.includes(raw.emissions as EmissionsStandard) ? (raw.emissions as EmissionsStandard) : undefined,
     });
     if (block.boreMm <= 0 || block.strokeMm <= 0 || block.conrodLengthMm <= 0) throw new Bad("block");
     normalizeConfig(cfg);

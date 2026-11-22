@@ -863,7 +863,7 @@ export class CockpitView implements LayoutView {
     const ds = d.state;
     const vehicle = f.mode === "vehicle";
     const r = systemReadings(f, this.cfg);
-    this.fieldCtx = { ...this.fieldCtx, vehicle, intakeAir: r.has.intake, commercial: r.has.commercial, adblue: r.has.adblue, lean: r.has.lean };
+    this.fieldCtx = { ...this.fieldCtx, vehicle, intakeAir: r.has.intake, commercial: r.has.commercial, adblue: r.has.adblue, lean: r.has.lean, cat: r.has.cat };
     const avg = avgL100(f.trip.tripA.km, f.trip.tripA.fuelL);
     const v: FieldInputs = {
       coolantC: s.coolantC, oilC: s.oilC, oilPressureBar: s.oilPressureBar, boostBar: s.boostBar, egtC: s.egtC,

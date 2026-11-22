@@ -8,7 +8,8 @@
 // - at most `maxVisible` toasts at once: a new one pushes out the oldest (an "always" toast is pushed out last);
 // - each toast disappears after its lifetime.
 
-export type ToastSeverity = "warning" | "critical";
+/** "info" = calm status note (e.g. catalyst heating, #135), never "always". */
+export type ToastSeverity = "info" | "warning" | "critical";
 
 /** One condition the sandbox reports this frame. */
 export interface ToastInput {

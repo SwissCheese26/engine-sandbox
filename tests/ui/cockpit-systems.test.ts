@@ -63,7 +63,7 @@ describe("readings", () => {
     sys.setKind("truck");
     sys.setRetarderStage(2);
     const r = systemReadings({ s: st, mode: "vehicle", drivetrain: d, systems: sys }, diesel);
-    expect(r.has).toEqual({ intake: true, commercial: true, adblue: hasScr(diesel), lean: false });
+    expect(r.has).toEqual({ intake: true, commercial: true, adblue: hasScr(diesel), lean: false, cat: Number.isFinite(st.catalystC ?? Number.NaN) });
     expect(r.airBar).toBe(10);
     expect(r.retarderStage).toBe(2);
     const off = systemReadings({ s: st, mode: "free", drivetrain: d, systems: sys }, diesel);
