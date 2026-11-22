@@ -53,7 +53,7 @@ const KIND_TEXT: Record<SetupKind, string> = {
   car: "Kleinwagen, Limousine, Sportwagen, Geländewagen, Elektroautos ⚡.",
   commercial: "Sattelzug 40 t und Stadtbus.",
   bike: "Superbikes, Naked Bikes, Tourer.",
-  custom: "Gewicht, Luftwiderstand, Reifen, Antrieb und Motor selbst festlegen.",
+  custom: "Motor, Getriebe, Antrieb, Reifen, Gewicht und Luftwiderstand selbst festlegen.",
   engine: "Ohne Fahrzeug und Strecke: Motor bauen und frei hochdrehen.",
 };
 
@@ -85,6 +85,7 @@ const LAYOUT_LABEL: Record<DriveLayout, string> = { fwd: "Frontantrieb", rwd: "H
 const fmtDe = (n: number, d = 0) => n.toLocaleString("de-DE", { minimumFractionDigits: d, maximumFractionDigits: d });
 
 /** Numeric fields of the own-vehicle form. */
+// Own-vehicle form order: type, then the drive first (engine, gearbox, drive), tyres, body (mass, cW, area), tank last.
 const NUM_FIELDS: { key: "massKg" | "cw" | "areaM2" | "tankL"; label: string; unit: string; step: string; digits: number }[] = [
   { key: "massKg", label: "Gewicht mit Fahrer", unit: "kg", step: "5", digits: 0 },
   { key: "cw", label: "cW-Wert", unit: "", step: "0.01", digits: 2 },
@@ -147,28 +148,28 @@ export class SandboxWizard {
             <label class="wizard__field wizard__field--wide"><span>Fahrzeugtyp</span>
               <select data-c="base">${(Object.keys(CUSTOM_BASE_LABEL) as CustomBase[]).map((b) => `<option value="${b}">${CUSTOM_BASE_LABEL[b]}</option>`).join("")}</select>
             </label>
+            <label class="wizard__field wizard__field--wide"><span>Motor aus der Bibliothek</span>
+              <select data-c="engineId" aria-describedby="wiz-err-engineId"></select>
+              <small class="wizard__err" id="wiz-err-engineId"></small>
+            </label>
+            <label class="wizard__field"><span>Getriebe</span>
+              <select data-c="gearbox" aria-describedby="wiz-err-gearbox"></select>
+              <small class="wizard__err" id="wiz-err-gearbox"></small>
+            </label>
+            <label class="wizard__field"><span>Antrieb</span>
+              <select data-c="drive" aria-describedby="wiz-err-drive"></select>
+              <small class="wizard__err" id="wiz-err-drive"></small>
+            </label>
+            <div class="wizard__field wizard__field--wide" data-out="tyre-field">
+              <small class="wizard__range" id="wiz-range-tyre"></small>
+              <small class="wizard__err" id="wiz-err-tyre"></small>
+            </div>
             ${NUM_FIELDS.map((f) => `
               <label class="wizard__field"><span>${f.label}${f.unit ? ` (${f.unit})` : ""}</span>
                 <input type="text" inputmode="decimal" data-c="${f.key}" autocomplete="off" aria-describedby="wiz-err-${f.key} wiz-range-${f.key}" />
                 <small class="wizard__range" id="wiz-range-${f.key}"></small>
                 <small class="wizard__err" id="wiz-err-${f.key}"></small>
               </label>`).join("")}
-            <div class="wizard__field wizard__field--wide" data-out="tyre-field">
-              <small class="wizard__range" id="wiz-range-tyre"></small>
-              <small class="wizard__err" id="wiz-err-tyre"></small>
-            </div>
-            <label class="wizard__field"><span>Antrieb</span>
-              <select data-c="drive" aria-describedby="wiz-err-drive"></select>
-              <small class="wizard__err" id="wiz-err-drive"></small>
-            </label>
-            <label class="wizard__field"><span>Getriebe</span>
-              <select data-c="gearbox" aria-describedby="wiz-err-gearbox"></select>
-              <small class="wizard__err" id="wiz-err-gearbox"></small>
-            </label>
-            <label class="wizard__field wizard__field--wide"><span>Motor aus der Bibliothek</span>
-              <select data-c="engineId" aria-describedby="wiz-err-engineId"></select>
-              <small class="wizard__err" id="wiz-err-engineId"></small>
-            </label>
             <p class="wizard__lead wizard__field--wide">Alles lässt sich später auf dem Rollenprüfstand unter „Fahrzeug &amp; Reifen“ und in der Werkbank ändern.</p>
           </div>
         </section>
