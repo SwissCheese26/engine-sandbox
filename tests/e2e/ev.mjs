@@ -73,7 +73,7 @@ export async function evChecks({ browser, base, outDir, failures, errors, label,
   if (!(peak > 300)) fail(`Leistungsanzeige zeigt keine Volllast (${peak} kW)`);
   if (!(soc1 < soc0)) fail(`Ladezustand fällt nicht (${soc0} → ${soc1} %)`);
   if (!(kmh > 80)) fail(`Plaid beschleunigt nicht (${Math.round(kmh)} km/h)`);
-  // review #115: live readouts in the Getriebe-Pult's list, consumption never negative, P R N D selector
+  // review #115: live readouts in the Getriebe-Pult's list, consumption never negative, P N D selector
   const ro = await page.evaluate(() => ({
     cons: document.querySelector('.gearbox__ev [data-o="cons"]')?.textContent ?? "",
     range: document.querySelector('.gearbox__ev [data-o="range"]')?.textContent ?? "",
@@ -82,6 +82,20 @@ export async function evChecks({ browser, base, outDir, failures, errors, label,
     sel: document.querySelector('.shiftpad__sel[aria-checked="true"]')?.textContent,
   }));
   if (/[−-]\s*\d/.test(ro.cons) || !/km/.test(ro.range) || !ro.charge || ro.refuel || ro.sel !== "D") fail(`Anzeigen im Getriebe-Pult (${JSON.stringify(ro)})`);
+  // P N D (review #125): no dead R; "Halten" releasing the parking brake moves the selector from P to N
+  const sels = await page.$$eval(".shiftpad__sel", (b) => b.map((x) => x.textContent).join(""));
+  if (sels !== "PND") fail(`Fahrstufen ${sels} statt PND`);
+  await page.keyboard.down("s");
+  await page.waitForFunction(() => (window.__pruefzelle?.gearbox.drivetrain.state.speedKmh ?? 99) < 0.5, null, { timeout: 30000 }).catch(() => fail("bremst nicht bis zum Stand (P)"));
+  await page.keyboard.up("s");
+  await page.click('.shiftpad__sel[data-sel="P"]');
+  await page.waitForTimeout(100);
+  const pHeld = await page.evaluate(() => !!window.__pruefzelle?.gearbox.drivetrain.state.parkingBrake);
+  await page.click(".parkbtn");
+  await page.waitForTimeout(150);
+  const afterRelease = await page.evaluate(() => ({ brake: !!window.__pruefzelle?.gearbox.drivetrain.state.parkingBrake, sel: document.querySelector('.shiftpad__sel[aria-checked="true"]')?.textContent }));
+  if (!pHeld || afterRelease.brake || afterRelease.sel !== "N") fail(`P/Halten passen nicht zusammen (P hält ${pHeld}, danach ${JSON.stringify(afterRelease)})`);
+  await page.click('.shiftpad__sel[data-sel="D"]');
   console.log(`${label}: Elektro Prüfzelle ${peak} kW, SoC ${soc0} → ${soc1} %, ${Math.round(kmh)} km/h`);
 
   // the cockpit, every design, with the car rolling (regen) and then under power

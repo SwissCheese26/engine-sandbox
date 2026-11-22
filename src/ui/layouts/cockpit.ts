@@ -660,18 +660,16 @@ export class CockpitView implements LayoutView {
     const T = (c: number) => toUnit("temp", c, u.temp);
     this.mini("coolant", T(ev.batteryC), fmt(T(ev.batteryC)), dt);
     this.mini("oilT", T(ev.motorC), fmt(T(ev.motorC)), dt);
-    const cons = consumptionText(ev.kwhPer100, u);
-    // at standstill (or regen) the consumption dial rests; the text says "–"
+    // the trip average (never negative): the momentary value goes below zero while regenerating
+    const cons = consumptionText(evConsumption(ev), u);
     const cv = Number.parseFloat(cons.value.replace(/\./g, "").replace(",", "."));
     this.mini("fuel", Number.isFinite(cv) ? Math.max(0, Math.min(40, cv)) : 0, cons.value, dt);
     this.minis.tank.wrap.hidden = false;
     this.mini("tank", ev.soc * 100, fmt(Math.round(ev.soc * 100)), dt);
     this.put("ev-soc", socText(ev.soc));
     this.put("ev-range", rangeText(ev.rangeKm, u));
-    // the text shows the trip average: the momentary value goes negative while regenerating
-    const avg = consumptionText(evConsumption(ev), u);
-    this.put("ev-cons", avg.value);
-    this.put("ev-cons-unit", avg.unit);
+    this.put("ev-cons", cons.value);
+    this.put("ev-cons-unit", cons.unit);
     this.put("ev-batt", `${fmt(T(ev.batteryC))} ${u.temp}`);
     this.put("ev-mode", driveModeLabel(ev.driveMode));
     this.out["ev-soc"]!.parentElement!.classList.toggle("is-limit", ev.soc < 0.1);

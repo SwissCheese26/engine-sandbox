@@ -139,7 +139,7 @@
   display: none;
 }
 
-/* ── drive selector P R N D (in place of ▲ gear ▼) ── */
+/* ── drive selector P N D (in place of ▲ gear ▼) ── */
 .shiftpad.is-ev {
   grid-template-rows: auto;
 }
@@ -149,7 +149,7 @@
 }
 .shiftpad__ev {
   display: grid;
-  grid-template-columns: repeat(2, 44px);
+  grid-template-columns: 44px;
   gap: 4px;
 }
 .shiftpad__sel {
@@ -318,7 +318,7 @@
   display: none;
 }
 
-/* phones with the P R N D selector: a tighter control bar, so Ready, selector, P, brake and gas fit in 360 px */
+/* phones with the P N D selector: a tighter control bar, so Ready, selector, P, brake and gas fit in 360 px */
 @media (max-width: 700px) {
   .deck:has(.shiftpad.is-ev:not([hidden])) {
     padding-inline: var(--space-2);
