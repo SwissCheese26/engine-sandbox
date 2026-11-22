@@ -2488,3 +2488,49 @@ kbd {
 .gearbox__readouts [data-out="gear-oil"].is-low {
   color: var(--signal);
 }
+
+/* narrow phones (≤ 420 px, e.g. 360/390): key, starter, shift pad, park, brake and gas share one static row without
+   overlapping. Each control shrinks to the 44 px touch minimum and the gaps get tighter; the console column keeps
+   its content width (asserted by the E2E overlap check in tests/e2e/smoke.mjs). */
+@media (max-width: 420px) {
+  /* the captions under key and starter stay for screen readers; the lock and the START/STOP cap speak for themselves */
+  .ignkey__text,
+  .starter__text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .console__group--main {
+    gap: var(--space-2);
+  }
+  .ignkey,
+  .starter {
+    min-width: 44px;
+  }
+  .ignkey__lock,
+  .starter__ring { width: 44px; height: 44px; }
+  .starter__cap { width: 34px; height: 34px; }
+  .console__group--main > .btn {
+    min-height: 44px;
+    max-width: 100%;
+    white-space: normal;
+  }
+  .pedals {
+    gap: var(--space-1);
+  }
+  .shiftpad__btn,
+  .parkbtn__plate {
+    width: 44px;
+  }
+  .deck .brakepedal__plate,
+  .deck:has(.shiftpad:not([hidden]):not(.is-auto)) .brakepedal__plate,
+  .deck:has(.shiftpad.is-auto:not([hidden])) .brakepedal__plate {
+    width: 48px;
+  }
+  .pedal__track {
+    width: 52px;
+  }
+}

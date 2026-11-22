@@ -364,3 +364,14 @@
     min-height: 44px;
   }
 }
+
+/* narrow phones (≤ 420 px): P, N, D in one 44 px column so the pedals leave room for Ready and the console button
+   (no overlap; tests/e2e/deck.mjs) */
+@media (max-width: 420px) {
+  .shiftpad__ev {
+    grid-template-columns: 44px;
+  }
+  .shiftpad__ev .shiftpad__sel {
+    grid-column: auto;
+  }
+}

@@ -25,6 +25,7 @@ _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `
 
 ### Behoben
 
+- Auf schmalen Handys (360–420 px) überdecken sich die Bedienelemente unten nicht mehr: Schaltknöpfe, P N D, Halten, Bremse und Gas sitzen neben Zündschlüssel, Starter und „Prüfstand und Ton“, alle mindestens 44 px groß. Die Beschriftungen unter Schlüssel und Starter entfallen dort. ([#133](https://github.com/SwissCheese26/engine-sandbox/issues/133))
 - Im E-Tuner lassen sich jetzt 4 Motoren wählen, z. B. 2 vorn und 2 hinten wie beim Rimac, aber auch 1 + 3, 3 + 1, 0 + 4 oder 4 + 0. Die Achse, die du gerade einstellst, bleibt, die andere gibt nach. ([#127](https://github.com/SwissCheese26/engine-sandbox/issues/127), [#128](https://github.com/SwissCheese26/engine-sandbox/issues/128))
 - Der Verbrauch eines Elektroautos zeigt beim Rekuperieren keine negativen Werte mehr, sondern den Durchschnitt der Fahrt. ([#108](https://github.com/SwissCheese26/engine-sandbox/issues/108), [#125](https://github.com/SwissCheese26/engine-sandbox/issues/125))
 - Auf dem Handy ist die Leistungsanzeige im E-Tacho kleiner, Tempo und Anzeigen passen wieder auf den Schirm. Felder, Knöpfe und Auswahllisten der Werkbank sind dort mindestens 44 px hoch, nichts ragt mehr über den Rand. ([#120](https://github.com/SwissCheese26/engine-sandbox/issues/120), [#125](https://github.com/SwissCheese26/engine-sandbox/issues/125))

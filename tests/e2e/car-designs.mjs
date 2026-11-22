@@ -5,6 +5,7 @@
 // control bar (.deck) does not move. "Automatisch" with a car that brings its own cluster picks that design.
 // Screenshots: smoke-<label>-cardesign-<id>.png. Called from smoke.mjs.
 import { join } from "node:path";
+import { deckOverlaps } from "./deck.mjs";
 
 const DESIGNS = [["copper-digital", "digital"], ["ingolstadt-red", "classic"], ["munich-orange", "classic"]];
 
@@ -83,6 +84,7 @@ export async function carDesignChecks({ browser, base, outDir, failures, errors,
     if (b.inset !== (id === "munich-orange")) bad.push(`Verbrauchsanzeige im Drehzahlmesser: ${b.inset}`);
     if (b.overflow > 0) bad.push(`horizontaler Überlauf ${b.overflow} px`);
     if (a.deck !== b.deck) bad.push(`Bedienleiste bewegt sich (${a.deck} → ${b.deck})`);
+    bad.push(...(await deckOverlaps(page)).map((m) => `Bedienleiste: ${m}`));
     if (bad.length) fail(`${id}: ${bad.join(", ")}`);
     await page.evaluate(() => document.querySelector(".stage__view .ck")?.scrollIntoView({ block: "start" }));
     await page.waitForTimeout(150);
