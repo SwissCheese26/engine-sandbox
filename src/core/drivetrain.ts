@@ -731,6 +731,8 @@ export class Drivetrain {
     this.evCfg = car.ev ? structuredClone(car.ev) : null;
     if (this.evCfg) this.spec = { ratios: [1], finalDrive: evRefRatio(this.evCfg), efficiency: this.evCfg.gearEfficiency, shiftTimeS: 0 };
     Object.assign(this.st, this.fresh(car.gearbox, this.spec.finalDrive, car.speedLimitKmh), { maxSpeedKmh: 0, t0to100S: null });
+    this.t100Armed = false;
+    this.t100LiftS = 0;
   }
 
   /** μ = tyre × surface × tread temperature × user/water-film factor × compound window × aquaplaning (issue #23). */
@@ -1290,17 +1292,7 @@ export class Drivetrain {
       s.maxSpeedKmh = s.speedKmh;
       s.maxSpeedLimited = this.govActive && s.speedLimitKmh !== null && s.speedKmh >= s.speedLimitKmh - 3;
     }
-    if (s.speedKmh < 0.5 && pedal > 0.05 && s.t0to100Running === null) s.t0to100Running = 0;
-    if (s.t0to100Running !== null) {
-      if ((s.speedKmh < 0.5 && pedal < 0.02) || !engine.running) s.t0to100Running = null;
-      else {
-        s.t0to100Running += dt;
-        if (s.speedKmh >= 100) {
-          s.t0to100S = s.t0to100Running;
-          s.t0to100Running = null;
-        }
-      }
-    }
+    this.track0to100(dt, pedal, brake, engine.running);
 
     const converter = conv && s.gear > 0 && engine.running && !this.gbFailed ? this.converterCoupling() : undefined;
     // gearbox oil (issue #53): the output shaft turns with the wheels also in N
@@ -1327,6 +1319,50 @@ export class Drivetrain {
       ...(launchLimitRpm > 0 ? { launchLimitRpm } : {}),
       ...(torqueLimitNm > 0 ? { torqueLimitNm } : {}),
     };
+  }
+
+  /**
+   * 0–100 km/h timer: armed at standstill, it starts when the car is let go under throttle (gas on, brake off;
+   * revving against the brake or launch control does not count yet). An automatic that creeps off the brake first
+   * still counts if the gas goes on below 5 km/h. Lifting off for longer than a short pause (not while shifting),
+   * braking, or the engine stopping discards the run.
+   */
+  private t100Armed = false;
+  private t100LiftS = 0;
+  private track0to100(dt: number, pedal: number, brake: number, running: boolean) {
+    const s = this.st;
+    if (!running) {
+      s.t0to100Running = null;
+      this.t100Armed = false;
+      return;
+    }
+    if (s.speedKmh < 0.5 && (pedal <= 0.05 || brake > 0.05)) {
+      s.t0to100Running = null;
+      this.t100Armed = true;
+      this.t100LiftS = 0;
+      return;
+    }
+    if (s.t0to100Running === null) {
+      if (!this.t100Armed || s.speedKmh >= 5) {
+        this.t100Armed = false; // already rolling: only a (near) standing start counts
+        return;
+      }
+      if (pedal <= 0.05 || brake > 0.05) return; // creeping off the brake: still armed
+      s.t0to100Running = 0;
+      this.t100Armed = false;
+      this.t100LiftS = 0;
+    }
+    if (pedal >= 0.05) this.t100LiftS = 0;
+    else if (!s.shifting) this.t100LiftS += dt; // a shift pause does not count as lifting off
+    if (brake > 0.05 || this.t100LiftS > 0.6) {
+      s.t0to100Running = null; // off the throttle: this run does not count
+      return;
+    }
+    s.t0to100Running += dt;
+    if (s.speedKmh >= 100) {
+      s.t0to100S = s.t0to100Running;
+      s.t0to100Running = null;
+    }
   }
 
   /**
@@ -1402,17 +1438,7 @@ export class Drivetrain {
       s.maxSpeedKmh = s.speedKmh;
       s.maxSpeedLimited = this.govActive && s.speedLimitKmh !== null && s.speedKmh >= s.speedLimitKmh - 3;
     }
-    if (s.speedKmh < 0.5 && pedal > 0.05 && s.t0to100Running === null) s.t0to100Running = 0;
-    if (s.t0to100Running !== null) {
-      if ((s.speedKmh < 0.5 && pedal < 0.02) || !engine.running) s.t0to100Running = null;
-      else {
-        s.t0to100Running += dt;
-        if (s.speedKmh >= 100) {
-          s.t0to100S = s.t0to100Running;
-          s.t0to100Running = null;
-        }
-      }
-    }
+    this.track0to100(dt, pedal, brake, engine.running);
     const motorC = engine.ev?.motorC ?? this.env.ambientC;
     this.gbOilC = motorC;
     Object.assign(s, { gearboxOilC: motorC, gearboxOilWarn: false, gearboxProtect: false, gearboxWear: 0, gearboxFailed: false });
