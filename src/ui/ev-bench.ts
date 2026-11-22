@@ -2,7 +2,7 @@
 // plates while an electric car is loaded and uses the same field rows (label, slider, value, unit, effect line) and
 // a summary plate. The tuning is applied at standstill and stored per vehicle by the app (ev-tuning-store.ts).
 import type { LibraryCar } from "../data/vehicle-library.ts";
-import { LIMIT_LABEL, PS_PER_KW, estimateEvAsync, evTuningOf, maxTuning, tuneEv, type EvTuning, type TunedEv } from "../data/ev-tuning.ts";
+import { LIMIT_LABEL, PS_PER_KW, estimateEvAsync, evTuningOf, maxTuning, tuneEv, type EvTuning, type MotorAxleKey, type TunedEv } from "../data/ev-tuning.ts";
 import { EV_FIELDS, EV_GROUPS, formValue, readForm, type EvField } from "./ev-fields.ts";
 import { clamp, fmt, parseNumber, snap } from "./format.ts";
 import { prefs } from "./settings.ts";
@@ -82,11 +82,11 @@ export class EvBench {
   }
 
   /** The tuning shown in the form (validated). */
-  read(): EvTuning {
+  read(keep?: MotorAxleKey): EvTuning {
     // the rotor speed limit depends on ratios and motors, not on the limiter: computed first, then the limiter read
     const f = this.factory();
-    this.rpmVmax = tuneEv(this.car!.setup.ev!, readForm(this.values, f), this.radius()).rpmVmaxKmh;
-    return readForm(this.values, f, this.rpmVmax);
+    this.rpmVmax = tuneEv(this.car!.setup.ev!, readForm(this.values, f, Infinity, keep), this.radius()).rpmVmaxKmh;
+    return readForm(this.values, f, this.rpmVmax, keep);
   }
 
   private factory(): EvTuning {
@@ -145,8 +145,8 @@ export class EvBench {
   private set(k: keyof EvTuning, v: string) {
     this.values[k] = v;
     this.put("note", "");
-    // motor counts are validated together (1 … 4 in all): the form shows what will be built
-    const t = this.read();
+    // motor counts are validated together (1 … 4 in all): the axle just picked stays, the other one gives way
+    const t = this.read(k === "frontMotors" || k === "rearMotors" ? k : undefined);
     this.fill(t);
   }
 

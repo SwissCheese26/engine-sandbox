@@ -108,14 +108,23 @@ export function evTuningOf(ev: EvConfig, tyre: TyreType = "uhp", speedLimitKmh: 
   };
 }
 
-/** Any stored / typed value → valid tuning (unknown parts from `fallback`). */
-export function validTuning(raw: unknown, fallback: EvTuning): EvTuning {
+/** Motor-count field the player just picked: validation keeps it and takes motors off the other axle. */
+export type MotorAxleKey = "frontMotors" | "rearMotors";
+
+/**
+ * Any stored / typed value → valid tuning (unknown parts from `fallback`).
+ * More than MAX_MOTORS in all: the axle in `keep` (the one just picked) stays, the other one gives way; without
+ * `keep` the axle with more motors gives way.
+ */
+export function validTuning(raw: unknown, fallback: EvTuning, keep?: MotorAxleKey): EvTuning {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const L = TUNING_LIMITS;
   const n = (k: Exclude<keyof typeof L, "vmaxKmh">) => (typeof r[k] === "number" && Number.isFinite(r[k]) ? clamp(r[k] as number, L[k].min, L[k].max) : fallback[k]);
   let front = Math.round(n("frontMotors"));
   let rear = Math.round(n("rearMotors"));
-  if (front + rear < 1) rear = 1;
+  if (front + rear < 1) keep === "rearMotors" ? (front = 1) : (rear = 1);
+  if (keep === "frontMotors") rear = Math.min(rear, MAX_MOTORS - front);
+  else if (keep === "rearMotors") front = Math.min(front, MAX_MOTORS - rear);
   while (front + rear > MAX_MOTORS) rear > front ? rear-- : front--;
   return {
     frontMotors: front, rearMotors: rear, motorScale: n("motorScale"), currentScale: n("currentScale"), packKwh: n("packKwh"),
