@@ -20,7 +20,7 @@ export async function carDesignChecks({ browser, base, outDir, failures, errors,
   await page.goto(base, { waitUntil: "load" });
   await page.evaluate(() => {
     localStorage.clear();
-    localStorage.setItem("pruefzelle.settings", JSON.stringify({ layout: "cockpit", cockpitDesign: "classic", sandboxIntro: false, ckGauges: ["oilT", "gearOil"] }));
+    localStorage.setItem("pruefzelle.settings", JSON.stringify({ layout: "cockpit", cockpitDesign: "classic", sandboxIntro: false }));
   });
   await page.goto(base + "#sandbox", { waitUntil: "load" });
   if (await page.isVisible('.wizard[open] [data-pick="engine"]')) {
@@ -38,6 +38,10 @@ export async function carDesignChecks({ browser, base, outDir, failures, errors,
     }
   }, [sel, v]);
   await pick('select[data-control="layout"]', "cockpit");
+  // extra gauges incl. gearbox oil (offered on the chassis dyno), picked like a player does
+  await page.click(".ck__extras > summary");
+  for (const id of ["oilT", "gearOil"]) await page.check(`.ck__extras [data-gauge="${id}"]`);
+  await page.click(".ck__extras > summary");
   await page.mouse.click(2, 2);
   await page.keyboard.press("i");
   await page.keyboard.down("a");
@@ -80,6 +84,8 @@ export async function carDesignChecks({ browser, base, outDir, failures, errors,
     if (b.overflow > 0) bad.push(`horizontaler Überlauf ${b.overflow} px`);
     if (a.deck !== b.deck) bad.push(`Bedienleiste bewegt sich (${a.deck} → ${b.deck})`);
     if (bad.length) fail(`${id}: ${bad.join(", ")}`);
+    await page.evaluate(() => document.querySelector(".stage__view .ck")?.scrollIntoView({ block: "start" }));
+    await page.waitForTimeout(150);
     await page.screenshot({ path: join(outDir, `smoke-${label}-cardesign-${id}.png`) });
   }
   await page.keyboard.up(" ");
