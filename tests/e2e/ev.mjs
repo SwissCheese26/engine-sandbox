@@ -214,10 +214,12 @@ export async function evChecks({ browser, base, outDir, failures, errors, label,
     r: document.querySelector('.evb [data-tune="rearMotors"] input:checked')?.value,
     motor: document.querySelector('.evb [data-o="motor"]')?.textContent ?? "",
   }));
-  for (const [k, v, want] of [["rearMotors", 4, "0+4"], ["frontMotors", 4, "4+0"], ["rearMotors", 1, "3+1"], ["rearMotors", 3, "1+3"], ["frontMotors", 2, "2+2"]]) {
+  // later: up to 4 per axle, 8 in all (#136): the other axle stays
+  for (const [k, v, want] of [["rearMotors", 4, "1+4"], ["frontMotors", 4, "4+4"], ["rearMotors", 1, "4+1"], ["frontMotors", 2, "2+1"]]) {
     await set(k, v);
     const c = await counts();
-    if (`${c.f}+${c.r}` !== want || !/^4 ×/.test(c.motor)) fail(`E-Tuner: ${k} = ${v} ergibt ${c.f}+${c.r} statt ${want} (${c.motor})`);
+    const n = want.split("+").reduce((a, x) => a + Number(x), 0);
+    if (`${c.f}+${c.r}` !== want || !c.motor.startsWith(`${n} ×`)) fail(`E-Tuner: ${k} = ${v} ergibt ${c.f}+${c.r} statt ${want} (${c.motor})`);
   }
   for (const [k, v] of [["frontMotors", 2], ["rearMotors", 2], ["motorScale", 200], ["currentScale", 150], ["packKwh", 150], ["chemistry", "nca"], ["cRate", 12], ["highVoltage", 1], ["cooling", "track"], ["tyre", "semi-slick"], ["gears", 2], ["firstRatio", 15], ["secondRatio", 8], ["shiftKmh", 120], ["vmaxKmh", 450]]) await set(k, v);
   await page.evaluate(() => document.activeElement?.blur());
@@ -238,8 +240,7 @@ export async function evChecks({ browser, base, outDir, failures, errors, label,
   await page.screenshot({ path: join(outDir, `smoke-${label}-ev-werkbank.png`) });
   await page.locator(".evb__summary").scrollIntoViewIfNeeded();
   await page.locator(".evb__summary").screenshot({ path: join(outDir, `smoke-${label}-ev-summary.png`) });
-  await page.click('.evb [data-control="tune-apply"]');
-  await page.waitForTimeout(200);
+  await page.waitForTimeout(500); // changes apply on their own (no "Anwenden")
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("pruefzelle.evTuning") ?? "{}")["ev-tesla-model-s-plaid"]);
   if (!stored || stored.frontMotors !== 2 || !stored.highVoltage || stored.gears !== 2 || stored.vmaxKmh !== null) fail(`E-Tuner speichert nicht je Fahrzeug (${JSON.stringify(stored)}; ${await page.textContent(".evb [data-o=note]")}; ${await page.evaluate(() => window.__pruefzelle?.gearbox.drivetrain.state.speedKmh)})`);
   const builtMotors = await page.evaluate(() => window.__pruefzelle?.gearbox.drivetrain.ev?.motors.map((m) => m.axle).join(","));
@@ -272,8 +273,7 @@ export async function evChecks({ browser, base, outDir, failures, errors, label,
   // the E-Tuner's own reset button does the same
   if (touch) await page.click(".bench-toggle");
   await set("frontMotors", 2);
-  await page.click('.evb [data-control="tune-apply"]');
-  await page.waitForTimeout(200);
+  await page.waitForTimeout(500); // changes apply on their own (no "Anwenden")
   await page.click('.evb [data-control="tune-reset"]');
   await page.waitForTimeout(300);
   const back2 = await page.evaluate(() => ({ stored: JSON.parse(localStorage.getItem("pruefzelle.evTuning") ?? "{}")["ev-tesla-model-s-plaid"] ?? null, motors: window.__pruefzelle?.gearbox.drivetrain.ev?.motors.length }));

@@ -26,7 +26,7 @@ describe("E-Tuner storage", () => {
     st.setItem(EV_TUNING_KEY, JSON.stringify({ [plaid.id]: { frontMotors: 9, cRate: "x", tyre: 3 } }));
     const t = loadEvTuning(plaid, st)!;
     const f = evTuningOf(plaid.setup.ev!, plaid.setup.tyre.type);
-    expect(t.frontMotors + t.rearMotors).toBeLessThanOrEqual(4);
+    expect(t.frontMotors + t.rearMotors).toBeLessThanOrEqual(8);
     expect(t.cRate).toBe(f.cRate);
     expect(t.tyre).toBe(f.tyre);
     st.setItem(EV_TUNING_KEY, "{oops");

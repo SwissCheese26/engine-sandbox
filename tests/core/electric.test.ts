@@ -255,9 +255,9 @@ describe("EV tuning (electric.md §6)", () => {
       expect(t.systemKw).toBeCloseTo(evSystemPowerKw(ev), 6);
     }
   });
-  test("1 … 4 motors, limits enforced", () => {
+  test("1 … 8 motors (4 per axle), limits enforced", () => {
     const v = validTuning({ ...factory, frontMotors: 4, rearMotors: 4, cRate: 99, motorScale: -1, tyre: "rubber" }, factory);
-    expect(v.frontMotors + v.rearMotors).toBe(4);
+    expect(v.frontMotors + v.rearMotors).toBe(8);
     expect(v.cRate).toBe(15);
     expect(v.motorScale).toBe(0.5);
     expect(v.tyre).toBe("uhp");
