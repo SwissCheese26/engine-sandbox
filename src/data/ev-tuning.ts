@@ -24,7 +24,9 @@ export const PS_PER_KW = 1000 / 735.49875;
 export const DRIVE_UNIT_KG_PER_KW = 0.4;
 export const INVERTER_MAX_A = 2500;
 export const PACK_BUS_MAX_A = 3000;
+/** Motors per axle (e.g. two per wheel); in all at most 2 × 4 = 8 [S]. */
 export const MAX_MOTORS = 4;
+export const MAX_MOTORS_TOTAL = 2 * MAX_MOTORS;
 
 export type EvCooling = "serie" | "sport" | "track";
 export const COOLING: Record<EvCooling, { label: string; battery: number; motor: number; kg: number }> = {
@@ -113,7 +115,7 @@ export type MotorAxleKey = "frontMotors" | "rearMotors";
 
 /**
  * Any stored / typed value → valid tuning (unknown parts from `fallback`).
- * More than MAX_MOTORS in all: the axle in `keep` (the one just picked) stays, the other one gives way; without
+ * At most MAX_MOTORS per axle and MAX_MOTORS_TOTAL in all (with 4 per axle never reached); more: the axle in `keep` (the one just picked) stays, the other one gives way; without
  * `keep` the axle with more motors gives way.
  */
 export function validTuning(raw: unknown, fallback: EvTuning, keep?: MotorAxleKey): EvTuning {
@@ -123,9 +125,9 @@ export function validTuning(raw: unknown, fallback: EvTuning, keep?: MotorAxleKe
   let front = Math.round(n("frontMotors"));
   let rear = Math.round(n("rearMotors"));
   if (front + rear < 1) keep === "rearMotors" ? (front = 1) : (rear = 1);
-  if (keep === "frontMotors") rear = Math.min(rear, MAX_MOTORS - front);
-  else if (keep === "rearMotors") front = Math.min(front, MAX_MOTORS - rear);
-  while (front + rear > MAX_MOTORS) rear > front ? rear-- : front--;
+  if (keep === "frontMotors") rear = Math.min(rear, MAX_MOTORS_TOTAL - front);
+  else if (keep === "rearMotors") front = Math.min(front, MAX_MOTORS_TOTAL - rear);
+  while (front + rear > MAX_MOTORS_TOTAL) rear > front ? rear-- : front--;
   return {
     frontMotors: front, rearMotors: rear, motorScale: n("motorScale"), currentScale: n("currentScale"), packKwh: n("packKwh"),
     chemistry: isChem(r.chemistry) ? r.chemistry : fallback.chemistry, cRate: n("cRate"),

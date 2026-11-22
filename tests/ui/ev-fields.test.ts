@@ -20,15 +20,15 @@ describe("Werkbank Elektroantrieb fields (#108)", () => {
     expect(readForm(vals, factory)).toEqual(factory);
     expect(readForm({ ...vals, currentScale: "150", highVoltage: "1" }, factory)).toMatchObject({ currentScale: 1.5, highVoltage: true });
   });
-  test("motor counts are validated together (1 … 4)", () => {
+  test("motor counts: up to 4 per axle, 8 in all, at least 1", () => {
     const vals = Object.fromEntries(EV_FIELDS.map((f) => [f.key, formValue(f, factory)]));
     const t = readForm({ ...vals, frontMotors: "4", rearMotors: "4" }, factory);
-    expect(t.frontMotors + t.rearMotors).toBe(4);
+    expect([t.frontMotors, t.rearMotors]).toEqual([4, 4]);
     expect(readForm({ ...vals, frontMotors: "0", rearMotors: "0" }, factory).rearMotors).toBe(1);
   });
   // Arthur: "4 Motoren kann man nicht auswählen": the clamp took motors off the axle just picked
   const combos: [number, number][] = [];
-  for (let f = 0; f <= MAX_MOTORS; f++) for (let r = 0; r <= MAX_MOTORS - f; r++) if (f + r >= 1) combos.push([f, r]);
+  for (let f = 0; f <= MAX_MOTORS; f++) for (let r = 0; r <= MAX_MOTORS; r++) if (f + r >= 1) combos.push([f, r]);
   test.each(combos)("every real combination is buildable: %i front + %i rear", (f, r) => {
     const vals = Object.fromEntries(EV_FIELDS.map((x) => [x.key, formValue(x, factory)]));
     const t = readForm({ ...vals, frontMotors: String(f), rearMotors: String(r) }, factory);
@@ -39,20 +39,20 @@ describe("Werkbank Elektroantrieb fields (#108)", () => {
     // power stays capped by the pack (C-rate, contactors): more motors never exceed what the battery delivers
     expect(tuned.systemKw).toBeLessThanOrEqual(tuned.ev.motors.reduce((a, m) => a + m.peakPowerKw, 0) + 1e-6);
   });
-  test("picking a count keeps it, the other axle gives way (Plaid 1 + 2)", () => {
+  test("picking a count keeps it, the other axle stays (Plaid 1 + 2)", () => {
     const pick = (from: [number, number], key: "frontMotors" | "rearMotors", v: number) => {
       const t = validTuning({ ...factory, frontMotors: from[0], rearMotors: from[1], [key]: v }, factory, key);
       return [t.frontMotors, t.rearMotors];
     };
-    expect(pick([1, 2], "rearMotors", 4)).toEqual([0, 4]);
-    expect(pick([1, 2], "frontMotors", 4)).toEqual([4, 0]);
+    expect(pick([1, 2], "rearMotors", 4)).toEqual([1, 4]);
+    expect(pick([1, 2], "frontMotors", 4)).toEqual([4, 2]);
     expect(pick([1, 2], "frontMotors", 2)).toEqual([2, 2]);
-    expect(pick([2, 2], "frontMotors", 3)).toEqual([3, 1]);
-    expect(pick([2, 2], "rearMotors", 3)).toEqual([1, 3]);
+    expect(pick([2, 2], "frontMotors", 3)).toEqual([3, 2]);
+    expect(pick([4, 4], "rearMotors", 3)).toEqual([4, 3]);
     expect(pick([0, 1], "rearMotors", 0)).toEqual([1, 0]);
     expect(pick([1, 0], "frontMotors", 0)).toEqual([0, 1]);
-    // without a picked axle (stored values) the larger axle gives way, as before
-    expect(validTuning({ ...factory, frontMotors: 4, rearMotors: 4 }, factory)).toMatchObject({ frontMotors: 2, rearMotors: 2 });
+    // Arthur: 4 + 4 must be possible (stored values too)
+    expect(validTuning({ ...factory, frontMotors: 4, rearMotors: 4 }, factory)).toMatchObject({ frontMotors: 4, rearMotors: 4 });
   });
   test("a Rimac-style 2 + 2 is traction limited and quicker than front-only 4 + 0", () => {
     const run = (f: number, r: number) => estimateEv(plaid.setup, tuneEv(plaid.setup.ev!, { ...factory, frontMotors: f, rearMotors: r }, plaid.setup.vehicle.wheelRadiusM));
