@@ -23,6 +23,8 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-11-22",
     title: "Elektroantrieb in der Werkbank, 2-Gang-Getriebe und Vmax für E-Autos, Live-Reichweite und Fahrstufen P N D, Bremse hält bei der Automatik die Antriebsräder",
     items: [
+      { kind: "behoben", text: "Im E-Tuner lassen sich jetzt 4 Motoren wählen, z. B. 2 vorn und 2 hinten wie beim Rimac, aber auch 1 + 3, 3 + 1, 0 + 4 oder 4 + 0. Die Achse, die du gerade einstellst, bleibt, die andere gibt nach.", refs: [127, 128] },
+      { kind: "geändert", text: "Beim eigenen Fahrzeug kommt der Antrieb zuerst: Motor, Getriebe und Antrieb, dann Reifen, dann Gewicht, cW-Wert und Stirnfläche, zuletzt der Tank.", refs: [127, 128] },
       { kind: "geändert", text: "Der E-Tuner sitzt jetzt in der Werkbank: Mit einem Elektroauto zeigt sie statt der Motorplatten die Platten „Elektromotoren“, „Getriebe und Vmax“, „Akku“ und „Kühlung und Reifen“ im gleichen Look wie beim Verbrenner, dazu eine Zusammenfassung mit PS, Vmax, 0–100 und Reichweite. Gespeichert wird weiter je Fahrzeug, „Auf Werkszustand“ setzt zurück.", refs: [108, 125] },
       { kind: "neu", text: "2-Gang-Getriebe für E-Autos wie bei Porsche Taycan und Audi e-tron GT: kurzer 1. Gang (etwa 15 : 1) zum Anfahren, langer 2. Gang (etwa 8 : 1) für Vmax, mit einstellbarem Schaltpunkt und kurzer Zugkraftunterbrechung beim Schalten. Die Untersetzung lässt sich auch beim 1-Gang-Getriebe ändern.", refs: [108, 124, 125] },
       { kind: "neu", text: "Den Vmax-Begrenzer von E-Autos kannst du in der Werkbank anheben, bis zur Drehzahlgrenze der Motoren. Am rechten Anschlag ist er aus, dann steht „begrenzt durch Motordrehzahl“.", refs: [108, 125] },

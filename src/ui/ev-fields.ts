@@ -3,7 +3,7 @@
 // Limits and their physics: src/data/ev-tuning.ts (docs/research/electric.md §6).
 import { TYRE_TYPES } from "../core/index.ts";
 import type { EvChemistry, TyreType } from "../core/index.ts";
-import { CELLS, COOLING, MAX_MOTORS, TUNING_LIMITS, validTuning, type EvCooling, type EvTuning } from "../data/ev-tuning.ts";
+import { CELLS, COOLING, MAX_MOTORS, TUNING_LIMITS, validTuning, type EvCooling, type MotorAxleKey, type EvTuning } from "../data/ev-tuning.ts";
 
 export type EvGroupId = "motors" | "drive" | "battery" | "chassis";
 
@@ -77,9 +77,10 @@ export function formValue(f: EvField, t: EvTuning, rpmVmaxKmh = Infinity): strin
 
 /**
  * Form values (key → string, numbers in their shown scale) → validated tuning (unknown parts from `fallback`).
- * A Vmax limiter at the rotor speed limit (`rpmVmaxKmh`) is off (null).
+ * A Vmax limiter at the rotor speed limit (`rpmVmaxKmh`) is off (null). `keep`: the motor count just picked stays,
+ * the other axle gives way (1 … 4 motors in all).
  */
-export function readForm(values: Partial<Record<keyof EvTuning, string>>, fallback: EvTuning, rpmVmaxKmh = Infinity): EvTuning {
+export function readForm(values: Partial<Record<keyof EvTuning, string>>, fallback: EvTuning, rpmVmaxKmh = Infinity, keep?: MotorAxleKey): EvTuning {
   const raw: Record<string, unknown> = {};
   for (const f of EV_FIELDS) {
     const s = values[f.key];
@@ -93,7 +94,7 @@ export function readForm(values: Partial<Record<keyof EvTuning, string>>, fallba
     }
   }
   if (typeof raw.vmaxKmh === "number" && raw.vmaxKmh >= Math.min(rpmVmaxKmh, L.vmaxKmh.max) - 2.5) raw.vmaxKmh = null;
-  return validTuning(raw, fallback);
+  return validTuning(raw, fallback, keep);
 }
 
 /** Battery consumption to show: the trip average (instantaneous values go negative while regenerating), never < 0. */

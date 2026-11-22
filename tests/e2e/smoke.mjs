@@ -213,6 +213,19 @@ async function createOwnChecks(page, label) {
     step: document.querySelector('.wizard [aria-current="step"]')?.dataset.stepMark,
   }));
   if (!st.form || st.base !== "car" || st.step !== "2") failures.push(`${label}: „Neues erstellen“ öffnet das Formular nicht mit Fahrzeugtyp Auto (${JSON.stringify(st)})`);
+  // Arthur: the drive comes first: engine, gearbox, drive, tyres, then the body (mass, cW, area), tank last
+  const order = await page.evaluate(() => {
+    const keys = ["base", "engineId", "gearbox", "drive", "tyre", "massKg", "cw", "areaM2", "tankL"];
+    const el = (k) => (k === "tyre" ? document.querySelector('.wizard [data-out="tyre-field"]') : document.querySelector(`.wizard [data-c="${k}"]`));
+    const pos = (k) => { const r = el(k)?.getBoundingClientRect(); return r ? [Math.round(r.top), Math.round(r.left)] : null; };
+    const nodes = keys.map(el);
+    const domOk = nodes.every(Boolean) && nodes.every((n, i) => i === 0 || (nodes[i - 1].compareDocumentPosition(n) & Node.DOCUMENT_POSITION_FOLLOWING));
+    // reading order on screen too (top first, then left)
+    const ps = keys.map(pos);
+    const visOk = ps.every(Boolean) && ps.every((p, i) => i === 0 || p[0] > ps[i - 1][0] + 4 || (Math.abs(p[0] - ps[i - 1][0]) <= 4 && p[1] > ps[i - 1][1]));
+    return { domOk, visOk, ps };
+  });
+  if (!order.domOk || !order.visOk) failures.push(`${label}: Formular „Eigenes Fahrzeug“ nicht in der Reihenfolge Motor → Getriebe → Antrieb → Reifen → Karosserie → Tank (${JSON.stringify(order)})`);
   const pick = await page.evaluate(() => {
     const sel = [...document.querySelectorAll(".wizard .tyrepick select")];
     const tops = new Set(sel.map((s) => Math.round(s.getBoundingClientRect().top)));
