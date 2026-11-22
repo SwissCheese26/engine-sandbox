@@ -67,6 +67,7 @@ export class EvBench {
       this.scheduleApply();
     });
     sum.querySelector("[data-control=tune-reset]")!.addEventListener("click", () => {
+      clearTimeout(this.applyTimer);
       this.put("note", this.onFactory() ? "Werkszustand." : "Erst anhalten, dann lässt sich das Auto zurücksetzen.");
     });
     this.el = el;
@@ -74,6 +75,7 @@ export class EvBench {
 
   /** The loaded electric car and the tuning it carries now, or null for a combustion car. */
   setCar(car: LibraryCar | null, tuning?: EvTuning) {
+    clearTimeout(this.applyTimer);
     this.car = car?.setup.ev ? car : null;
     this.el.hidden = !this.car;
     if (this.car) {
