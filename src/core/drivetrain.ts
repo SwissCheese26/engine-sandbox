@@ -32,7 +32,7 @@ import { DEFAULT_TANK_L, FuelTank } from "./fuel-tank.ts";
 import type { Environment } from "./environment.ts";
 import { DEFAULT_TYRE, TYRE_TYPES, aquaplaningFactor, compoundFactor, speedRatingKmh, stepTyreTemp, tyreGrip, tyreRadii } from "./tyres.ts";
 import type { RoadSurface, TyreSetup } from "./tyres.ts";
-import { drivenAxleLoadN, wheelieLimitN } from "./vehicle.ts";
+import { brakeStandHoldN, drivenAxleLoadN, wheelieLimitN } from "./vehicle.ts";
 import { converterK, converterTorques } from "./converter.ts";
 import { GEARBOX_HYST_K, GEARBOX_THERMAL, GEARBOX_WARM_C, gearboxDragPenalty, gearboxThermalKind, gearboxWearRate, stepGearboxOil } from "./gearbox-thermal.ts";
 import { dynoSweep } from "./dyno.ts";
@@ -42,6 +42,10 @@ import { evRefRatio } from "./electric.ts";
 import type { ConverterCoupling, EvConfig, EngineConfig, EngineState, EngineSummary, SimInputs, VehicleCoupling, VehicleParams } from "./types.ts";
 
 export type GearboxType = "manual" | "dsg" | "cvt" | "sequential" | "automatic";
+
+/** Brake pedal range over which the brake-torque protection fades in (issues #104, #119) [S]. */
+const BTM_BRAKE_ON = 0.03;
+const BTM_BRAKE_FULL = 0.08;
 
 /** Gearboxes with an automatic shift schedule and tip mode (D / M): dual clutch and converter automatic. */
 export function isAutomaticType(type: GearboxType): boolean {
@@ -727,6 +731,8 @@ export class Drivetrain {
     this.evCfg = car.ev ? structuredClone(car.ev) : null;
     if (this.evCfg) this.spec = { ratios: [1], finalDrive: evRefRatio(this.evCfg), efficiency: this.evCfg.gearEfficiency, shiftTimeS: 0 };
     Object.assign(this.st, this.fresh(car.gearbox, this.spec.finalDrive, car.speedLimitKmh), { maxSpeedKmh: 0, t0to100S: null });
+    this.t100Armed = false;
+    this.t100LiftS = 0;
   }
 
   /** μ = tyre × surface × tread temperature × user/water-film factor × compound window × aquaplaning (issue #23). */
@@ -1286,22 +1292,13 @@ export class Drivetrain {
       s.maxSpeedKmh = s.speedKmh;
       s.maxSpeedLimited = this.govActive && s.speedLimitKmh !== null && s.speedKmh >= s.speedLimitKmh - 3;
     }
-    if (s.speedKmh < 0.5 && pedal > 0.05 && s.t0to100Running === null) s.t0to100Running = 0;
-    if (s.t0to100Running !== null) {
-      if ((s.speedKmh < 0.5 && pedal < 0.02) || !engine.running) s.t0to100Running = null;
-      else {
-        s.t0to100Running += dt;
-        if (s.speedKmh >= 100) {
-          s.t0to100S = s.t0to100Running;
-          s.t0to100Running = null;
-        }
-      }
-    }
+    this.track0to100(dt, pedal, brake, engine.running);
 
     const converter = conv && s.gear > 0 && engine.running && !this.gbFailed ? this.converterCoupling() : undefined;
     // gearbox oil (issue #53): the output shaft turns with the wheels also in N
     const outputRpm = (v / this.vehicle.wheelRadiusM) * s.finalDrive * RAD_TO_RPM;
     this.stepGearboxOil(dt, engine, clutch, inputRpm, outputRpm, converter, Number.isFinite(vRoad) ? vRoad : 0);
+    const torqueLimitNm = converter && brake > BTM_BRAKE_ON && pedal > 0.02 && Math.abs(Number.isFinite(vRoad) ? vRoad : 0) < 0.1 ? this.brakeStandLimit(ratio * s.finalDrive, g.efficiency, brake) : 0;
     return {
       vehicle: this.vehicle,
       totalRatio: ratio * s.finalDrive,
@@ -1320,7 +1317,70 @@ export class Drivetrain {
       ...(converter ? { converter } : {}),
       ...(held ? { parkingBrake: true } : {}),
       ...(launchLimitRpm > 0 ? { launchLimitRpm } : {}),
+      ...(torqueLimitNm > 0 ? { torqueLimitNm } : {}),
     };
+  }
+
+  /**
+   * 0–100 km/h timer: armed at standstill, it starts when the car is let go under throttle (gas on, brake off;
+   * revving against the brake or launch control does not count yet). An automatic that creeps off the brake first
+   * still counts if the gas goes on below 5 km/h. Lifting off for longer than a short pause (not while shifting),
+   * braking, or the engine stopping discards the run.
+   */
+  private t100Armed = false;
+  private t100LiftS = 0;
+  private track0to100(dt: number, pedal: number, brake: number, running: boolean) {
+    const s = this.st;
+    if (!running) {
+      s.t0to100Running = null;
+      this.t100Armed = false;
+      return;
+    }
+    if (s.speedKmh < 0.5 && (pedal <= 0.05 || brake > 0.05)) {
+      s.t0to100Running = null;
+      this.t100Armed = true;
+      this.t100LiftS = 0;
+      return;
+    }
+    if (s.t0to100Running === null) {
+      if (!this.t100Armed || s.speedKmh >= 5) {
+        this.t100Armed = false; // already rolling: only a (near) standing start counts
+        return;
+      }
+      if (pedal <= 0.05 || brake > 0.05) return; // creeping off the brake: still armed
+      s.t0to100Running = 0;
+      this.t100Armed = false;
+      this.t100LiftS = 0;
+    }
+    if (pedal >= 0.05) this.t100LiftS = 0;
+    else if (!s.shifting) this.t100LiftS += dt; // a shift pause does not count as lifting off
+    if (brake > 0.05 || this.t100LiftS > 0.6) {
+      s.t0to100Running = null; // off the throttle: this run does not count
+      return;
+    }
+    s.t0to100Running += dt;
+    if (s.speedKmh >= 100) {
+      s.t0to100S = s.t0to100Running;
+      s.t0to100Running = null;
+    }
+  }
+
+  /**
+   * Brake-torque protection of the converter automatic (issues #104, #119): standing in D with brake and throttle,
+   * engine and gearbox management cap the engine torque so the stall torque at the wheels, T·μ₀·i·η, stays at 90 % of
+   * what the braked driven wheels hold (own brake + μ·N, vehicle.ts). Protects converter and driveline; OEMs manage
+   * combined brake + throttle at standstill (e.g. GM US 11,390,281 B2, not verified). Calibration is an estimate [S]. Faded in over the brake pedal
+   * BTM_BRAKE_ON … BTM_BRAKE_FULL (no torque step at the threshold). 0 = no cap
+   * needed (the brakes hold full stall, e.g. AWD).
+   */
+  private brakeStandLimit(totalRatio: number, efficiency: number, brake: number): number {
+    const mu0 = Math.max(1, this.spec.converter?.stallTorqueRatio ?? 1);
+    if (!(totalRatio > 0)) return 0;
+    const limit = (0.9 * brakeStandHoldN(this.vehicle, brake, this.st.grip) * this.vehicle.wheelRadiusM) / (mu0 * totalRatio * efficiency);
+    const peak = this.summary.peakTorqueNm;
+    if (!(limit < peak)) return 0;
+    const w = Math.min(1, Math.max(0, (brake - BTM_BRAKE_ON) / (BTM_BRAKE_FULL - BTM_BRAKE_ON)));
+    return peak + (Math.max(0, limit) - peak) * w;
   }
 
   /**
@@ -1379,17 +1439,7 @@ export class Drivetrain {
       s.maxSpeedKmh = s.speedKmh;
       s.maxSpeedLimited = this.govActive && s.speedLimitKmh !== null && s.speedKmh >= s.speedLimitKmh - 3;
     }
-    if (s.speedKmh < 0.5 && pedal > 0.05 && s.t0to100Running === null) s.t0to100Running = 0;
-    if (s.t0to100Running !== null) {
-      if ((s.speedKmh < 0.5 && pedal < 0.02) || !engine.running) s.t0to100Running = null;
-      else {
-        s.t0to100Running += dt;
-        if (s.speedKmh >= 100) {
-          s.t0to100S = s.t0to100Running;
-          s.t0to100Running = null;
-        }
-      }
-    }
+    this.track0to100(dt, pedal, brake, engine.running);
     const motorC = engine.ev?.motorC ?? this.env.ambientC;
     this.gbOilC = motorC;
     Object.assign(s, { gearboxOilC: motorC, gearboxOilWarn: false, gearboxProtect: false, gearboxWear: 0, gearboxFailed: false });

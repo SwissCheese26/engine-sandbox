@@ -16,7 +16,9 @@ import type { LimitTracker, ThermalState, TurboState } from "./subsystems.ts";
 import { isAirCooled } from "./thermal.ts";
 import { PEAK_SLIP, SLIDE_FACTOR, tyreForceFactor } from "./tyres.ts";
 import { HOLD_ROLL_G, holdCapN } from "./parking-brake.ts";
-import { drivenAxleLoadN, wheelieLimitN } from "./vehicle.ts";
+import { BRAKE_MAX_G, drivenAxleLoadN, drivenBrakeN as drivenBrakeForceN, wheelieLimitN } from "./vehicle.ts";
+/** Re-exported for electric.ts (issue #108); the constant lives in vehicle.ts since #104. */
+export { BRAKE_MAX_G };
 import type { EngineConfig, EngineState, SimInputs, VehicleCoupling, Warning } from "./types.ts";
 import { converterTorques } from "./converter.ts";
 
@@ -388,11 +390,15 @@ export class EngineSimulator {
       // cranking a dead engine: the driver holds the clutch pedal down (the drivetrain sees the starter one frame late)
       const coupling = input.dynoMode === "vehicle" ? input.vehicle : undefined;
       const veh = coupling && starter && !x.running && coupling.clutch > 0 ? { ...coupling, clutch: 0 } : coupling;
+      let tLim = 1;
       if (veh) {
         // ASR ignition retard (issue #23): petrol engines lose torque within one firing when the spark is retarded
         // (≈ 3–4 %/°CA, up to ≈ 60 % with 15–20 °CA retard; Bosch, Gasoline Engine Management, "torque-based ECU") [S]
         const cut = m.p && tEng > 0 ? clamp(fin(veh.torqueCut ?? 0, 0), 0, 0.7) : 0;
-        stepVehicle(x, veh, tEng * (1 - cut) + tStarter, m.J, h);
+        // brake-torque protection (issue #104/#119): the ECU caps the positive engine torque on request of the TCU
+        const lim = fin(veh.torqueLimitNm ?? Infinity, Infinity);
+        tLim = tEng > lim ? Math.max(0, lim) / tEng : 1;
+        stepVehicle(x, veh, tEng * tLim * (1 - cut) + tStarter, m.J, h);
       } else {
         const net = tEng + tStarter - brake;
         let omega = x.rpm / RPM_PER_RADS + (net / m.J) * h;
@@ -400,8 +406,9 @@ export class EngineSimulator {
         x.rpm = omega * RPM_PER_RADS;
       }
       x.crank = (x.crank + x.rpm * 6 * h) % 720;
-      tOutSum += tEng;
-      fuelSum += out.fuelMassFlowGS;
+      tOutSum += tEng * tLim;
+      // the torque request cuts the injected fuel about in proportion (torque-based engine management) [S]
+      fuelSum += out.fuelMassFlowGS * tLim;
       airSum += out.airMassFlowKgS;
       if (out.mFuelCyc > 0) anyFire = true;
       fuelCycSum += out.mFuelCyc;
@@ -553,8 +560,6 @@ function gradeOf(c: VehicleCoupling): { sin: number; cos: number } {
   return { sin: Math.sin(th), cos: Math.cos(th) };
 }
 
-/** Brake system force capacity at full pedal, in g: enough to lock any tyre (ABS: issue #23) [S]. */
-export const BRAKE_MAX_G = 1.6;
 /** Rotating inertia of all four braked wheels, kg·m² (4 × ≈ 1.0, see WHEEL_INERTIA) [S]. */
 const BRAKED_INERTIA = 4;
 /**
@@ -610,10 +615,14 @@ export function stepVehicle(x: Internal, cIn: VehicleCoupling, engineTorqueNm: n
   const atRest = x.vSpeed <= 1e-3;
   const traction = c.grip !== undefined && Number.isFinite(c.grip) && veh.driveLayout !== undefined;
   x.absT = Math.min(9, x.absT + h);
-  if (!traction ||(atRest && pedalB > 0.05 && x.vWheel <= 0.05)) {
+  const braked = atRest && pedalB > 0.05 && x.vWheel <= 0.05;
+  if (!traction || (braked && !c.converter)) {
     tiedStep(x, c, engineTorqueNm, J, h, traction ? Math.max(0.01, c.grip!) : undefined);
     return;
   }
+  // issue #104: converter at standstill – the service brake holds the driven wheels themselves (brake stand / stall
+  // test). Clutch gearboxes and electric drives keep the tied model above.
+  if (braked && brakeStandStep(x, c, engineTorqueNm, J, h, pedalB)) return;
   const gr = gradeOf(c);
   const mu = Math.max(0.01, c.grip!) * gr.cos;
   x.grip = mu;
@@ -627,6 +636,8 @@ export function stepVehicle(x: Internal, cIn: VehicleCoupling, engineTorqueNm: n
   const cut = (f: number) => (f > fWheelie ? fWheelie : f);
   // service brake through the braked wheels' tyre force (issue #23: brake slip, ABS)
   const fBrake = atRest ? 0 : stepBrakes(x, c, pedalB, mu, h);
+  // issue #104: car (practically) standing, driven wheels spinning against their own service brake (brake stand)
+  const fBd = c.converter && x.vSpeed <= HOLD_STOP_MS && x.vWheel > 0 ? drivenBrakeN(c, pedalB) : 0;
   const brakeLocked = fBrake > 0 && x.vSpeed > 0.5 && slipRatio(x.vBrk, x.vSpeed) < LOCK_SLIP;
   const R = roadLoadN(veh, x.vSpeed, airRho(c), gr.cos) + m * G * gr.sin + fBrake;
   const N = drivenAxleLoadN(veh, x.aLong);
@@ -647,7 +658,7 @@ export function stepVehicle(x: Internal, cIn: VehicleCoupling, engineTorqueNm: n
     // engine + driven side as one body: mD·dw = h(Fd − Ft), m·dv = h(Ft − R), Ft ≈ Ft0 + kt(dw − dv)
     const mD = J * a * a + mW;
     const Fd = cut(engineTorqueNm * a * (engineTorqueNm >= 0 ? eta : 1 / eta));
-    [dw, dv] = solve2(mD + h * kt, -h * kt, -h * kt, m + h * kt, h * (Fd - Ft0), h * (Ft0 - R));
+    [dw, dv] = solve2(mD + h * kt, -h * kt, -h * kt, m + h * kt, h * (Fd - fBd - Ft0), h * (Ft0 - R));
     x.vWheel = Math.max(0, w0 + dw);
     x.rpm = x.vWheel * a * RPM_PER_RADS;
   } else if (c.converter && i > 0) {
@@ -677,7 +688,7 @@ export function stepVehicle(x: Internal, cIn: VehicleCoupling, engineTorqueNm: n
       [-h * g * Qe, mW - h * g * Qt * a + h * kt, -h * kt],
       [0, -h * kt, m + h * kt],
     ];
-    const b = [h * (engineTorqueNm - P0), h * (Fd0 - Ft0), h * (Ft0 - R)];
+    const b = [h * (engineTorqueNm - P0), h * (Fd0 - fBd - Ft0), h * (Ft0 - R)];
     const [de, dW, dV] = solve3(A, b);
     dw = dW;
     dv = dV;
@@ -696,7 +707,7 @@ export function stepVehicle(x: Internal, cIn: VehicleCoupling, engineTorqueNm: n
       [-h * g * kc, mW + h * g * kc * a + h * kt, -h * kt],
       [0, -h * kt, m + h * kt],
     ];
-    const b = [h * (engineTorqueNm - tc0), h * (Fd0 - Ft0), h * (Ft0 - R)];
+    const b = [h * (engineTorqueNm - tc0), h * (Fd0 - fBd - Ft0), h * (Ft0 - R)];
     const [de, dW, dV] = solve3(A, b);
     dw = dW;
     dv = dV;
@@ -870,6 +881,61 @@ function heldStep(x: Internal, c: VehicleCoupling, engineTorqueNm: number, J: nu
   x.locked = x.vSpeed > 0.5;
   x.tyreF = x.vSpeed > 0 ? -SLIDE_FACTOR * fHold : 0;
   x.aLong += ((x.vSpeed - v0) / h - x.aLong) * Math.min(1, h / 0.02);
+}
+
+/** Service-brake force at the driven wheels, N (issue #104, vehicle.ts drivenBrakeN). */
+function drivenBrakeN(c: VehicleCoupling, pedalB: number): number {
+  return drivenBrakeForceN(c.vehicle, pedalB, gradeOf(c).cos);
+}
+
+/**
+ * Brake stand / stall test at standstill (issue #104, docs/research/vehicle.md §4): the service brake acts on the
+ * wheels, so a converter in D is loaded at stall (turbine at rest, pump torque λ(0)·(n/K)², converter.ts) and the
+ * engine settles where its torque equals the pump torque – the stall speed. The driven wheels stay at rest while the
+ * drive force at the wheel is below their brake force plus the static tyre force μ·N_d; the car stays while the
+ * force the driven tyres pass to the road (drive − own brake) minus the downhill force is held by the other axle's
+ * brake, tyre-limited (Coulomb friction, Mitschke/Wallentowitz [B5]). Otherwise false: the wheels spin against their
+ * brake (stepVehicle, fBd) or the car slides off.
+ */
+function brakeStandStep(x: Internal, c: VehicleCoupling, engineTorqueNm: number, J: number, h: number, pedalB: number): boolean {
+  const veh = c.vehicle;
+  const m = veh.massKg;
+  const i = c.totalRatio;
+  const eta = clamp(c.efficiency, 0.5, 1);
+  const wEng = x.rpm / RPM_PER_RADS;
+  const cap = clamp(c.clutch, 0, 1) * c.clutchCapacityNm;
+  const gr = gradeOf(c);
+  const mu = Math.max(0.01, c.grip!) * gr.cos;
+  let pump = 0;
+  let tIn = 0;
+  if (i > 0 && c.converter) {
+    const t = converterTorques(c.converter, x.rpm, 0);
+    const l = cap * Math.tanh(wEng / 3);
+    pump = t.pumpNm + l;
+    tIn = t.turbineNm + l;
+  } else if (i > 0) {
+    pump = cap * Math.tanh(wEng / 3);
+    tIn = pump * (pump > 0 ? Math.max(1, c.torqueRatio ?? 1) : 1);
+  }
+  const fDrive = i > 0 ? Math.min(wheelieLimitN(veh), (tIn * i * (tIn >= 0 ? eta : 1 / eta)) / veh.wheelRadiusM) : 0;
+  const nD = Math.min(m * G, drivenAxleLoadN(veh, 0)) * gr.cos;
+  const fBd = drivenBrakeN(c, pedalB);
+  const fBnd = Math.max(0, pedalB * BRAKE_MAX_G * m * G * gr.cos - fBd);
+  const fRoad = Math.max(0, fDrive - fBd);
+  if (fDrive > fBd + mu * nD || fRoad - m * G * gr.sin > Math.min(fBnd, mu * (m * G * gr.cos - nD))) return false;
+  const wE = Math.max(0, wEng + ((engineTorqueNm - pump) / J) * h);
+  x.rpm = wE * RPM_PER_RADS;
+  x.grip = mu;
+  x.vSpeed = 0;
+  x.vWheel = 0;
+  x.vBrk = 0;
+  x.absF = 0;
+  x.absRelease = false;
+  x.spin = false;
+  x.locked = false;
+  x.tyreF = fRoad;
+  x.aLong += (0 - x.aLong) * Math.min(1, h / 0.02);
+  return true;
 }
 
 /**

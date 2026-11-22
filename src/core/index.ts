@@ -98,4 +98,4 @@ export {
   AIR_CUT_IN_BAR, AIR_CUT_OUT_BAR, AIR_WARN_BAR, AIR_SPRING_BAR, ADBLUE_SHARE, ADBLUE_LIMP_PEDAL, ADBLUE_TANK_L, BATTERY_REST_V, ALTERNATOR_V,
 } from "./vehicle-systems.ts";
 export type { SystemsInput, SystemsOutput } from "./vehicle-systems.ts";
-export { BRAKE_MAX_G } from "./simulator.ts";
+export { BRAKE_MAX_G } from "./vehicle.ts";

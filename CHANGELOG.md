@@ -4,24 +4,27 @@ Alle sichtbaren Änderungen an der Prüfzelle, neueste zuerst. Aufbau nach [Keep
 
 _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `bun scripts/changelog.ts` ausführen._
 
-## 2026-11-22 – Elektroantrieb in der Werkbank, 2-Gang-Getriebe und Vmax für E-Autos, Live-Reichweite und Fahrstufen P R N D
+## 2026-11-22 – Elektroantrieb in der Werkbank, 2-Gang-Getriebe und Vmax für E-Autos, Live-Reichweite und Fahrstufen P N D, Bremse hält bei der Automatik die Antriebsräder
 
 ### Neu
 
 - 2-Gang-Getriebe für E-Autos wie bei Porsche Taycan und Audi e-tron GT: kurzer 1. Gang (etwa 15 : 1) zum Anfahren, langer 2. Gang (etwa 8 : 1) für Vmax, mit einstellbarem Schaltpunkt und kurzer Zugkraftunterbrechung beim Schalten. Die Untersetzung lässt sich auch beim 1-Gang-Getriebe ändern. ([#108](https://github.com/SwissCheese26/engine-sandbox/issues/108), [#124](https://github.com/SwissCheese26/engine-sandbox/issues/124), [#125](https://github.com/SwissCheese26/engine-sandbox/issues/125))
 - Den Vmax-Begrenzer von E-Autos kannst du in der Werkbank anheben, bis zur Drehzahlgrenze der Motoren. Am rechten Anschlag ist er aus, dann steht „begrenzt durch Motordrehzahl“. ([#108](https://github.com/SwissCheese26/engine-sandbox/issues/108), [#125](https://github.com/SwissCheese26/engine-sandbox/issues/125))
-- Fahrstufen P, R, N und D statt ▲ D ▼ neben den Pedalen eines Elektroautos. P zieht die Parkbremse, N nimmt den Antrieb weg. R bleibt aus, rückwärts geht es auf dem Rollenprüfstand nicht. ([#108](https://github.com/SwissCheese26/engine-sandbox/issues/108), [#125](https://github.com/SwissCheese26/engine-sandbox/issues/125))
+- Fahrstufen P, N und D statt ▲ D ▼ neben den Pedalen eines Elektroautos. P zieht die Parkbremse, N nimmt den Antrieb weg. Löst „Halten“ die Parkbremse, springt die Fahrstufe auf N. ([#108](https://github.com/SwissCheese26/engine-sandbox/issues/108), [#125](https://github.com/SwissCheese26/engine-sandbox/issues/125))
 
 ### Geändert
 
 - Der E-Tuner sitzt jetzt in der Werkbank: Mit einem Elektroauto zeigt sie statt der Motorplatten die Platten „Elektromotoren“, „Getriebe und Vmax“, „Akku“ und „Kühlung und Reifen“ im gleichen Look wie beim Verbrenner, dazu eine Zusammenfassung mit PS, Vmax, 0–100 und Reichweite. Gespeichert wird weiter je Fahrzeug, „Auf Werkszustand“ setzt zurück. ([#108](https://github.com/SwissCheese26/engine-sandbox/issues/108), [#125](https://github.com/SwissCheese26/engine-sandbox/issues/125))
 - Die Reichweite ist jetzt live: Ladezustand mal Akkuinhalt geteilt durch den Verbrauch der letzten Kilometer und Minuten. Wer zügig fährt, sieht sie sinken, Rekuperation hebt sie sanft an. Das gilt in jedem Cockpit, im E-Tacho und im Rollenprüfstand. ([#108](https://github.com/SwissCheese26/engine-sandbox/issues/108), [#125](https://github.com/SwissCheese26/engine-sandbox/issues/125))
 - Die Werte des Elektroautos (Ladezustand, Reichweite, Akkuleistung, Rekuperiert, Ø Verbrauch, Akku, Temperaturen) stehen im Rollenprüfstand in derselben Liste wie Tempo und Vmax. „Laden auf 90 %, 100 %, 10 %“ ersetzt „Volltanken“. ([#108](https://github.com/SwissCheese26/engine-sandbox/issues/108), [#125](https://github.com/SwissCheese26/engine-sandbox/issues/125))
+- 0–100 km/h zählt erst, wenn du aus dem Stand mit Gas losfährst (Gas gegen die Bremse zählt noch nicht). Gehst du unterwegs vom Gas oder bremst, wird der Lauf verworfen; kurze Schaltpausen sind erlaubt. ([#122](https://github.com/SwissCheese26/engine-sandbox/issues/122), [#123](https://github.com/SwissCheese26/engine-sandbox/issues/123))
+- Schaltgetriebe warnen erst ab 130 °C Öltemperatur, weil sie keinen Schutzmodus haben. Die Erwärmung selbst war schon realistisch (etwa 10 °C pro Minute unter Dauervollgas). ([#53](https://github.com/SwissCheese26/engine-sandbox/issues/53), [#123](https://github.com/SwissCheese26/engine-sandbox/issues/123))
 
 ### Behoben
 
 - Der Verbrauch eines Elektroautos zeigt beim Rekuperieren keine negativen Werte mehr, sondern den Durchschnitt der Fahrt. ([#108](https://github.com/SwissCheese26/engine-sandbox/issues/108), [#125](https://github.com/SwissCheese26/engine-sandbox/issues/125))
 - Auf dem Handy ist die Leistungsanzeige im E-Tacho kleiner, Tempo und Anzeigen passen wieder auf den Schirm. Felder, Knöpfe und Auswahllisten der Werkbank sind dort mindestens 44 px hoch, nichts ragt mehr über den Rand. ([#120](https://github.com/SwissCheese26/engine-sandbox/issues/120), [#125](https://github.com/SwissCheese26/engine-sandbox/issues/125))
+- Automatik: Vollgas bei voll getretener Bremse lässt die Räder nicht mehr frei durchdrehen. Die Bremse hält jetzt auch die Antriebsräder, der Motor bleibt auf der Festbremsdrehzahl des Wandlers (z. B. ≈ 2000 1/min beim Land Cruiser statt durchdrehender Räder). Bei starken Hecktrieblern wie 530d und E 220 d nimmt die Steuerung wie in echt Motormoment zurück, damit die Bremse hält (≈ 1800 statt über 4000 1/min). Das Getriebeöl wird dabei schnell heiß. ([#104](https://github.com/SwissCheese26/engine-sandbox/issues/104), [#118](https://github.com/SwissCheese26/engine-sandbox/issues/118), [#119](https://github.com/SwissCheese26/engine-sandbox/issues/119))
 
 ## 2026-11-21 – Elektroautos mit E-Tuner und E-Tacho, Zusatzinstrumente im Look jedes Cockpits, Druckluft, Retarder und AdBlue, Kurven mit Schräglage, Reifenqualm, aufgeräumter Rollenprüfstand, Einstellungen pro Fahrzeug und Getriebeölkühler
 

@@ -329,6 +329,11 @@ export interface VehicleCoupling {
    */
   launchLimitRpm?: number;
   /**
+   * Brake-torque protection (issues #104, #119): cap on the positive engine torque, Nm, requested by the TCU of a
+   * converter automatic standing in D with the brake and the throttle applied (brake stand / stall). Unset = no cap.
+   */
+  torqueLimitNm?: number;
+  /**
    * Electric cars (issue #108): traction control on. The EvSimulator then limits the motor torque per axle to the
    * tyre's μ·N (feed-forward, the motor torque is set within milliseconds), like the ASR of a real EV.
    */

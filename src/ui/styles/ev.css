@@ -147,9 +147,10 @@
 .shiftpad.is-ev :is(.shiftpad__btn, .shiftpad__gear) {
   display: none;
 }
+/* P across the top, N and D below: as compact as the ▲ gear ▼ pad */
 .shiftpad__ev {
   display: grid;
-  grid-template-columns: 44px;
+  grid-template-columns: repeat(2, 44px);
   gap: 4px;
 }
 .shiftpad__sel {
@@ -163,6 +164,9 @@
   font-weight: 700;
   cursor: pointer;
   touch-action: manipulation;
+}
+.shiftpad__sel[data-sel="P"] {
+  grid-column: 1 / -1;
 }
 .shiftpad__sel[aria-checked="true"] {
   background: var(--signal);
@@ -340,4 +344,23 @@
 /* the Vmax limiter of an electric car is set on the Werkbank (Getriebe und Vmax): no second one on the Fahrzeug-Platte */
 .cell[data-drive="ev"] :is(label:has([data-control="speed-limit"]), [data-out="governor-calc"]) {
   display: none;
+}
+
+/* phones: readouts that change width every frame must not reflow the cluster, captions wrap instead of leaving the
+   column, and the drive mode button is a 44 px touch target */
+.ck__ev dd {
+  white-space: nowrap;
+}
+@media (max-width: 700px) {
+  .ck-mini {
+    min-width: 0;
+  }
+  .ck-mini figcaption {
+    white-space: normal;
+    text-align: center;
+    overflow-wrap: anywhere;
+  }
+  .ck__ev [data-ck="ev-mode"] {
+    min-height: 44px;
+  }
 }
