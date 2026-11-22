@@ -20,6 +20,20 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    date: "2026-11-22",
+    title: "Elektroantrieb in der Werkbank, 2-Gang-Getriebe und Vmax für E-Autos, Live-Reichweite und Fahrstufen P R N D",
+    items: [
+      { kind: "geändert", text: "Der E-Tuner sitzt jetzt in der Werkbank: Mit einem Elektroauto zeigt sie statt der Motorplatten die Platten „Elektromotoren“, „Getriebe und Vmax“, „Akku“ und „Kühlung und Reifen“ im gleichen Look wie beim Verbrenner, dazu eine Zusammenfassung mit PS, Vmax, 0–100 und Reichweite. Gespeichert wird weiter je Fahrzeug, „Auf Werkszustand“ setzt zurück.", refs: [108, 125] },
+      { kind: "neu", text: "2-Gang-Getriebe für E-Autos wie bei Porsche Taycan und Audi e-tron GT: kurzer 1. Gang (etwa 15 : 1) zum Anfahren, langer 2. Gang (etwa 8 : 1) für Vmax, mit einstellbarem Schaltpunkt und kurzer Zugkraftunterbrechung beim Schalten. Die Untersetzung lässt sich auch beim 1-Gang-Getriebe ändern.", refs: [108, 124, 125] },
+      { kind: "neu", text: "Den Vmax-Begrenzer von E-Autos kannst du in der Werkbank anheben, bis zur Drehzahlgrenze der Motoren. Am rechten Anschlag ist er aus, dann steht „begrenzt durch Motordrehzahl“.", refs: [108, 125] },
+      { kind: "geändert", text: "Die Reichweite ist jetzt live: Ladezustand mal Akkuinhalt geteilt durch den Verbrauch der letzten Kilometer und Minuten. Wer zügig fährt, sieht sie sinken, Rekuperation hebt sie sanft an. Das gilt in jedem Cockpit, im E-Tacho und im Rollenprüfstand.", refs: [108, 125] },
+      { kind: "geändert", text: "Die Werte des Elektroautos (Ladezustand, Reichweite, Akkuleistung, Rekuperiert, Ø Verbrauch, Akku, Temperaturen) stehen im Rollenprüfstand in derselben Liste wie Tempo und Vmax. „Laden auf 90 %, 100 %, 10 %“ ersetzt „Volltanken“.", refs: [108, 125] },
+      { kind: "neu", text: "Fahrstufen P, R, N und D statt ▲ D ▼ neben den Pedalen eines Elektroautos. P zieht die Parkbremse, N nimmt den Antrieb weg. R bleibt aus, rückwärts geht es auf dem Rollenprüfstand nicht.", refs: [108, 125] },
+      { kind: "behoben", text: "Der Verbrauch eines Elektroautos zeigt beim Rekuperieren keine negativen Werte mehr, sondern den Durchschnitt der Fahrt.", refs: [108, 125] },
+      { kind: "behoben", text: "Auf dem Handy ist die Leistungsanzeige im E-Tacho kleiner, Tempo und Anzeigen passen wieder auf den Schirm. Felder, Knöpfe und Auswahllisten der Werkbank sind dort mindestens 44 px hoch, nichts ragt mehr über den Rand.", refs: [120, 125] },
+    ],
+  },
+  {
     date: "2026-11-21",
     title: "Elektroautos mit E-Tuner und E-Tacho, Zusatzinstrumente im Look jedes Cockpits, Druckluft, Retarder und AdBlue, Kurven mit Schräglage, Reifenqualm, aufgeräumter Rollenprüfstand, Einstellungen pro Fahrzeug und Getriebeölkühler",
     items: [
