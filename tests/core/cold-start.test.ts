@@ -98,6 +98,15 @@ describe("older engines and warm starts", () => {
   });
 });
 
+test("warm air-cooled engine (Harley M8): exactly the warm idle, no fast idle left (review #137)", () => {
+  const cfg = libraryConfig("lib-harley-m8-107");
+  const run = idleRun(cfg, 120, true);
+  for (const s of run.slice(Math.round(20 / DT))) {
+    expect(s.coldStart).toBeUndefined();
+    expect(Math.abs(s.rpm - cfg.idleRpm)).toBeLessThan(2);
+  }
+});
+
 describe("diesel heating mode (Euro 5+)", () => {
   test("OM654: raised idle and post-injection, no spark; a Euro 3 TDI only fast idles", () => {
     const cfg = libraryConfig("ref-mercedes-om654-220d");

@@ -272,8 +272,10 @@ export class EngineSimulator {
     // --- cold-start strategy (issue #135, petrol.md "Nachtrag: Kaltstart" §K2/§K4): catalyst heating is decided
     // once when the engine starts (cold coolant, catalyst below light-off) and ends after ≥ 20 s once the catalyst
     // model reaches light-off (at the latest after 60 s); the cold fast idle follows the coolant temperature.
-    // Air-cooled engines (#25): the head sensor reads ≈ 70 K above a coolant jacket.
-    const coolIdleC = isAirCooled(cfg) ? x.thermal.coolantC - 70 : x.thermal.coolantC;
+    // Air-cooled engines (#25): the head sensor reads the head, not a coolant jacket; cold both are at ambient, warm
+    // the head runs ≈ 120 … 150 °C. Mapped linearly so that 20 °C ≙ 20 °C and a head ≥ 120 °C ≙ ≥ 70 °C (fully warm,
+    // no fast idle left, review PR #137).
+    const coolIdleC = isAirCooled(cfg) ? 20 + (x.thermal.coolantC - 20) * 0.5 : x.thermal.coolantC;
     if (!x.running) {
       x.runT = 0;
       x.catHeat = hasCatHeating(cfg) && coolIdleC < COLD_START_COOLANT_C && x.catC < lightOffC(cfg);
