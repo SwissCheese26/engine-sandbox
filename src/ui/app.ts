@@ -1,6 +1,11 @@
 // Prüfzelle: wires workbench, schematic, nameplate, instruments, recorder and console to the
 // simulator and runs the main loop.
-import { BRAKE_MAX_G, EngineSimulator, TERRAIN_LABELS, VehicleSystems, defaultInputs, summarize } from "../core/index.ts";
+import { BRAKE_MAX_G, EngineSimulator, EvSimulator, TERRAIN_LABELS, VehicleSystems, defaultInputs, summarize } from "../core/index.ts";
+import type { EvConfig, EvDriveMode } from "../core/index.ts";
+import { EvPanel } from "./ev-panel.ts";
+import { loadEvTuning, saveEvTuning } from "./ev-tuning-store.ts";
+import { tuneEv, type TunedEv } from "../data/ev-tuning.ts";
+import { nextDriveMode } from "./layouts/ev-logic.ts";
 import { customSetup, loadOwnVehicle, saveOwnVehicle, setOwnVehicleActive, takePendingSetup, type PendingSetup } from "./sandbox-setup.ts";
 import { ShiftPad } from "./shift-pad.ts";
 import { isMyEngineId } from "./my-engines.ts";
@@ -45,6 +50,13 @@ export class App {
   private cfg: EngineConfig;
   private summary: EngineSummary;
   private sim: EngineSimulator;
+  /** Electric car loaded (#108): its simulator runs instead of the engine; the bench engine waits unchanged. */
+  private evSim: EvSimulator | null = null;
+  private evCfg: Readonly<EvConfig> | null = null;
+  private evMode: EvDriveMode = "sport";
+  private evPanel = new EvPanel();
+  /** Set while the Elektro-Platte applies tuning (the same car, the charge stays). */
+  private evTuning = false;
   /** Air brake, retarder, AdBlue and battery (#83), stepped every frame next to the engine. */
   private systems = new VehicleSystems();
   private lastTankL = Number.NaN;
@@ -127,6 +139,66 @@ export class App {
     });
   }
 
+  /** The simulator that drives: the electric one when an EV is loaded (#108), else the engine. */
+  private get psim(): EngineSimulator | EvSimulator {
+    return this.evSim ?? this.sim;
+  }
+
+  /**
+   * Electric car loaded or unloaded (#108; detected from the drivetrain, so every way of loading a vehicle works):
+   * swaps the simulator, the Ready button for key and starter, the EV instruments in the Prüfzelle and every cockpit
+   * design, and hides what makes no sense (cutaway engine, nameplate, curve recorder, Werkbank).
+   */
+  private syncDrive() {
+    const ev = this.gearbox.drivetrain.ev;
+    if (ev === this.evCfg) return;
+    let sameCar = this.evTuning && !!ev && !!this.evSim;
+    this.evTuning = false;
+    // a newly loaded electric car comes with its stored E-Tuner setup (per vehicle)
+    const car = ev ? VEHICLE_LIBRARY.find((c) => c.id === this.gearbox.vehiclePanel.carId && c.setup.ev) ?? null : null;
+    const stored = car && !sameCar ? loadEvTuning(car) : null;
+    if (car && stored) {
+      const t = tuneEv(car.setup.ev!, stored);
+      this.applyTuned(t, car.setup.vehicle.massKg + t.deltaKg);
+      sameCar = false;
+    }
+    const evNow = this.gearbox.drivetrain.ev;
+    this.evCfg = evNow;
+    if (!sameCar) this.console.switchOff();
+    if (evNow) {
+      if (sameCar) this.evSim!.setConfig(structuredClone(evNow) as EvConfig, true);
+      else this.evSim = new EvSimulator(structuredClone(evNow) as EvConfig);
+    } else this.evSim = null;
+    if (!sameCar) this.evPanel.setCar(car, stored ?? undefined);
+    const on = !!evNow;
+    this.cell.dataset.drive = on ? "ev" : "ice";
+    this.root.dataset.drive = on ? "ev" : "ice";
+    this.console.setElectric(on);
+    this.gauges.setElectric(ev as EvConfig | null);
+    this.gearbox.el.dataset.drive = on ? "ev" : "ice";
+    this.info.setElectricVmax(ev ? Math.min(...ev.motors.map((m) => (m.maxRpm / m.ratio) * (Math.PI / 30) * this.gearbox.drivetrain.vehicle.wheelRadiusM * 3.6)) : null);
+    for (const v of this.views.values()) if (v instanceof CockpitView) v.setElectric(ev as EvConfig | null);
+    if (on) this.cell.classList.remove("bench-open");
+    this.toasts.clear();
+  }
+
+  /** E-Tuner (#108): motors, battery, cooling on the drivetrain, the mass and the tyre type of the vehicle. */
+  private applyTuned(t: TunedEv, massKg: number): boolean {
+    const d = this.gearbox.drivetrain;
+    if (!d.setEv(t.ev)) return false;
+    d.setVehicleParams({ massKg });
+    if (d.tyre.type !== t.tuning.tyre) d.setTyre({ ...d.tyre, type: t.tuning.tyre });
+    this.gearbox.vehiclePanel.sync();
+    return true;
+  }
+
+  private setEvMode(m: EvDriveMode) {
+    this.evMode = m;
+    this.evPanel.setMode(m, false);
+    this.inputs.evDriveMode = m;
+    this.announce(`Fahrmodus ${m === "chill" ? "Chill" : m === "sport" ? "Sport" : "Plaid"}.`);
+  }
+
   /** Switches the view (#26). The simulation, the bench and every measured run stay as they are. */
   private setLayout(id: LayoutId) {
     this.layoutId = id;
@@ -158,6 +230,8 @@ export class App {
           sel.dispatchEvent(new Event("change", { bubbles: true }));
           this.announce("Rollenprüfstand mit Getriebe gewählt.");
         };
+        c.onEvMode = () => this.setEvMode(nextDriveMode(this.evMode));
+        c.setElectric(this.evCfg as EvConfig | null);
         // tap on the road line in the cockpit: to the Umwelt panel, route select focused
         c.onWantEnvironment = () => {
           const panel = this.gearbox.environmentPanel.el;
@@ -234,6 +308,8 @@ export class App {
     this.viewSlot.className = "stage__view";
     this.viewSlot.hidden = true;
     stage.append(this.viewSlot, engine, this.gauges.el, this.gearbox.el, this.recorder.el);
+    // Elektro-Platte (#108): first in the Getriebe-Pult, shown only for electric cars
+    this.gearbox.el.prepend(this.evPanel.el);
     this.stage = stage;
 
     const deck = document.createElement("footer");
@@ -255,9 +331,48 @@ export class App {
     this.bench.onChange((cfg) => {
       this.pendingCfg = cfg;
     });
-    this.gearbox.onResetVehicle = () => this.sim.resetVehicle();
+    this.gearbox.onResetVehicle = () => this.psim.resetVehicle();
+    // Elektro-Platte (#108)
+    this.evPanel.onMode = (m) => this.setEvMode(m);
+    this.evPanel.onCharge = (soc) => {
+      this.evSim?.setSoc(soc);
+      this.announce(`Akku auf ${Math.round(soc * 100)} % geladen.`);
+    };
+    this.evPanel.onFactory = () => {
+      if (this.gearbox.drivetrain.state.speedKmh > 0.5) return false;
+      // the Fahrzeug-Platte's reset: own changes and E-Tuner setup, car as delivered; syncDrive sees the new config
+      this.gearbox.vehiclePanel.resetFactory();
+      this.syncDrive();
+      this.announce("E-Tuner: Werkszustand.");
+      return true;
+    };
+    this.evPanel.onTune = (t, massKg) => {
+      const d = this.gearbox.drivetrain;
+      if (d.state.speedKmh > 0.5) return false;
+      this.evTuning = true;
+      if (!this.applyTuned(t, massKg)) {
+        this.evTuning = false;
+        return false;
+      }
+      // stored per vehicle: the E-Tuner record, mass and tyre with the vehicle's own changes
+      saveEvTuning(this.gearbox.vehiclePanel.carId, t.tuning);
+      this.gearbox.vehiclePanel.remember();
+      this.syncDrive();
+      this.announce(`Umgebaut: ${Math.round(t.systemPs)} PS, ${Math.round(massKg)} kg.`);
+      return true;
+    };
     // ready-made car (issue #22): engine from the library, the rest is set on the drivetrain by the plate
     this.gearbox.vehiclePanel.onLoadCar = (car) => {
+      // electric car (#108): no engine to load; a running engine is switched off first
+      if (car.setup.ev) {
+        if (App.turning(this.sim.state) && !this.evSim) {
+          this.announce("Erst den Motor abstellen, dann lässt sich ein fertiges Auto laden.");
+          return false;
+        }
+        setOwnVehicleActive(false);
+        this.announce(`${car.name} geladen. Ready drücken zum Losfahren.`);
+        return true;
+      }
       if (App.turning(this.sim.state) || this.bench.isLocked) {
         this.announce("Erst den Motor abstellen, dann lässt sich ein fertiges Auto laden.");
         return false;
@@ -293,16 +408,16 @@ export class App {
     this.console.onReset = () => {
       this.toasts.clear();
       this.gearbox.reset();
-      this.sim.reset();
+      this.psim.reset();
       this.recorder.reset();
-      this.announce("Motor zurückgesetzt.");
+      this.announce(this.evSim ? "Auto zurückgesetzt, Akku geladen." : "Motor zurückgesetzt.");
     };
     this.console.onWarmChange = (warm) => {
-      if (App.turning(this.sim.state)) {
+      if (App.turning(this.psim.state)) {
         this.announce(warm ? "Warmstart gilt ab dem nächsten Zurücksetzen." : "Kaltstart gilt ab dem nächsten Zurücksetzen.");
         return;
       }
-      this.sim.reset();
+      this.psim.reset();
       this.recorder.reset();
       this.gearbox.reset();
       this.announce(warm ? "Motor ist warm." : "Motor ist kalt.");
@@ -451,7 +566,7 @@ export class App {
       {
         id: "engine",
         label: "Motor",
-        text: `${this.cfg.name} (id ${this.cfg.id}, ${this.cfg.fuel}), Begrenzer ${this.cfg.revLimitRpm} U/min, Zündung ${this.inputs.ignition ? "an" : "aus"}, läuft ${this.sim.state.running ? "ja" : "nein"}`,
+        text: `${this.cfg.name} (id ${this.cfg.id}, ${this.cfg.fuel}), Begrenzer ${this.cfg.revLimitRpm} U/min, Zündung ${this.inputs.ignition ? "an" : "aus"}, läuft ${this.sim.state.running ? "ja" : "nein"}${this.evSim ? `; Elektroauto, Ready ${this.evSim.state.running ? "an" : "aus"}, SoC ${Math.round((this.evSim.state.ev?.soc ?? 0) * 100)} %, Modus ${this.evMode}` : ""}`,
       },
       {
         id: "vehicle",
@@ -501,30 +616,35 @@ export class App {
         this.applyConfig(cfg);
       }
       this.console.tick(dt);
+      this.syncDrive();
+      const sim = this.psim;
       let s: EngineState;
       try {
         if (this.inputs.dynoMode === "vehicle") {
           const d = this.gearbox.drivetrain;
           // vehicle systems (#83): air pressure limits the service brake, spring brakes below 4.5 bar, retarder, AdBlue
           const sx = this.stepSystems(dt, true);
-          const vehicle = d.inputs(dt, this.sim.state, this.inputs.pedal, sx.brake);
+          const vehicle = d.inputs(dt, sim.state, this.inputs.pedal, sx.brake);
           if (sx.retarderG > 0) vehicle.brake = Math.min(1, (vehicle.brake ?? 0) + sx.retarderG / BRAKE_MAX_G);
           // environment (issue #23): outside temperature and air pressure of the test track reach the engine intake
           // tank: an empty tank starves the engine (no injection), it stalls and does not restart
-          s = this.sim.step(dt, { ...this.inputs, ...d.simInputs(), vehicle, pedal: d.effectivePedal(this.inputs.pedal) * sx.pedalCap, fuelEmpty: d.tank.empty });
-          if (s.running) d.tank.step(dt, s.fuelFlowLh);
+          s = sim.step(dt, { ...this.inputs, ...d.simInputs(), vehicle, pedal: d.effectivePedal(this.inputs.pedal) * sx.pedalCap, fuelEmpty: d.tank.empty });
+          // an electric car (#108) draws no fuel
+          if (s.running && !this.evSim) d.tank.step(dt, s.fuelFlowLh);
           // at the pump AdBlue is topped up too (the tank level jumps up)
           if (d.tank.levelL > this.lastTankL + 0.5) this.systems.adblue.refill();
           this.lastTankL = d.tank.levelL;
         } else {
           this.stepSystems(dt, false);
-          s = this.sim.step(dt, this.inputs);
+          s = sim.step(dt, this.inputs);
         }
       } catch (e) {
         console.warn("Simulator-Schritt fehlgeschlagen", e);
-        s = this.sim.state;
+        s = sim.state;
       }
-      this.bench.setLocked(App.turning(s));
+      this.evPanel.update(s);
+      // the bench edits the combustion engine: an electric car (#108) does not lock it
+      this.bench.setLocked(App.turning(this.evSim ? this.sim.state : s));
       if (this.pendingEngineId && !App.turning(s)) this.loadEngine(this.pendingEngineId);
       this.sample(s, dt);
       this.sinceIgnition = this.inputs.ignition ? this.sinceIgnition + dt : 0;
@@ -561,7 +681,7 @@ export class App {
       const st = getSettings();
       this.updateSmoke(s, dt, st.effects);
       this.wake.update(st.wakeLock && s.running);
-      this.haptics.update(dt, s, this.cfg.revLimitRpm, this.inputs.pedal, st.vibration === "on" || (st.vibration === "auto" && isTouch()));
+      this.haptics.update(dt, s, this.evSim ? Infinity : this.cfg.revLimitRpm, this.inputs.pedal, st.vibration === "on" || (st.vibration === "auto" && isTouch()));
       this.rafId = requestAnimationFrame(frame);
     };
     this.rafId = requestAnimationFrame(frame);
@@ -650,7 +770,7 @@ export class App {
   private loadEngine(id: string): boolean {
     // own engines (#72) are reloaded every time: they may have been edited under the same id
     if (id === this.cfg.id && !this.pendingEngineId && !isMyEngineId(id)) return false;
-    if (App.turning(this.sim.state) || this.bench.isLocked) {
+    if (App.turning(this.psim.state) || this.bench.isLocked) {
       this.console.switchOff();
       this.pendingEngineId = id;
       return true;

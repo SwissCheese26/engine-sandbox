@@ -243,6 +243,8 @@ export interface SimInputs {
   vehicle?: VehicleCoupling;
   /** The vehicle's tank ran dry (fuel-tank.ts): no injection, the engine stalls and does not start. */
   fuelEmpty?: boolean;
+  /** Electric cars (issue #108, EvSimulator only): drive mode (power limit and pedal map), default "sport". */
+  evDriveMode?: EvDriveMode;
 }
 
 /** Vehicle physics parameters (fixed base vehicle for now, see DEFAULT_VEHICLE). */
@@ -326,6 +328,11 @@ export interface VehicleCoupling {
    * pedal. Unset = normal limiter.
    */
   launchLimitRpm?: number;
+  /**
+   * Electric cars (issue #108): traction control on. The EvSimulator then limits the motor torque per axle to the
+   * tyre's μ·N (feed-forward, the motor torque is set within milliseconds), like the ASR of a real EV.
+   */
+  asr?: boolean;
 }
 
 /** Converter characteristic handed to the simulator (issue #14, docs/research/vehicle.md §4). */
@@ -366,6 +373,10 @@ export type WarningCode =
   | "conrod-stress"
   /** Catalyst overheated (e.g. by overrun afterfire, issue #16). */
   | "catalyst-overheat"
+  /** Electric cars (issue #108): traction battery hot (power derated), nearly empty, drive motor hot (derated). */
+  | "battery-hot"
+  | "battery-low"
+  | "motor-hot"
   /** Implausible configuration (validateConfig only). */
   | "config";
 
@@ -459,6 +470,8 @@ export interface EngineState {
   absCycles?: number;
   absPressure?: number;
   roadGrip?: number;
+  /** Electric cars (issue #108): battery, motor and energy state. Unset for combustion engines. */
+  ev?: EvState;
 }
 
 /** One point of a steady-state full-load dyno sweep. */
@@ -513,4 +526,101 @@ export interface EngineSummary {
   /** Rough indicator 0 … 1 of how reliable the configuration is. */
   reliability: number;
   limits: EngineLimits;
+}
+
+// --- electric drive (issue #108, docs/research/electric.md) -------------------------------------------------------
+
+/** Permanent-magnet synchronous motor or asynchronous (induction) motor. */
+export type EvMotorKind = "pmsm" | "induction";
+
+/** One traction motor with its inverter and single-speed reduction gear. */
+export interface EvMotorConfig {
+  kind: EvMotorKind;
+  axle: "front" | "rear";
+  /** Peak torque at the motor shaft, Nm, at the inverter current `inverterA` (torque ∝ phase current). */
+  peakTorqueNm: number;
+  /** Peak mechanical power, kW, at `inverterA` and the nominal pack voltage (power ∝ voltage · current). */
+  peakPowerKw: number;
+  /** Mechanical speed limit of the rotor, 1/min. */
+  maxRpm: number;
+  /** Single-speed reduction motor : wheel. */
+  ratio: number;
+  /** Phase current limit of the inverter, A (rms). */
+  inverterA: number;
+  /** Rotor inertia, kg·m² (default from the peak torque). */
+  rotorInertiaKgM2?: number;
+}
+
+export type EvChemistry = "nmc" | "nca" | "lfp";
+
+/** Traction battery built from cells: seriesCells × parallelCells. */
+export interface EvBatteryConfig {
+  chemistry: EvChemistry;
+  seriesCells: number;
+  parallelCells: number;
+  /** Capacity of one cell, Ah. */
+  cellAh: number;
+  /** DC internal resistance of one cell at 25 °C, mΩ (10 s pulse). */
+  cellResistanceMOhm: number;
+  /** Discharge and charge (regen) current limits of the BMS, in C (× pack capacity in Ah). */
+  maxDischargeC: number;
+  maxChargeC: number;
+  /** Pack mass, kg (thermal mass); default 6.3 kg per kWh. */
+  massKg?: number;
+  /** Heat removed by the cooling plate per kelvin above the coolant, W/K. */
+  coolingWPerK?: number;
+}
+
+export interface EvConfig {
+  motors: EvMotorConfig[];
+  battery: EvBatteryConfig;
+  /** Efficiency of the reduction gear and differential. */
+  gearEfficiency: number;
+  /** Deceleration of the lift-off regeneration ("one pedal"), g. */
+  liftOffRegenG: number;
+  /** Rated consumption (WLTP), kWh/100 km: range estimate before the first kilometres. */
+  ratedKwhPer100?: number;
+  /** Auxiliary load (12 V, pumps, electronics), kW. */
+  auxKw?: number;
+  /** Motor cooling relative to series (bigger pump/radiator, oil spray), default 1. Battery: EvBatteryConfig.coolingWPerK. */
+  coolingScale?: number;
+}
+
+export type EvDriveMode = "chill" | "sport" | "plaid";
+
+/** What limits the drive torque right now (for the UI). */
+export type EvLimit = "none" | "torque" | "power" | "battery" | "thermal" | "traction" | "speed";
+
+export interface EvState {
+  /** Car is "Ready" (high-voltage contactors closed). */
+  ready: boolean;
+  /** State of charge 0 … 1. */
+  soc: number;
+  /** Terminal voltage, open-circuit voltage, current (+ = discharge). */
+  packV: number;
+  packOcvV: number;
+  packA: number;
+  /** Battery power, kW (+ = discharge, − = regen). */
+  powerKw: number;
+  /** Regenerative braking power into the battery, kW (≥ 0). */
+  regenKw: number;
+  /** Mechanical power of all motors, kW (− = generating). */
+  motorKw: number;
+  rangeKm: number;
+  /** Momentary consumption, kWh/100 km (NaN below 5 km/h), and the average since reset. */
+  kwhPer100: number;
+  tripKwhPer100: number;
+  batteryC: number;
+  motorC: number;
+  driveMode: EvDriveMode;
+  /** Present battery limits (SoC, temperature, voltage), kW. */
+  maxDischargeKw: number;
+  maxChargeKw: number;
+  /** Wheel torque of the front and rear axle, Nm. */
+  frontNm: number;
+  rearNm: number;
+  limitedBy: EvLimit;
+  /** Energy taken from / given back to the battery since reset, kWh. */
+  energyKwh: number;
+  regenKwh: number;
 }

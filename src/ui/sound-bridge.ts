@@ -1,6 +1,7 @@
 // Thin seam between the UI and the procedural engine sound (team Sound, src/audio/engine-sound.ts).
 // The UI only talks to `SoundOutput`; EngineSound satisfies it structurally.
 import { EngineSound } from "../audio/engine-sound.ts";
+import { EvSound } from "../audio/ev-sound.ts";
 import type { EngineConfig, EngineState, EngineSummary } from "../core/index.ts";
 
 export interface SoundOutput {
@@ -26,5 +27,47 @@ export const SOUND_AVAILABLE =
 export function createSound(): SoundOutput {
   // SOUND-INTEGRATION: real procedural sound from PR #11. The worklet is loaded from
   // ./engine-worklet.js relative to document.baseURI, so it also works under /engine-sandbox/ on Pages.
-  return new EngineSound();
+  return new DriveSound();
+}
+
+/**
+ * Engine sound plus the electric whine (#108): a frame with `state.ev` drives the EV voice and keeps the combustion
+ * voice silent (engine off), any other frame the reverse.
+ */
+class DriveSound implements SoundOutput {
+  private engine = new EngineSound();
+  private ev = new EvSound();
+
+  get running(): boolean {
+    return this.engine.running;
+  }
+  async start() {
+    await Promise.all([this.engine.start(), this.ev.start()]);
+  }
+  setConfig(cfg: EngineConfig, summary: EngineSummary) {
+    this.engine.setConfig(cfg, summary);
+  }
+  update(state: EngineState, pedal: number) {
+    if (state.ev) {
+      this.engine.update({ ...state, running: false, rpm: 0, starterEngaged: false, afterfire: 0, load: 0, torqueNm: 0, powerKw: 0 }, 0);
+      this.ev.update(state);
+    } else {
+      this.ev.update(state);
+      this.engine.update(state, pedal);
+    }
+  }
+  setVolume(v: number) {
+    this.engine.setVolume(v);
+    this.ev.setVolume(v);
+  }
+  async suspend() {
+    await Promise.all([this.engine.suspend(), this.ev.suspend()]);
+  }
+  async resume() {
+    await Promise.all([this.engine.resume(), this.ev.resume()]);
+  }
+  stop() {
+    this.engine.stop();
+    this.ev.stop();
+  }
 }

@@ -96,6 +96,10 @@ export class ControlPanel {
           <span class="starter__text">Starter <kbd>A</kbd><span class="kbd-hint"> halten</span></span>
           <span class="sr-only" id="starter-state"></span>
         </button>
+        <button type="button" class="readybtn" data-control="ready" aria-pressed="false" aria-keyshortcuts="I" hidden>
+          <span class="readybtn__cap" aria-hidden="true"><b>READY</b></span>
+          <span class="readybtn__text">Fahrbereit <kbd>I</kbd></span>
+        </button>
         <button type="button" class="btn btn--small console__more" aria-expanded="false">Prüfstand und Ton</button>
       </div>
       <div class="console__group console__group--dyno">
@@ -238,6 +242,10 @@ export class ControlPanel {
 
   private wire() {
     this.ignition.addEventListener("click", () => this.setIgnition(!this.inputs.ignition));
+    this.q("ready").addEventListener("click", () => this.setIgnition(!this.inputs.ignition));
+    this.q("ready").addEventListener("keydown", (e) => {
+      if (e.key === " " || e.key === "Enter") e.stopPropagation();
+    });
     // Space/Enter on the key turn it (a click); they must not reach the global gas key
     this.ignition.addEventListener("keydown", (e) => {
       if (e.key === " " || e.key === "Enter") e.stopPropagation();
@@ -463,7 +471,20 @@ export class ControlPanel {
     if (this.inputs.ignition) this.setIgnition(false);
   }
 
+  /** Electric car (#108): the "Ready" button replaces ignition key and starter (no idle, no cranking). */
+  private electric = false;
+  setElectric(on: boolean) {
+    if (this.electric === on) return;
+    this.electric = on;
+    this.el.classList.toggle("is-ev", on);
+    this.ignition.hidden = on;
+    this.starter.hidden = on;
+    this.q<HTMLButtonElement>("ready").hidden = !on;
+    this.lastStatus = "";
+  }
+
   private setIgnition(on: boolean) {
+    this.q<HTMLButtonElement>("ready").setAttribute("aria-pressed", String(on));
     this.ignition.setAttribute("aria-checked", String(on));
     this.el.classList.toggle("is-ign", on);
     this.inputs.ignition = on;
@@ -614,7 +635,12 @@ export class ControlPanel {
     let status: string;
     const touch = isTouch();
     // touch texts are short: on a phone the status line is one clamped row next to the pedals
-    if (s.destroyed) status = touch ? "Motor zerstört: zurücksetzen" : "Motor zerstört. Setze ihn zurück, um weiterzumachen.";
+    if (this.electric) {
+      const ev = s.ev;
+      if (!this.inputs.ignition) status = touch ? "Ready antippen" : "Nicht fahrbereit. Drücke Ready oder I.";
+      else if (ev && ev.soc <= 0) status = "Akku leer: kein Antrieb.";
+      else status = touch ? "Ready: Gas, Bremse" : "Ready. W gibt Gas, S bremst. Gas lupfen rekuperiert.";
+    } else if (s.destroyed) status = touch ? "Motor zerstört: zurücksetzen" : "Motor zerstört. Setze ihn zurück, um weiterzumachen.";
     else if (!this.inputs.ignition) status = touch ? "Zündung: Schlüssel antippen" : "Zündung aus. Schalte sie mit I ein.";
     else if (s.running) {
       if (this.inputs.dynoMode === "free") status = touch ? "Motor läuft: Gashebel schieben" : "Motor läuft. Gib Gas mit der Leertaste.";

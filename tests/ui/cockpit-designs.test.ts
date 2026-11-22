@@ -66,7 +66,7 @@ describe("settings: cockpit design and fields", () => {
 describe("console gauges take on the design (#83)", () => {
   // design → what "Rund" and "Balken" show in it
   const EXPECTED: Record<CockpitDesignId, [GaugeDisplay, GaugeDisplay]> = {
-    classic: ["round", "bar"], "night-orange": ["round", "bar"], italian: ["round", "bar"], oldschool: ["round", "bar"], truck: ["round", "bar"],
+    classic: ["round", "bar"], "night-orange": ["round", "bar"], italian: ["round", "bar"], oldschool: ["round", "bar"], truck: ["round", "bar"], etacho: ["round", "bar"],
     digital: ["tile", "segment"], hud: ["tile", "segment"], race: ["tile", "segment"], motorrad: ["tile", "segment"],
   };
   test("every design maps to a gauge style", () => {

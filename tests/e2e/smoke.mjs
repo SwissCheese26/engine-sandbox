@@ -17,6 +17,7 @@ import { mkdir, readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { extname, join, normalize, resolve } from "node:path";
 import { builderChecks } from "./builder.mjs";
+import { evChecks } from "./ev.mjs";
 import { smokeFxChecks } from "./smoke-fx.mjs";
 
 const require = createRequire(import.meta.url);
@@ -1077,6 +1078,8 @@ try {
   if (!skipped) await run("small", { width: 360, height: 740 });
   // Engine Builder (#72): full build, save, rev, drive (tests/e2e/builder.mjs)
   for (const [label, viewport] of [["desktop", { width: 1440, height: 900 }], ["small", { width: 360, height: 740 }]]) if (!skipped) await builderChecks({ browser, base, outDir, failures, errors, label, viewport });
+  // electric cars (#108): Plaid via the guided start, Ready, full throttle, every cockpit design (tests/e2e/ev.mjs)
+  for (const [label, viewport] of [["desktop", { width: 1440, height: 900 }], ["small", { width: 360, height: 740 }]]) if (!skipped) await evChecks({ browser, base, outDir, failures, errors, label, viewport });
   // Rauch/Dampf: burnout smoke in every cockpit design and the Prüfzelle (tests/e2e/smoke-fx.mjs)
   for (const [label, viewport] of [["desktop", { width: 1440, height: 900 }], ["small", { width: 360, height: 740 }]]) if (!skipped) await smokeFxChecks({ browser, base, outDir, failures, errors, label, viewport });
 } catch (e) {

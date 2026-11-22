@@ -1,5 +1,6 @@
 import { BUS_AUTOMATIC, GEARBOXES, TRUCK_AMT, VEHICLES, withTyre } from "../core/index.ts";
 import type { CarSetup, GearboxSpec, TyreSetup, VehicleParams } from "../core/index.ts";
+import { EV_LIBRARY } from "./ev-library.ts";
 
 /**
  * Ready-made cars (issue #22): engine from the engine library (#15) + gearbox with the car's own ratios + body,
@@ -34,6 +35,11 @@ export interface LibraryCar {
     /** True when the published Vmax is the governor. */
     vmaxGoverned: boolean;
     cw?: number;
+    /** Electric cars (issue #108): system power (kW) and usable/net pack energy (kWh) as published. */
+    powerKw?: number;
+    packKwh?: number;
+    /** The published acceleration time is measured with a 1-ft rollout (US drag-strip convention, Tesla/Lucid). */
+    rollout?: boolean;
   };
   source: string;
 }
@@ -347,6 +353,9 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
     source: "Mercedes-Benz Citaro Solo (OM 936 220 kW / 1200 Nm, ZF EcoLife 6-Gang-Wandlerautomatik, 275/70 R22.5, Tank 260 l): Leergewicht ≈ 11,5 t + Fahrer, zGG 19 t (Herstellerprospekt) [S]; Begrenzer 100 km/h (EU, RL 92/6/EWG; im Linienverkehr oft 80 km/h)",
   },
 ];
+
+// electric cars (issue #108): own file, listed with the cars (setup.ev set, no library engine)
+VEHICLE_LIBRARY.push(...EV_LIBRARY);
 
 export function libraryCar(id: string): LibraryCar {
   const c = VEHICLE_LIBRARY.find((x) => x.id === id);
