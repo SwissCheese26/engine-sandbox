@@ -20,6 +20,8 @@ export interface FieldInputs {
   tankLevelL: number;
   /** Average consumption of trip A, l/100 km (NaN while too short). */
   avgL100: number;
+  /** Live range from the rolling consumption (range-estimator.ts), km; preferred over tank ÷ trip average. */
+  liveRangeKm?: number;
   powerKw: number;
   torqueNm: number;
   lambda: number;
@@ -157,7 +159,11 @@ export function formatField(id: FieldId, v: FieldInputs, u: UnitPrefs, lim?: Par
       const gal = u.fuel === "mpg";
       return out(num(gal ? v.fuelFlowLh / CONV.lPerGalUs : v.fuelFlowLh, gal ? 2 : 1), gal ? "gal/h" : "l/h");
     }
-    case "range": return out(num(toUnit("distance", rangeKm(v.tankLevelL, v.avgL100), u.distance)), u.distance);
+    case "range": {
+      // the same live value as every other range readout; tank ÷ trip average only without it
+      const km = Number.isFinite(v.liveRangeKm) ? v.liveRangeKm! : rangeKm(v.tankLevelL, v.avgL100);
+      return out(num(toUnit("distance", km, u.distance)), u.distance);
+    }
     case "power": return out(num(toUnit("power", Math.max(0, v.powerKw), u.power)), u.power);
     case "torque": return out(num(toUnit("torque", v.torqueNm, u.torque)), u.torque);
     case "lambda": return out(num(v.lambda, 2), "λ");

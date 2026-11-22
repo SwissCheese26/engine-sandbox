@@ -200,7 +200,7 @@
 }
 
 /* ── Getriebe-Pult: single-speed reduction, no gearbox, shift buttons, tank ── */
-.gearbox[data-drive="ev"] :is(label:has([data-control="gearbox"]), label:has([data-control="final-drive"]), .gearbox__shift, .gearbox__keys, .gearbox__tank, .gearbox__hint, .gearbox__calc, .gears),
+.gearbox[data-drive="ev"] :is(label:has([data-control="gearbox"]), label:has([data-control="final-drive"]), .gearbox__shift, .gearbox__keys, .gearbox__tank, .gearbox__range, .gearbox__hint, .gearbox__calc, .gears),
 .gearbox[data-drive="ev"] .gearbox__readouts div:has([data-out="gear-oil"]),
 .gearbox[data-drive="ev"] .vehicle__num:has([data-field="tank"]) {
   display: none;

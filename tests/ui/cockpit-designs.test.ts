@@ -159,6 +159,8 @@ describe("field values in the chosen units", () => {
     expect(rangeKm(Number.NaN, 6)).toBeNaN();
     expect(formatField("range", inputs(), METRIC)).toMatchObject({ value: "615", unit: "km" });
     expect(formatField("range", inputs(), IMPERIAL)).toMatchObject({ value: "382", unit: "mi" });
+    // the live range (range-estimator.ts) wins, so the field matches every other range readout
+    expect(formatField("range", inputs({ liveRangeKm: 721 }), METRIC)).toMatchObject({ value: "721", unit: "km" });
   });
   test("power, torque, lambda, road, 0–100, outside", () => {
     expect(formatField("power", inputs(), { ...METRIC, power: "PS" })).toMatchObject({ value: "150", unit: "PS" });

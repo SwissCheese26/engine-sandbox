@@ -4,10 +4,11 @@ Alle sichtbaren Änderungen an der Prüfzelle, neueste zuerst. Aufbau nach [Keep
 
 _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `bun scripts/changelog.ts` ausführen._
 
-## 2026-11-22 – Elektroantrieb in der Werkbank, 2-Gang-Getriebe und Vmax für E-Autos, Live-Reichweite und Fahrstufen P N D, Bremse hält bei der Automatik die Antriebsräder
+## 2026-11-22 – Elektroantrieb in der Werkbank, 2-Gang-Getriebe und Vmax für E-Autos, Live-Reichweite für alle Fahrzeuge und Fahrstufen P N D, Bremse hält bei der Automatik die Antriebsräder
 
 ### Neu
 
+- Jedes Fahrzeug zeigt jetzt seine Reichweite, auch Benziner und Diesel: Tankinhalt geteilt durch den Verbrauch der letzten Kilometer und Minuten, live und ohne Sprünge. Sie steht in jedem Cockpit-Design neben Tank oder Ladezustand und in der Prüfzelle neben dem Tankinhalt. Auf dem Motorprüfstand ohne Fahrzeug bleibt sie ausgeblendet. ([#129](https://github.com/SwissCheese26/engine-sandbox/issues/129), [#130](https://github.com/SwissCheese26/engine-sandbox/issues/130))
 - 2-Gang-Getriebe für E-Autos wie bei Porsche Taycan und Audi e-tron GT: kurzer 1. Gang (etwa 15 : 1) zum Anfahren, langer 2. Gang (etwa 8 : 1) für Vmax, mit einstellbarem Schaltpunkt und kurzer Zugkraftunterbrechung beim Schalten. Die Untersetzung lässt sich auch beim 1-Gang-Getriebe ändern. ([#108](https://github.com/SwissCheese26/engine-sandbox/issues/108), [#124](https://github.com/SwissCheese26/engine-sandbox/issues/124), [#125](https://github.com/SwissCheese26/engine-sandbox/issues/125))
 - Den Vmax-Begrenzer von E-Autos kannst du in der Werkbank anheben, bis zur Drehzahlgrenze der Motoren. Am rechten Anschlag ist er aus, dann steht „begrenzt durch Motordrehzahl“. ([#108](https://github.com/SwissCheese26/engine-sandbox/issues/108), [#125](https://github.com/SwissCheese26/engine-sandbox/issues/125))
 - Fahrstufen P, N und D statt ▲ D ▼ neben den Pedalen eines Elektroautos. P zieht die Parkbremse, N nimmt den Antrieb weg. Löst „Halten“ die Parkbremse, springt die Fahrstufe auf N. ([#108](https://github.com/SwissCheese26/engine-sandbox/issues/108), [#125](https://github.com/SwissCheese26/engine-sandbox/issues/125))

@@ -1,7 +1,7 @@
 // Prüfzelle: wires workbench, schematic, nameplate, instruments, recorder and console to the
 // simulator and runs the main loop.
 import { BRAKE_MAX_G, EngineSimulator, EvSimulator, TERRAIN_LABELS, VehicleSystems, defaultInputs, evPackKwh, evRpmVmaxKmh, summarize } from "../core/index.ts";
-import { RangeEstimator } from "./ev-range.ts";
+import { RangeEstimator, packKwhLeft, ratedLPer100 } from "./range-estimator.ts";
 import type { EvConfig, EvDriveMode } from "../core/index.ts";
 import { EvBench } from "./ev-bench.ts";
 import { EvStatus } from "./ev-panel.ts";
@@ -56,6 +56,9 @@ export class App {
   private evSim: EvSimulator | null = null;
   /** Live range (#108): rolling consumption of the last kilometres / minutes. */
   private evRange: RangeEstimator | null = null;
+  /** Live range of a combustion vehicle: rolling fuel consumption, restarted when the car or fuel changes. */
+  private fuelRange: RangeEstimator | null = null;
+  private fuelRangeKey = "";
   private evCfg: Readonly<EvConfig> | null = null;
   private evMode: EvDriveMode = "sport";
   private evPanel = new EvStatus();
@@ -175,7 +178,7 @@ export class App {
       if (sameCar) this.evSim!.setConfig(structuredClone(evNow) as EvConfig, true);
       else this.evSim = new EvSimulator(structuredClone(evNow) as EvConfig);
     } else this.evSim = null;
-    if (!sameCar) this.evRange = evNow ? new RangeEstimator(evNow.ratedKwhPer100 ?? 18) : null;
+    if (!sameCar) this.evRange = evNow ? new RangeEstimator(evNow.ratedKwhPer100 ?? 18, "electric") : null;
     if (!sameCar) this.evBench.setCar(car, stored ?? undefined);
     this.evPanel.setShown(!!evNow);
     this.bench.setElectric(!!evNow);
@@ -347,7 +350,8 @@ export class App {
     });
     this.gearbox.onResetVehicle = () => {
       this.psim.resetVehicle();
-      if (this.evCfg) this.evRange = new RangeEstimator(this.evCfg.ratedKwhPer100 ?? 18);
+      if (this.evCfg) this.evRange = new RangeEstimator(this.evCfg.ratedKwhPer100 ?? 18, "electric");
+      this.fuelRangeKey = "";
     };
     // Elektro-Platte (#108)
     this.evPanel.onMode = (m) => this.setEvMode(m);
@@ -616,6 +620,20 @@ export class App {
     });
   }
 
+  /** Fuel range: tank litres ÷ the rolling consumption; the rated start value follows from the car and the fuel. */
+  private stepFuelRange(dt: number, s: EngineState): number {
+    const d = this.gearbox.drivetrain;
+    const v = d.vehicle;
+    const key = `${this.cfg.fuel}|${v.massKg}|${v.dragCoefficient}|${v.frontalAreaM2}|${v.rollingResistance}`;
+    if (!this.fuelRange || key !== this.fuelRangeKey) {
+      this.fuelRangeKey = key;
+      // heavy vehicles (trucks, buses) are rated at 80 km/h
+      this.fuelRange = new RangeEstimator(ratedLPer100(v, this.cfg.fuel, v.massKg > 3500), "fuel");
+    }
+    this.fuelRange.step(dt, s.running ? s.fuelFlowLh : 0, d.state.speedKmh);
+    return this.fuelRange.rangeKm(d.tank.levelL);
+  }
+
   /** Engine turning (running, cranking or spinning down): the bench is locked. */
   private static turning(s: EngineState): boolean {
     return s.running || s.rpm > 1;
@@ -661,10 +679,14 @@ export class App {
         s = sim.state;
       }
       // the range everywhere (readouts, every cockpit design) from the rolling consumption, not the trip average
+      // (one estimator for both drives, range-estimator.ts); only with a vehicle on the chassis dyno
+      let rangeKm = Number.NaN;
       if (s.ev && this.evRange && this.evCfg) {
         this.evRange.step(dt, s.ev.powerKw, this.gearbox.drivetrain.state.speedKmh);
-        s.ev.rangeKm = this.evRange.rangeKm(s.ev.soc, evPackKwh(this.evCfg as EvConfig));
-      }
+        s.ev.rangeKm = this.evRange.rangeKm(packKwhLeft(s.ev.soc, evPackKwh(this.evCfg as EvConfig)));
+        if (this.inputs.dynoMode === "vehicle") rangeKm = s.ev.rangeKm;
+      } else if (this.inputs.dynoMode === "vehicle" && !this.evSim) rangeKm = this.stepFuelRange(dt, s);
+      this.gearbox.showRange(rangeKm);
       this.evPanel.update(s, this.gearbox.drivetrain.state.speedKmh);
       // the bench edits the combustion engine: an electric car (#108) does not lock it
       this.bench.setLocked(App.turning(this.evSim ? this.sim.state : s));
@@ -676,7 +698,7 @@ export class App {
         view.update({
           s, dt, mode: this.inputs.dynoMode, ignition: this.inputs.ignition, sinceIgnitionS: this.sinceIgnition,
           pedal: this.inputs.pedal, braking: this.console.brakeHeld, drivetrain: this.gearbox.drivetrain, trip: this.gearbox.trip.computer.data,
-          systems: this.systems,
+          systems: this.systems, rangeKm,
         });
       } else {
         // hidden canvases of the Prüfzelle are not drawn while another view is shown

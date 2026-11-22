@@ -57,8 +57,7 @@ export class RaceView implements LayoutView {
         <div class="rd__cell"><span class="rd__lab">Leistung</span><b class="num" data-rd="power">–</b></div>
         <div class="rd__cell rd__cell--warn" data-rd="oil-tile"><span class="rd__lab" data-rd="oil-label">Öl</span><b class="num" data-rd="oil">–</b></div>
         <div class="rd__cell rd__cell--warn" data-rd="water-tile"><span class="rd__lab" data-rd="water-label">Wasser</span><b class="num" data-rd="water">–</b></div>
-        <div class="rd__cell rd__cell--warn" data-rd="tank-tile"><span class="rd__lab" data-rd="tank-label">Tank</span><b class="num" data-rd="tank">–</b></div>
-        <div class="rd__cell" data-rd="range-tile" hidden><span class="rd__lab">Reichweite</span><b class="num" data-rd="range">–</b></div>
+        <div class="rd__cell rd__cell--warn" data-rd="tank-tile"><span class="rd__head"><span class="rd__lab" data-rd="tank-label">Tank</span><span class="rd__range num" data-rd="range-tile" hidden><span class="sr-only">Reichweite </span><span data-rd="range">–</span></span></span><b class="num" data-rd="tank">–</b></div>
       </div>`;
     this.el = el;
     this.leds = [...el.querySelectorAll<HTMLElement>(".rd-led")];
@@ -85,7 +84,6 @@ export class RaceView implements LayoutView {
     this.out["rpm-label"]!.textContent = ev ? "kW" : "1/min";
     this.out["oil-label"]!.textContent = ev ? "Motor" : "Öl";
     this.out["tank-label"]!.textContent = ev ? "Ladung" : "Tank";
-    this.out["range-tile"]!.hidden = !ev;
     // no rev limiter zone on the power bar
     if (ev) this.bar.style.setProperty("--zone", "100%");
     else if (this.cfg) this.bar.style.setProperty("--zone", `${(limitZoneRpm(this.cfg.revLimitRpm, this.summary.safeMaxRpm) / this.rpmMax) * 100}%`);
@@ -177,6 +175,17 @@ export class RaceView implements LayoutView {
     const lv = gal ? d.tank.levelL / 3.785411784 : d.tank.levelL;
     this.put("tank", vehicle ? `${fmt(lv, gal ? 1 : 0)} ${gal ? "gal" : "l"}` : "–");
     this.flag("tank-tile", vehicle && d.tank.reserve);
+    this.showRange(f);
+  }
+
+  /** Live range in the head line of the tank tile (fuel or electric, range-estimator.ts; no extra row on a phone),
+   *  hidden on the engine dyno. */
+  private showRange(f: Frame) {
+    const km = f.rangeKm ?? Number.NaN;
+    const on = f.mode === "vehicle" && Number.isFinite(km);
+    const tile = this.out["range-tile"]!;
+    if (tile.hidden === on) tile.hidden = !on;
+    if (on) this.put("range", rangeText(km, prefs()));
   }
 
   /** EV (#108): power LEDs (no shift light: one gear), kW, sprint, motor and battery temperature, state of charge. */
@@ -218,7 +227,7 @@ export class RaceView implements LayoutView {
     this.flag("water-tile", ev.batteryC > 55);
     this.put("tank", vehicle ? socText(ev.soc) : "–");
     this.flag("tank-tile", ev.soc < 0.1);
-    this.put("range", rangeText(ev.rangeKm, u));
+    this.showRange(f);
   }
 
   private flag(k: string, on: boolean) {

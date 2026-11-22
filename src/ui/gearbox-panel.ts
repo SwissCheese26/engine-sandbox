@@ -8,6 +8,7 @@
 // stay at the top; settings live in their sections: "Getriebe" (type, final drive, oil cooler, ratios, traction
 // diagram), "Fahrzeug & Reifen" (vehicle kind, ready-made car, governor, body, tyres) and "Umwelt & Assistenten".
 // Every own change is stored for the loaded vehicle only (vehicle-custom.ts).
+import { rangeText } from "./layouts/ev-logic.ts";
 import { TripPanel } from "./trip-panel.ts";
 import { Drivetrain, FuelTank, GEARBOXES, VEHICLES, SPEED_LIMIT_OPTIONS, isAutomaticType, isCommercialKind } from "../core/index.ts";
 import type { DrivetrainState, EngineConfig, EngineSummary, GearboxType } from "../core/index.ts";
@@ -72,6 +73,8 @@ export class GearboxPanel {
   readonly lamps = new WarningLamps();
   /** Tempomat-Leiste (issue #30). */
   private tankOut!: HTMLElement;
+  private rangeOut!: HTMLElement;
+  private lastRange = "";
   private lastTank = "";
   private tankSavedAt = 0;
   private tankSavedL = Number.NaN;
@@ -170,6 +173,7 @@ export class GearboxPanel {
         <div><dt>Getriebeöl</dt><dd class="num"><span data-out="gear-oil">–</span></dd></div>
         <div class="gearbox__tank"><dt>Tankinhalt</dt><dd class="num"><span data-out="tank">–</span>
           <button type="button" class="btn btn--small" data-control="refuel">Volltanken</button></dd></div>
+        <div class="gearbox__range" data-out="range-row"><dt>Reichweite</dt><dd class="num"><span data-out="range">–</span></dd></div>
       </dl>
       <div data-slot="trip"></div>
       <div class="gearbox__notes" aria-live="polite">
@@ -183,6 +187,7 @@ export class GearboxPanel {
     el.querySelector("[data-slot=trip]")!.replaceWith(this.trip.el);
     const q = <T extends Element>(s: string) => el.querySelector<T>(s)!;
     this.tankOut = q("[data-out=tank]");
+    this.rangeOut = q("[data-out=range]");
     this.refuelBtn = q("[data-control=refuel]");
     // at the pump: only standing still (the button is disabled while rolling)
     this.refuelBtn.addEventListener("click", () => {
@@ -422,6 +427,14 @@ export class GearboxPanel {
       this.oilNoteEl.textContent = note;
       this.oilNoteEl.hidden = !note;
     }
+  }
+
+  /** Live range next to the tank (range-estimator.ts), km; "–" while unknown. */
+  showRange(km: number): void {
+    const t = rangeText(km, prefs());
+    if (t === this.lastRange) return;
+    this.lastRange = t;
+    this.rangeOut.textContent = t;
   }
 
   /** Per frame: returns the pedal the engine should get (manual shifts lift off). */

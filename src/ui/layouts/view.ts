@@ -19,6 +19,8 @@ export interface Frame {
   trip: Readonly<TripComputerData>;
   /** Air brake, retarder, AdBlue and battery (#83); optional so older callers and tests need not pass it. */
   systems?: VehicleSystems;
+  /** Live range of the vehicle, km (range-estimator.ts; fuel or electric); NaN on the engine dyno or unknown. */
+  rangeKm?: number;
 }
 
 export interface LayoutView {
