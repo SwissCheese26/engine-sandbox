@@ -9,6 +9,7 @@ export type * from "./types.ts";
 export { dynoSweep, summarize } from "./dyno.ts";
 export { validateConfig } from "./validate.ts";
 export { EngineSimulator } from "./simulator.ts";
+export { emissionsOf, hasCatHeating, lightOffC } from "./cold-start.ts";
 
 export function displacementL(cfg: EngineConfig): number {
   return displacementLiters(cfg);
