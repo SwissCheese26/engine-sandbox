@@ -152,6 +152,7 @@ export class CockpitView implements LayoutView {
           <p class="ck__gear num"><span class="sr-only">Gang </span><span data-ck="gear">N</span></p>
           <button type="button" class="ck__mode" data-ck="mode"></button>
           <p class="ck__speed num"><span data-ck="speed-big">–</span><small data-ck="speed-unit2">km/h</small></p>
+          <p class="ck__range num" data-ck="range-line"><span class="ck__range-lab">Reichweite</span> <b data-ck="range-main">–</b></p>
           <dl class="ck__hud num" aria-label="Drehzahl und Leistung">
             <div class="ck__hud-rpm"><dt data-ck="hud-rpm-label">Drehzahl</dt><dd><span data-ck="hud-rpm">0</span> <small data-ck="hud-rpm-unit">1/min</small></dd></div>
             <div><dt>Leistung</dt><dd><span data-ck="hud-power">0</span> <small data-ck="hud-power-unit">kW</small></dd></div>
@@ -165,6 +166,7 @@ export class CockpitView implements LayoutView {
           <dl class="ck__bike num" aria-label="Motorrad-Anzeigen">
             <div><dt data-ck="bike-cool-label">Kühlmittel</dt><dd data-ck="bike-cool">–</dd></div>
             <div><dt data-ck="bike-tank-label">Tank</dt><dd data-ck="bike-tank">–</dd></div>
+            <div class="ck__bike-range"><dt>Reichweite</dt><dd data-ck="bike-range">–</dd></div>
             <div><dt>Trip</dt><dd data-ck="bike-trip">–</dd></div>
             <div data-ck="lean-row" hidden><dt>Schräglage</dt><dd data-ck="bike-lean">–</dd></div>
           </dl>
@@ -286,6 +288,12 @@ export class CockpitView implements LayoutView {
       return { id, dial, wrap, out: wrap.querySelector(".ck-mini__val")!, unit: wrap.querySelector(".ck-mini__unit")!, cap: wrap.querySelector(".ck-mini__cap")!, last: "" };
     };
     this.minis = { coolant: mk("coolant"), oilT: mk("oil-temp"), oilP: mk("oil-pressure"), boost: mk("boost"), fuel: mk("fuel"), tank: mk("tank") };
+    // the range under the tank / charge gauge (every dial design; range-estimator.ts)
+    const rangeMini = document.createElement("span");
+    rangeMini.className = "ck-mini__range num";
+    rangeMini.innerHTML = `<span class="ck-mini__range-lab">Reichweite</span> <b data-ck="range-mini">–</b>`;
+    this.minis.tank.wrap.querySelector("figcaption")!.append(rangeMini);
+    this.out["range-mini"] = rangeMini.querySelector("b")!;
     host.after(this.extras.el);
   }
 
@@ -541,6 +549,7 @@ export class CockpitView implements LayoutView {
       this.out.dyno!.hidden = vehicle;
       this.el.classList.toggle("is-engine-dyno", !vehicle);
     }
+    this.updateRange(f, u);
     // board computer: odometer whole km, trip one decimal, average of trip A
     const { total, tripA } = f.trip;
     this.put("ambient", `${fmt(toUnit("temp", d.environment.ambientC, u.temp))} ${u.temp}`);
@@ -769,6 +778,23 @@ export class CockpitView implements LayoutView {
     this.out["gov-row"]!.dataset.state = lim === null ? "off" : ds.limiting ? "active" : "on";
   }
 
+  /**
+   * Live range (range-estimator.ts), fuel or electric, in every design next to the tank or charge level: under the
+   * tank gauge (dial designs), in the centre display (digital, head-up), in the motorcycle TFT and the Renn-Dash
+   * (race.ts). Hidden on the engine dyno without a vehicle.
+   */
+  private updateRange(f: Frame, u: ReturnType<typeof prefs>) {
+    const km = f.rangeKm ?? Number.NaN;
+    const on = f.mode === "vehicle" && Number.isFinite(km);
+    const flag = on ? "on" : "off";
+    if (this.el.dataset.range !== flag) this.el.dataset.range = flag;
+    if (!on) return;
+    const t = rangeText(km, u);
+    this.put("range-mini", t);
+    this.put("range-main", t);
+    this.put("bike-range", t);
+  }
+
   /** Odometer as single digits: plain text in most designs, number drums in the oldschool one (CSS). */
   private putOdo(digits: string, unit: string) {
     const k = `${digits}|${unit}`;
@@ -829,7 +855,7 @@ export class CockpitView implements LayoutView {
       coolantC: s.coolantC, oilC: s.oilC, oilPressureBar: s.oilPressureBar, boostBar: s.boostBar, egtC: s.egtC,
       fuelFlowLh: s.fuelFlowLh, speedKmh: vehicle ? ds.speedKmh : 0, running: s.running, tankLevelL: vehicle ? d.tank.levelL : Number.NaN,
       // range from the trip average; on a fresh trip from the momentary consumption
-      avgL100: Number.isFinite(avg) ? avg : l100Now, powerKw: s.powerKw, torqueNm: s.torqueNm, lambda: s.lambda,
+      avgL100: Number.isFinite(avg) ? avg : l100Now, liveRangeKm: vehicle ? f.rangeKm : Number.NaN, powerKw: s.powerKw, torqueNm: s.torqueNm, lambda: s.lambda,
       altitudeM: (d.environment.terrain ?? "static") === "static" ? Number.NaN : ds.roadAltitudeM ?? Number.NaN,
       gradePct: ds.roadGradePct ?? d.environment.gradePct, t0to100S: ds.t0to100S, t0to100Running: ds.t0to100Running,
       ambientC: d.environment.ambientC, airCooled: airCooled(this.cfg), ...r,

@@ -85,7 +85,6 @@ export class RaceView implements LayoutView {
     this.out["rpm-label"]!.textContent = ev ? "kW" : "1/min";
     this.out["oil-label"]!.textContent = ev ? "Motor" : "Öl";
     this.out["tank-label"]!.textContent = ev ? "Ladung" : "Tank";
-    this.out["range-tile"]!.hidden = !ev;
     // no rev limiter zone on the power bar
     if (ev) this.bar.style.setProperty("--zone", "100%");
     else if (this.cfg) this.bar.style.setProperty("--zone", `${(limitZoneRpm(this.cfg.revLimitRpm, this.summary.safeMaxRpm) / this.rpmMax) * 100}%`);
@@ -177,6 +176,16 @@ export class RaceView implements LayoutView {
     const lv = gal ? d.tank.levelL / 3.785411784 : d.tank.levelL;
     this.put("tank", vehicle ? `${fmt(lv, gal ? 1 : 0)} ${gal ? "gal" : "l"}` : "–");
     this.flag("tank-tile", vehicle && d.tank.reserve);
+    this.showRange(f);
+  }
+
+  /** Live range beside the tank tile (fuel or electric, range-estimator.ts); hidden on the engine dyno. */
+  private showRange(f: Frame) {
+    const km = f.rangeKm ?? Number.NaN;
+    const on = f.mode === "vehicle" && Number.isFinite(km);
+    const tile = this.out["range-tile"]!;
+    if (tile.hidden === on) tile.hidden = !on;
+    if (on) this.put("range", rangeText(km, prefs()));
   }
 
   /** EV (#108): power LEDs (no shift light: one gear), kW, sprint, motor and battery temperature, state of charge. */
@@ -218,7 +227,7 @@ export class RaceView implements LayoutView {
     this.flag("water-tile", ev.batteryC > 55);
     this.put("tank", vehicle ? socText(ev.soc) : "–");
     this.flag("tank-tile", ev.soc < 0.1);
-    this.put("range", rangeText(ev.rangeKm, u));
+    this.showRange(f);
   }
 
   private flag(k: string, on: boolean) {

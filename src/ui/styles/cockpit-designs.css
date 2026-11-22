@@ -804,3 +804,88 @@
     opacity: 1;
   }
 }
+
+/* ── Reichweite (range-estimator.ts): fuel and electric, next to the tank / charge level in every design ── */
+.ck__range {
+  display: none;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.ck[data-range="off"] :is(.ck-mini__range, .ck__range, .ck__bike-range) {
+  display: none !important;
+}
+/* dial designs: a second caption line under the tank (or charge) gauge, in the gauge's own print colours */
+.ck-mini__range {
+  display: block;
+  font-size: var(--fs-12);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--ck-dim);
+}
+.ck-mini__range b {
+  font-weight: 600;
+  color: var(--ck-light);
+}
+.ck[data-design="italian"] .ck-mini__range {
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-size: 11px;
+}
+.ck[data-design="oldschool"] .ck-mini__range,
+.ck[data-design="oldschool"] .ck-mini__range b {
+  color: var(--ck-paper-text);
+  font-family: var(--ck-font);
+}
+.ck[data-design="truck"] .ck-mini__range b {
+  font-weight: 700;
+}
+/* EV: the E-Tacho shows the range big in its own panel; the other designs show it at the gauge / in their screen */
+.ck[data-design="etacho"][data-drive="ev"] .ck-mini__range,
+.ck:not([data-design="etacho"]) .ck__ev-range {
+  display: none;
+}
+/* digital: a pill under the speed, like the range line of a board computer */
+.ck[data-design="digital"] .ck__range {
+  display: block;
+  justify-self: center;
+  padding: 2px var(--space-3);
+  border: 1px solid var(--ck-edge);
+  border-radius: 999px;
+  background: var(--ck-panel);
+  font-size: var(--fs-14);
+  color: var(--ck-dim);
+}
+.ck[data-design="digital"] .ck__range b {
+  color: var(--ck-fill);
+  font-weight: 600;
+}
+/* head-up: one quiet line under rpm and power */
+.ck[data-design="hud"] .ck__mfd {
+  grid-template-areas: "shift shift" "speed gear" "hud hud" "range range" "dyno dyno" "cruise cruise";
+}
+.ck[data-design="hud"] .ck__range {
+  grid-area: range;
+  display: block;
+  justify-self: center;
+  font-size: var(--fs-16);
+  color: var(--ck-dim);
+}
+.ck[data-design="hud"] .ck__range b {
+  font-size: var(--fs-20);
+  font-weight: 600;
+  color: var(--ck-light);
+}
+/* motorcycle TFT: four values; on a phone two rows so nothing leaves the screen */
+@media (max-width: 899px) {
+  .ck[data-design="motorrad"] .ck__bike {
+    grid-auto-flow: row;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .ck[data-design="motorrad"] .ck__bike div + div {
+    border-left: 0;
+  }
+  .ck[data-design="motorrad"] .ck__bike div:nth-child(even) {
+    border-left: 1px solid var(--ck-edge);
+  }
+}
