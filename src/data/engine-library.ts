@@ -153,6 +153,59 @@ const EXTRA: LibraryEngine[] = [
     expected: { peakTorqueNm: 93, peakTorqueRpm: 3600, peakPowerKw: 50, peakPowerRpm: 6000 },
     source: "Toyota 1KR-FE (71 × 84 mm, ε 10,5, 998 cm³, DOHC 12V, VVT-i); Citroën C1 1.0 (2008): 50 kW (68 PS) @ 6000, 93 Nm @ 3600 laut ADAC-Autokatalog; Pleuel, Nocken, Saugrohr geschätzt [S]",
   },
+  // EA888 evo4 333 PS (docs/research/petrol.md §7b): same bore/stroke as the Gen3 reference, lower compression
+  // (9.3), a larger turbo than the IS20/IS38 class [S: inducer] and Super Plus. Like the CHHB the 420 Nm plateau
+  // 2100–5500 is an ECU torque limit (gearbox/AWD protection), not air-limited; the boost target is fitted to 245 kW.
+  {
+    maker: "VW", cars: "Cupra Leon VZ 333 PS, VW Golf R (2024+)", years: "2024–",
+    config: {
+      id: "lib-vw-ea888-evo4-dnf", name: "VW EA888 evo4 (DNF, 2.0 TSI, 245 kW)", fuel: "petrol",
+      block: blk("inline", 4, 82.5, 92.8, 144, 9.3, "cast-iron"),
+      head: { valvetrain: "dohc", valvesPerCylinder: 4, camProfile: 0.45, variableTiming: "dual-cam" },
+      induction: { aspiration: "turbo", compressorInducerMm: 48, turbineAR: 0.4, variableGeometry: false, boostTargetBar: 1.7, intercooler: "air-to-air", intakeRunnerLengthMm: 260, individualThrottleBodies: false },
+      fuelSystem: { kind: "petrol", mixture: "dual-injection", fuel: "ron98", fullLoadLambda: 0.86, ignitionAdvanceOffsetDeg: 0 },
+      exhaust: { manifold: "cast-log", egr: false, catalyst: true, particulateFilter: true, scr: false },
+      cooling: { radiatorCapacityKw: 230, thermostatOpenC: 95, oilCooler: true }, revLimitRpm: 6800, idleRpm: 700,
+      ecuTorqueLimitNm: 420,
+    },
+    expected: { peakTorqueNm: 420, peakTorqueRpm: 3800, peakPowerKw: 245, peakPowerRpm: 6050 },
+    source: "CUPRA Technical Data Leon Sportstourer (EG22, 05/2023): DNF 1984 cm³, 82,5 × 92,8 mm, ε 9,3, 245 kW @ 5600–6500, 420 Nm @ 2100–5500; VW Newsroom Golf R (EA888 LK3 evo4); Turbo, Ladedruck, Nocken geschätzt [S]",
+  },
+  // EA111 1.4 TFSI CAXC (petrol.md §7c): single turbo (not the 136/185 PS twincharger), small K03-class charger,
+  // 200 Nm plateau 1500–4000 is an ECU limit. The small
+  // charger chokes above ≈ 4500 rpm (rated power at 5000 rpm, not at the limiter); inducer and boost fitted to 90 kW [S].
+  {
+    maker: "VW", cars: "Audi A1 8X, VW Golf 6, Seat Leon 1P", years: "2008–2014",
+    config: {
+      id: "lib-vw-ea111-14tfsi-caxc", name: "VW EA111 1.4 TFSI (CAXC, 90 kW)", fuel: "petrol",
+      block: blk("inline", 4, 76.5, 75.6, 144, 10.0, "cast-iron", { crankshaft: "cast" }),
+      head: { valvetrain: "dohc", valvesPerCylinder: 4, camProfile: 0.25, variableTiming: "intake-cam" },
+      induction: { aspiration: "turbo", compressorInducerMm: 29, turbineAR: 0.45, variableGeometry: false, boostTargetBar: 1.0, intercooler: "air-to-air", intakeRunnerLengthMm: 300, individualThrottleBodies: false },
+      fuelSystem: { kind: "petrol", mixture: "direct-injection", fuel: "ron95", fullLoadLambda: 0.9, ignitionAdvanceOffsetDeg: 0 },
+      exhaust: { manifold: "cast-log", egr: false, catalyst: true, particulateFilter: false, scr: false },
+      cooling: { radiatorCapacityKw: 100, thermostatOpenC: 95, oilCooler: false }, revLimitRpm: 6500, idleRpm: 700,
+      ecuTorqueLimitNm: 200,
+    },
+    expected: { peakTorqueNm: 200, peakTorqueRpm: 2750, peakPowerKw: 90, peakPowerRpm: 5000 },
+    source: "ADAC-Autokatalog Audi A1 1.4 TFSI S tronic 07/10–11/14 (CAX, 90 kW @ 5000, 200 Nm @ 1500, Turbo); 76,5 × 75,6 mm, ε 10,0 (Audi SSP 405/EA111 1.4 TFSI); Turbo, Ladedruck, Nocken geschätzt [S]",
+  },
+  // BMW N13B16 (petrol.md §7d): PSA/BMW Prince family with BMW twin-scroll turbo and Valvetronic; 220 Nm plateau
+  // 1350–4300 is an ECU limit; the small charger chokes above ≈ 4400 rpm (rated power there), inducer fitted [S].
+  {
+    maker: "BMW", cars: "BMW 116i/118i F20/F21, 316i F30", years: "2011–2015",
+    config: {
+      id: "lib-bmw-n13b16", name: "BMW N13B16 (1.6 Turbo, 100 kW)", fuel: "petrol",
+      block: blk("inline", 4, 77, 85.8, 136.5, 10.5, "aluminium", { crankshaft: "cast" }),
+      head: { valvetrain: "dohc", valvesPerCylinder: 4, camProfile: 0.25, variableTiming: "dual-cam" },
+      induction: { aspiration: "turbo", compressorInducerMm: 30, turbineAR: 0.45, variableGeometry: false, boostTargetBar: 0.8, intercooler: "air-to-air", intakeRunnerLengthMm: 300, individualThrottleBodies: false },
+      fuelSystem: { kind: "petrol", mixture: "direct-injection", fuel: "ron95", fullLoadLambda: 0.9, ignitionAdvanceOffsetDeg: 0 },
+      exhaust: { manifold: "cast-log", egr: false, catalyst: true, particulateFilter: false, scr: false },
+      cooling: { radiatorCapacityKw: 110, thermostatOpenC: 95, oilCooler: false }, revLimitRpm: 6500, idleRpm: 700,
+      ecuTorqueLimitNm: 220,
+    },
+    expected: { peakTorqueNm: 220, peakTorqueRpm: 2800, peakPowerKw: 100, peakPowerRpm: 4400 },
+    source: "ADAC-Autokatalog BMW 116i (F20, 09/11–03/13): N13B16A 1598 cm³, 100 kW @ 4400, 220 Nm @ 1350; 77 × 85,8 mm, ε 10,5 (BMW Pressemappe N13); Turbo, Ladedruck, Nocken geschätzt [S]",
+  },
 ];
 
 /**
