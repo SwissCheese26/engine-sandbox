@@ -683,7 +683,9 @@
 .ck[data-design="motorrad"] .ck__bike {
   grid-area: bike;
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  /* three values, a fourth (lean angle, #83) only on a route with curves */
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
   margin: 0;
   border-top: 1px solid var(--ck-edge);
 }
@@ -702,6 +704,12 @@
   font-size: var(--fs-20);
   font-weight: 600;
   white-space: nowrap;
+}
+.ck__bike div[hidden] {
+  display: none;
+}
+.ck__bike .is-limit dd {
+  color: var(--ck-red, #ff4d3d);
 }
 .ck[data-design="motorrad"] .ck__dyno {
   grid-area: dyno;

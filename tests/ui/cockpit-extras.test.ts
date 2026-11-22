@@ -73,10 +73,10 @@ describe("design selection: truck/bus design", () => {
 });
 
 describe("additional gauges", () => {
-  test("ids: boost, oil pressure, oil temperature, gearbox oil, lambda, EGT; no voltage (not in the core)", () => {
-    expect([...GAUGE_IDS]).toEqual(["boost", "oilP", "oilT", "gearOil", "lambda", "egt"]);
+  test("ids: engine values plus intake air, battery, air pressure, retarder, AdBlue and lean (#83)", () => {
+    expect([...GAUGE_IDS]).toEqual(["boost", "oilP", "oilT", "gearOil", "lambda", "egt", "intake", "battery", "air", "retarder", "adblue", "lean"]);
     expect(isGaugeId("voltage")).toBe(false);
-    expect(isGaugeId("intake")).toBe(false);
+    expect(isGaugeId("intake")).toBe(true);
   });
   test("stored choice: valid ids once each, in strip order; default none", () => {
     expect(DEFAULT_SETTINGS.ckGauges).toEqual([]);

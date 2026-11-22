@@ -328,7 +328,7 @@ export interface VehicleCoupling {
   launchLimitRpm?: number;
   /**
    * Brake-torque protection (issues #104, #119): cap on the positive engine torque, Nm, requested by the TCU of a
-   * converter automatic standing in gear with the brake and the throttle applied (brake stand / stall). Unset = no cap.
+   * converter automatic standing in D with the brake and the throttle applied (brake stand / stall). Unset = no cap.
    */
   torqueLimitNm?: number;
 }
@@ -414,6 +414,8 @@ export interface EngineState {
   lambda: number;
   /** Exhaust gas temperature before turbine, °C. */
   egtC: number;
+  /** Charge-air temperature in the intake manifold, °C (issue #105; diesel.md §3.1, petrol.md §3.2c). */
+  intakeAirC?: number;
   coolantC: number;
   oilC: number;
   oilPressureBar: number;

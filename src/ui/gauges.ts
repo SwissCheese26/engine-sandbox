@@ -323,6 +323,11 @@ export class InstrumentPanel {
   private rpm: RoundGauge;
   private round: RoundGauge[];
   private meters: Meter[];
+  /** Board-net voltage of the last frame (#83). */
+  private batteryV = Number.NaN;
+  /** 24 V board net (truck/bus): the voltmeter scale is reconfigured. */
+  private v24 = false;
+  private cfgNow: EngineConfig | null = null;
 
   constructor() {
     this.el = document.createElement("section");
@@ -351,6 +356,9 @@ export class InstrumentPanel {
       new Meter({ id: "bsfc", label: "Spezifisch", unit: "g/kWh", decimals: 0, min: 150, max: () => 500, limit: () => Infinity, value: (s) => s.bsfcGkWh, warns: [], units: UNITS.bsfc }),
       new Meter({ id: "lambda", label: "Lambda", unit: "", decimals: 2, min: 0.6, max: (c) => (isDiesel(c) ? 4 : 1.4), limit: lambdaLimit, lowLimit: true, value: (s) => (s.lambda > 9 ? Number.NaN : s.lambda), warns: ["smoke"] }),
       new Meter({ id: "knock", label: "Klopfen", unit: "%", decimals: 0, min: 0, max: () => 100, limit: () => L.knockMax * 100, value: (s) => s.knock * 100, warns: ["knock"], visible: (c) => !isDiesel(c) }),
+      // charge-air temperature (#105) and board-net voltage (#83, core vehicle-systems.ts)
+      new Meter({ ...T("intake", "Ansaugluft", 100, () => Infinity, (s) => s.intakeAirC ?? Number.NaN, []), min: -20 }),
+      new Meter({ id: "battery", label: "Batterie", unit: "V", decimals: 1, min: 8, max: () => (this.v24 ? 32 : 16), limit: () => (this.v24 ? 23.6 : 11.8), lowLimit: true, value: () => this.batteryV, warns: [] }),
       new Meter({ id: "smoke", label: "Ruß", unit: "%", decimals: 0, min: 0, max: () => 100, limit: () => L.smokeMax * 100, value: (s) => s.smoke * 100, warns: ["smoke"], visible: isDiesel }),
     ];
     const dial = document.createElement("div");
@@ -371,11 +379,18 @@ export class InstrumentPanel {
     const charged = cfg.induction.aspiration !== "naturally-aspirated";
     const bmax = charged ? niceCeil(Math.max(0.5, cfg.induction.boostTargetBar * 1.4)) : 0.5;
     bo!.setScale(-1, bmax, charged ? cfg.induction.boostTargetBar * L.boostOvershoot : Infinity);
+    this.cfgNow = cfg;
     for (const m of this.meters) m.configure(cfg);
     for (const g of this.round) g.draw();
   }
 
-  update(s: EngineState, dt: number) {
+  update(s: EngineState, dt: number, batteryV = Number.NaN) {
+    this.batteryV = batteryV;
+    const v24 = batteryV > 20;
+    if (v24 !== this.v24 && this.cfgNow) {
+      this.v24 = v24;
+      this.meters.find((m) => m.def.id === "battery")?.configure(this.cfgNow);
+    }
     const active = new Set(s.warnings.map((w) => w.code));
     for (const g of this.round) g.update(s, dt, active);
     for (const m of this.meters) m.update(s, dt, active);

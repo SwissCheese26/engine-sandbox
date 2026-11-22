@@ -20,16 +20,27 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
-    date: "2026-11-21",
-    title: "Zusatzinstrumente im Look jedes Cockpits, Reifenqualm, aufgeräumter Rollenprüfstand, Einstellungen pro Fahrzeug und Getriebeölkühler",
+    date: "2026-11-22",
+    title: "Festbremsdrehzahl der Automatik: Bremse hält die Antriebsräder",
     items: [
       { kind: "behoben", text: "Automatik: Vollgas bei voll getretener Bremse lässt die Räder nicht mehr frei durchdrehen. Die Bremse hält jetzt auch die Antriebsräder, der Motor bleibt auf der Festbremsdrehzahl des Wandlers (z. B. ≈ 2000 1/min beim Land Cruiser statt durchdrehender Räder). Bei starken Hecktrieblern wie 530d und E 220 d nimmt die Steuerung wie in echt Motormoment zurück, damit die Bremse hält (≈ 1800 statt über 4000 1/min). Das Getriebeöl wird dabei schnell heiß.", refs: [104, 118, 119] },
+    ],
+  },
+  {
+    date: "2026-11-21",
+    title: "Zusatzinstrumente im Look jedes Cockpits, Druckluft, Retarder und AdBlue, Kurven mit Schräglage, Reifenqualm, aufgeräumter Rollenprüfstand und Getriebeölkühler",
+    items: [
       { kind: "neu", text: "Neues Zusatzinstrument „Getriebeöl“, rund oder als Balken: gelb ab der Warnschwelle, rot ab dem Notlauf des Getriebesteuergeräts (beim Handschalter ab der Schadensgrenze), passend zur Getriebeart. Es erscheint, sobald ein Fahrzeug auf dem Prüfstand steht.", refs: [53, 83, 109] },
       { kind: "neu", text: "Drehen die Räder durch oder blockieren sie, steigt unter den Instrumenten ein Hauch Reifenqualm auf, je mehr Schlupf und Tempo, desto mehr. Wird der Motor zu heiß, dampft es über dem Cockpit bzw. dem Motor-Schnittbild, bei kritischer Hitze oder Motorschaden dichter. Ein Motorschaden oder viel zu heißes Öl zeigt sich als bläulicher Rauch, ein rußender Diesel als dunkle Wolke. Abschalten lässt sich das unter Einstellungen › Effekte (Rauch/Dampf).", refs: [110, 114] },
       { kind: "geändert", text: "Die Zusatzinstrumente passen sich jetzt dem Cockpit-Design an: elfenbeinfarbene Blätter mit Chromring im Oldschool, orange Beleuchtung in der Nachtfahrt, tiefe Röhren in der Sportlimousine und kräftige Lkw-Instrumente im Nutzfahrzeug. In Digital, Head-up, Renn-Dash und Motorrad erscheinen sie als Kacheln oder Segmentbalken im Stil des Displays. Grenzwerte bleiben überall gelb.", refs: [83, 109] },
       { kind: "geändert", text: "Rollenprüfstand aufgeräumt: Jede Einstellung gibt es nur noch einmal. Oben stehen die Anzeigen (Gang, Tempo, Vmax, 0–100, Getriebeöl, Tankinhalt, Bordcomputer), darunter die Abschnitte „Getriebe“ (Getriebeart, Achsübersetzung, Ölkühler, Gänge und Zugkraftdiagramm), „Fahrzeug & Reifen“ (Fahrzeugtyp, fertiges Fahrzeug, Vmax-Begrenzer, Karosserie, Reifen) und „Umwelt & Assistenten“. Die berechnete Vmax steht nur noch einmal, unter dem Zugkraftdiagramm.", refs: [112, 113] },
       { kind: "geändert", text: "Einstellungen gelten pro Fahrzeug: Eigene Gänge, Getriebeart, Achsübersetzung, Reifen, Antrieb, Karosserie, Tankgröße, Vmax-Begrenzer und Ölkühler bleiben beim Fahrzeug, an dem du sie geändert hast. Ein anderes Fahrzeug startet im Werkszustand, beim Zurückwechseln sind deine Änderungen wieder da. Bisher gespeicherte Gänge übernimmt das zuletzt gefahrene Fahrzeug.", refs: [112, 113] },
       { kind: "neu", text: "„Auf Werkszustand zurücksetzen“ unter „Fahrzeug & Reifen“ verwirft die eigenen Änderungen am aktuellen Fahrzeug.", refs: [112, 113] },
+      { kind: "neu", text: "Lkw und Bus haben jetzt Druckluftbremsen: Der Kompressor füllt den Vorrat bis 10 bar, jede Bremsung kostet Luft. Unter 5,5 bar leuchtet die rote Warnleuchte, unter 4,5 bar greifen die Federspeicher. Der Druck steht im Nutzfahrzeug-Design und als Zusatzinstrument „Druckluft“.", refs: [83, 117] },
+      { kind: "neu", text: "Retarder für Lkw und Bus: Stufe 0–5 mit „−“ und „+“ im Nutzfahrzeug-Design, daneben die Bremsleistung. Er bremst bei Tempo kräftig und lässt bei Schrittgeschwindigkeit nach, zum Anhalten braucht es die Bremse.", refs: [83, 117] },
+      { kind: "neu", text: "AdBlue bei Dieseln mit SCR: Der Tank leert sich mit etwa 5 % des Dieselverbrauchs. Bei Reserve leuchtet die AdBlue-Leuchte, ist er leer, blinkt sie und der Motor läuft im Notlauf mit weniger Leistung. Beim Tanken wird AdBlue mit aufgefüllt.", refs: [83, 117] },
+      { kind: "neu", text: "Neue Anzeigen in allen Cockpits: Ansauglufttemperatur und Batteriespannung (12,6 V aus, rund 14,2 V bei laufendem Motor, beim Lkw 24-V-Bordnetz), auch in der Prüfzelle.", refs: [83, 105, 117] },
+      { kind: "neu", text: "Flachland, Mittelgebirge und Alpen haben jetzt Kurven. Auf dem Motorrad zeigt das Cockpit die Schräglage, die das Tempo in der Kurve verlangt, in Signalfarbe, wenn der Reifen das nicht mehr hält.", refs: [83, 117] },
       { kind: "neu", text: "Getriebeölkühler wählbar: „Serie“, „Ölkühler (Zubehör)“ (Luft-Öl-Kühler im Fahrtwind, kühlt bei schneller Fahrt deutlich, im Stand kaum) und „Aus“ bei Getrieben, die ab Werk einen Kühler haben.", refs: [112, 113, 100] },
     ],
   },

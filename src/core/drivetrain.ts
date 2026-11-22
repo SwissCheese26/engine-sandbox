@@ -40,6 +40,10 @@ import type { ConverterCoupling, EngineConfig, EngineState, EngineSummary, SimIn
 
 export type GearboxType = "manual" | "dsg" | "cvt" | "sequential" | "automatic";
 
+/** Brake pedal range over which the brake-torque protection fades in (issues #104, #119) [S]. */
+const BTM_BRAKE_ON = 0.03;
+const BTM_BRAKE_FULL = 0.08;
+
 /** Gearboxes with an automatic shift schedule and tip mode (D / M): dual clutch and converter automatic. */
 export function isAutomaticType(type: GearboxType): boolean {
   return type === "dsg" || type === "automatic";
@@ -1269,7 +1273,7 @@ export class Drivetrain {
     // gearbox oil (issue #53): the output shaft turns with the wheels also in N
     const outputRpm = (v / this.vehicle.wheelRadiusM) * s.finalDrive * RAD_TO_RPM;
     this.stepGearboxOil(dt, engine, clutch, inputRpm, outputRpm, converter, Number.isFinite(vRoad) ? vRoad : 0);
-    const torqueLimitNm = converter && brake > 0.05 && pedal > 0.02 && Math.abs(Number.isFinite(vRoad) ? vRoad : 0) < 0.1 ? this.brakeStandLimit(ratio * s.finalDrive, g.efficiency, brake) : 0;
+    const torqueLimitNm = converter && brake > BTM_BRAKE_ON && pedal > 0.02 && Math.abs(Number.isFinite(vRoad) ? vRoad : 0) < 0.1 ? this.brakeStandLimit(ratio * s.finalDrive, g.efficiency, brake) : 0;
     return {
       vehicle: this.vehicle,
       totalRatio: ratio * s.finalDrive,
@@ -1293,17 +1297,21 @@ export class Drivetrain {
   }
 
   /**
-   * Brake-torque protection of the converter automatic (issues #104, #119): standing in gear with brake and throttle,
+   * Brake-torque protection of the converter automatic (issues #104, #119): standing in D with brake and throttle,
    * engine and gearbox management cap the engine torque so the stall torque at the wheels, T·μ₀·i·η, stays at 90 % of
    * what the braked driven wheels hold (own brake + μ·N, vehicle.ts). Protects converter and driveline; OEMs manage
-   * combined brake + throttle at standstill (e.g. GM US 11,390,281 B2). Calibration is an estimate [S]. 0 = no cap
+   * combined brake + throttle at standstill (e.g. GM US 11,390,281 B2, not verified). Calibration is an estimate [S]. Faded in over the brake pedal
+   * BTM_BRAKE_ON … BTM_BRAKE_FULL (no torque step at the threshold). 0 = no cap
    * needed (the brakes hold full stall, e.g. AWD).
    */
   private brakeStandLimit(totalRatio: number, efficiency: number, brake: number): number {
     const mu0 = Math.max(1, this.spec.converter?.stallTorqueRatio ?? 1);
     if (!(totalRatio > 0)) return 0;
     const limit = (0.9 * brakeStandHoldN(this.vehicle, brake, this.st.grip) * this.vehicle.wheelRadiusM) / (mu0 * totalRatio * efficiency);
-    return limit < this.summary.peakTorqueNm ? Math.max(0, limit) : 0;
+    const peak = this.summary.peakTorqueNm;
+    if (!(limit < peak)) return 0;
+    const w = Math.min(1, Math.max(0, (brake - BTM_BRAKE_ON) / (BTM_BRAKE_FULL - BTM_BRAKE_ON)));
+    return peak + (Math.max(0, limit) - peak) * w;
   }
 
   /**

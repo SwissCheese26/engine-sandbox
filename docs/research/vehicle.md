@@ -61,7 +61,7 @@ Trilok-Wandler aus Pumpe (Motor), Turbine (Getriebe) und Leitrad auf Freilauf [B
   - schließt in ≈ 0,5 s und rutscht während der Schaltungen geregelt [B7, S]
 - **Kriechen:** Im Stand mit D und Leerlauf überträgt der Wandler (n_Leerlauf / K)², beim Pkw etwa 30–50 Nm. Ohne Bremse kriecht das Auto mit ≈ 5–7 km/h, mit Bremse muss der Motor dieses Moment im Leerlauf halten.
 - **Schaltprogramm** wie beim DSG, aber auf der Turbinendrehzahl. Hochgeschaltet wird zusätzlich nach der Motordrehzahl, damit der schlupfende Wandler den Motor nicht im Begrenzer hält.
-- **Bremsen mit Vollgas (Festbremsdrehzahl, #104):** Die Betriebsbremse wirkt auch auf die Antriebsräder. Ihre Kraft bei vollem Pedal (1,6 g · m · g) teilt sich nach der statischen Achslast auf die Achsen auf [B20, S]. Die Antriebsräder stehen, solange die Antriebskraft am Rad unter ihrer Bremskraft plus μ · N der Antriebsachse liegt. Dann steht die Turbine, und der Motor läuft auf der Festbremsdrehzahl, bei der sein Moment gleich dem Pumpenmoment (n / K)² ist. Allrad (Prado 120) hält so bei Vollgas, ≈ 2000 1/min. Bei starken Hecktrieblern (530d, E 220 d) übersteigt das Radmoment beim Festbremsen (≈ 9,4–9,8 kNm) die Hinterachsbremse (≈ 4 kNm) plus Reifen (≈ 2,5 kNm). Ohne Eingriff würden die Hinterräder gegen die Bremse durchdrehen (Brake-Stand). Echte Motor- und Getriebesteuerungen begrenzen deshalb das Motormoment, wenn Bremse und Gas im Stand zusammen getreten werden. Das schützt Wandler und Antriebsstrang (Beispiel für dieses Vorgehen: GM-Patent US 11,390,281 B2) [B21]. Im Modell (`VehicleCoupling.torqueLimitNm`, #119) gilt das nur für die Wandlerautomatik in einer Fahrstufe, mit Bremse, bei v ≈ 0 und mit Gas. Die Grenze liegt bei 90 % des Moments, das die gebremsten Antriebsräder halten. Die Kalibrierung ist geschätzt [S]. Die Räder stehen dann, und die Festbremsdrehzahl sinkt auf n = K · √T_Grenze (530d ≈ 1830, E 220 d ≈ 1800 1/min). Der Allrad hält die volle Festbremsdrehzahl ohne Eingriff. Werkstätten prüfen die Festbremsdrehzahl deshalb mit Fest- und Betriebsbremse und höchstens ≈ 5 s lang (Toyota-Reparaturhandbuch „Stall Test“) [S].
+- **Bremsen mit Vollgas (Festbremsdrehzahl, #104):** Die Betriebsbremse wirkt auch auf die Antriebsräder. Ihre Kraft bei vollem Pedal (1,6 g · m · g) teilt sich nach der statischen Achslast auf die Achsen auf [B22, S]. Die Antriebsräder stehen, solange die Antriebskraft am Rad unter ihrer Bremskraft plus μ · N der Antriebsachse liegt. Dann steht die Turbine, und der Motor läuft auf der Festbremsdrehzahl, bei der sein Moment gleich dem Pumpenmoment (n / K)² ist. Allrad (Prado 120) hält so bei Vollgas, ≈ 2000 1/min. Bei starken Hecktrieblern (530d, E 220 d) übersteigt das Radmoment beim Festbremsen (≈ 9,4–9,8 kNm) die Hinterachsbremse (≈ 4 kNm) plus Reifen (≈ 2,5 kNm). Ohne Eingriff würden die Hinterräder gegen die Bremse durchdrehen (Brake-Stand). Echte Motor- und Getriebesteuerungen begrenzen deshalb das Motormoment, wenn Bremse und Gas im Stand zusammen getreten werden. Das schützt Wandler und Antriebsstrang (Beispiel, nicht verifiziert: GM-Patent US 11,390,281 B2) [B23, nicht verifiziert]. Im Modell (`VehicleCoupling.torqueLimitNm`, #119) gilt das nur für die Wandlerautomatik in D, mit Bremse (ab 3 % Pedal eingeblendet, voll ab 8 %), bei v ≈ 0 und mit Gas. Die Grenze liegt bei 90 % des Moments, das die gebremsten Antriebsräder halten. Die Kalibrierung ist geschätzt [S]. Die Räder stehen dann, und die Festbremsdrehzahl sinkt auf n = K · √T_Grenze (530d ≈ 1830, E 220 d ≈ 1800 1/min). Der Allrad hält die volle Festbremsdrehzahl ohne Eingriff. Werkstätten prüfen die Festbremsdrehzahl deshalb mit Fest- und Betriebsbremse und höchstens ≈ 5 s lang (Toyota-Reparaturhandbuch „Stall Test“) [S].
 
 ## 5. Gangabstufung (#14)
 
@@ -101,8 +101,8 @@ Die Gänge lassen sich aus der Übersetzung des 1. und des höchsten Gangs berec
 - [B8] SAE J643: Hydrodynamic Drive Test Code (K-Faktor, Wandlung, Wirkungsgrad über dem Drehzahlverhältnis).
 - [B9] Haken, K.-L.: Grundlagen der Kraftfahrzeugtechnik, Hanser, Kap. „Zugkraftdiagramm, Getriebeauslegung“.
 - [B10] UN ECE Regelung Nr. 13-H (Bremsen von Personenkraftwagen), Abs. 5.2.2.3: Feststellbremse hält das Fahrzeug auf 20 % Steigung bzw. Gefälle.
-- [B21] US 11,390,281 B2 (GM Global Technology Operations): „Brake distribution control for combined brake and propulsion maneuvers“, mit Momentenbegrenzung zum Schutz des Antriebsstrangs.
-- [B20] Breuer, B.; Bill, K. H. (Hrsg.): Bremsenhandbuch, Springer Vieweg, Kap. „Bremskraftverteilung“.
+- [B23] US 11,390,281 B2 (GM Global Technology Operations): „Brake distribution control for combined brake and propulsion maneuvers“, mit Momentenbegrenzung zum Schutz des Antriebsstrangs. Nicht verifiziert (nur Kurzfassung gelesen).
+- [B22] Breuer, B.; Bill, K. H. (Hrsg.): Bremsenhandbuch, Springer Vieweg, Kap. „Bremskraftverteilung“.
 - [B11] StVZO §41 (Bremsen und Unterlegkeile); für Pkw über die Typgenehmigung nach UN ECE R13-H.
 
 ## 8. Getriebeöltemperatur (#53)
@@ -137,3 +137,19 @@ Modell:
 Ergebnisse (0–100 mit Launch Control, 3 s scharf): Golf 7 GTI baut im Stand ≈ 1,1 bar auf, Skyline R34 ≈ 0,45 bar und kommt auf 5,37 s statt 6,07 s (Fachpresse 5,0 s). Der Ferrari 458 als Sauger hat keine Vorspannung und kommt auf 3,75 s statt 4,0 s (Werk 3,4 s mit LC).
 
 - [B19] Haltech: „How Launch Control Works“, https://support.haltech.com/portal/en/kb/articles/how-launch-control-works
+
+## 10. Kurven und Schräglage (#83)
+
+- Die Strecken „Flachland“, „Mittelgebirge“ und „Alpen“ bekommen neben dem Höhenprofil eine **Krümmung** κ(x) = 1/R als
+  Summe von Sinuswellen mit ganzen Perioden über die Streckenlänge, also stetig und nahtlos wiederholbar. Kleinste
+  Radien: Flachland ≈ 600 m, Mittelgebirge ≈ 150 m, Alpen ≈ 60 m [S]. Das liegt in der Größenordnung der
+  Entwurfsradien von Landstraßen nach RAL (≈ 200–500 m) bzw. engen Passstraßen [B20, S]. Kehren werden nicht
+  abgebildet. „Statisch“ und die Rampen „Berg hoch/runter“ sind gerade.
+- **Schräglage** im stationären Kurvenflug, Punktmasse ohne Reifenbreite: tan φ = v²/(R·g) = v²·κ/g [B21]. Liegt
+  v²·κ über μ·g, reicht der Reibwert nicht. Die Anzeige wird dann signalfarben, ein Sturz wird nicht simuliert.
+  Der Fahrer bremst im Modell nicht vor Kurven, die Schräglage ist die zur gefahrenen Geschwindigkeit nötige.
+
+### Quellen zu §10
+
+- [B20] FGSV: Richtlinien für die Anlage von Landstraßen (RAL), Ausgabe 2012, Entwurfsklassen und Kurvenradien
+- [B21] V. Cossalter: Motorcycle Dynamics, 2. Aufl. 2006, Kap. 1 (Steady turning, roll angle)

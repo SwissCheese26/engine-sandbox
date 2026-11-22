@@ -1,6 +1,6 @@
 // Prüfzelle: wires workbench, schematic, nameplate, instruments, recorder and console to the
 // simulator and runs the main loop.
-import { EngineSimulator, TERRAIN_LABELS, defaultInputs, summarize } from "../core/index.ts";
+import { BRAKE_MAX_G, EngineSimulator, TERRAIN_LABELS, VehicleSystems, defaultInputs, summarize } from "../core/index.ts";
 import { customSetup, loadOwnVehicle, saveOwnVehicle, setOwnVehicleActive, takePendingSetup, type PendingSetup } from "./sandbox-setup.ts";
 import { ShiftPad } from "./shift-pad.ts";
 import { isMyEngineId } from "./my-engines.ts";
@@ -45,6 +45,9 @@ export class App {
   private cfg: EngineConfig;
   private summary: EngineSummary;
   private sim: EngineSimulator;
+  /** Air brake, retarder, AdBlue and battery (#83), stepped every frame next to the engine. */
+  private systems = new VehicleSystems();
+  private lastTankL = Number.NaN;
   private inputs = defaultInputs();
   private bench: Workbench;
   private schematic = new Schematic();
@@ -470,6 +473,17 @@ export class App {
     this.announcer.textContent = text;
   }
 
+  /** Steps the vehicle systems (#83) from the last engine state; returns how they act on brake and pedal. */
+  private stepSystems(dt: number, vehicle: boolean) {
+    const e = this.sim.state;
+    const d = this.gearbox.drivetrain;
+    return this.systems.step(dt, {
+      ignition: this.inputs.ignition, running: e.running, starter: e.starterEngaged, rpm: e.rpm, fuelFlowLh: e.fuelFlowLh, egtC: e.egtC,
+      scr: this.cfg.fuel === "diesel" && !!this.cfg.exhaust.scr, vehicle, kind: d.kind, brake: this.console.brakeHeld ? 1 : 0,
+      speedMs: e.vehicleSpeedMs ?? 0, massKg: d.vehicle.massKg, finalDrive: d.state.finalDrive, wheelRadiusM: d.vehicle.wheelRadiusM,
+    });
+  }
+
   /** Engine turning (running, cranking or spinning down): the bench is locked. */
   private static turning(s: EngineState): boolean {
     return s.running || s.rpm > 1;
@@ -491,12 +505,19 @@ export class App {
       try {
         if (this.inputs.dynoMode === "vehicle") {
           const d = this.gearbox.drivetrain;
-          const vehicle = d.inputs(dt, this.sim.state, this.inputs.pedal, this.console.brakeHeld ? 1 : 0);
+          // vehicle systems (#83): air pressure limits the service brake, spring brakes below 4.5 bar, retarder, AdBlue
+          const sx = this.stepSystems(dt, true);
+          const vehicle = d.inputs(dt, this.sim.state, this.inputs.pedal, sx.brake);
+          if (sx.retarderG > 0) vehicle.brake = Math.min(1, (vehicle.brake ?? 0) + sx.retarderG / BRAKE_MAX_G);
           // environment (issue #23): outside temperature and air pressure of the test track reach the engine intake
           // tank: an empty tank starves the engine (no injection), it stalls and does not restart
-          s = this.sim.step(dt, { ...this.inputs, ...d.simInputs(), vehicle, pedal: d.effectivePedal(this.inputs.pedal), fuelEmpty: d.tank.empty });
+          s = this.sim.step(dt, { ...this.inputs, ...d.simInputs(), vehicle, pedal: d.effectivePedal(this.inputs.pedal) * sx.pedalCap, fuelEmpty: d.tank.empty });
           if (s.running) d.tank.step(dt, s.fuelFlowLh);
+          // at the pump AdBlue is topped up too (the tank level jumps up)
+          if (d.tank.levelL > this.lastTankL + 0.5) this.systems.adblue.refill();
+          this.lastTankL = d.tank.levelL;
         } else {
+          this.stepSystems(dt, false);
           s = this.sim.step(dt, this.inputs);
         }
       } catch (e) {
@@ -512,10 +533,11 @@ export class App {
         view.update({
           s, dt, mode: this.inputs.dynoMode, ignition: this.inputs.ignition, sinceIgnitionS: this.sinceIgnition,
           pedal: this.inputs.pedal, braking: this.console.brakeHeld, drivetrain: this.gearbox.drivetrain, trip: this.gearbox.trip.computer.data,
+          systems: this.systems,
         });
       } else {
         // hidden canvases of the Prüfzelle are not drawn while another view is shown
-        this.gauges.update(s, dt);
+        this.gauges.update(s, dt, this.systems.batteryV);
         this.schematic.update(s, dt);
       }
       // the recorder is shown and drawn in every view

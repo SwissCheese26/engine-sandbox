@@ -44,7 +44,7 @@ export const BRAKE_MAX_G = 1.6;
 /**
  * Service-brake force at the driven wheels, N (issue #104): full-pedal capacity BRAKE_MAX_G·m·g split between the
  * axles by the static axle load (brake balance ≈ load distribution, Breuer/Bill, Bremsenhandbuch, ch. "Bremskraft-
- * verteilung", docs/research/vehicle.md [B20]) [S]; AWD: all four wheels are driven. 530d: ≈ 0.78·m·g on the rear axle.
+ * verteilung", docs/research/vehicle.md [B22]) [S]; AWD: all four wheels are driven. 530d: ≈ 0.78·m·g on the rear axle.
  */
 export function drivenBrakeN(v: VehicleParams, pedalB: number, cosGrade = 1): number {
   const w = v.massKg * G;
