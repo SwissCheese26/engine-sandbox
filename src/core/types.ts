@@ -589,6 +589,11 @@ export interface EvConfig {
   auxKw?: number;
   /** Motor cooling relative to series (bigger pump/radiator, oil spray), default 1. Battery: EvBatteryConfig.coolingWPerK. */
   coolingScale?: number;
+  /**
+   * Two-speed reduction on the rear axle (Porsche Taycan / Audi e-tron GT), undefined = single-speed. The rear motors'
+   * `ratio` is first gear; `secondRatio` second gear; shift up at `shiftKmh` (electric.ts, EV_SHIFT_S torque gap).
+   */
+  twoSpeed?: { secondRatio: number; shiftKmh: number };
 }
 
 export type EvDriveMode = "chill" | "sport" | "plaid";
@@ -628,4 +633,7 @@ export interface EvState {
   /** Energy taken from / given back to the battery since reset, kWh. */
   energyKwh: number;
   regenKwh: number;
+  /** Two-speed reduction only: present gear (1, 2) and whether a shift (torque gap) is running. */
+  gear?: number;
+  shifting?: boolean;
 }

@@ -4,6 +4,7 @@
 import { DRIVE_MODES, evSystemPowerKw } from "../../core/index.ts";
 import type { EngineState, EvConfig, EvDriveMode, EvState } from "../../core/index.ts";
 import { fmt } from "../format.ts";
+import { evConsumption } from "../ev-fields.ts";
 import type { UnitPrefs } from "../settings.ts";
 import { toUnit } from "../units.ts";
 import type { FieldId } from "./designs.ts";
@@ -90,8 +91,8 @@ export function evField(id: FieldId, s: EngineState, u: UnitPrefs): { label: str
     case "egt": return { label: "Ladezustand", value: fmt(Math.round(ev.soc * 100)), unit: "%", warn: ev.soc < LOW_SOC };
     case "lambda": return { label: "Rekuperation", value: fmt(toUnit("power", ev.regenKw, u.power)), unit: u.power, warn: false };
     case "fuelNow": {
-      const c = consumptionText(ev.kwhPer100, u);
-      return { label: "Verbrauch", value: c.value, unit: c.unit, warn: false };
+      const c = consumptionText(evConsumption(ev), u);
+      return { label: "Ø Verbrauch", value: c.value, unit: c.unit, warn: false };
     }
     case "range": {
       const t = rangeText(ev.rangeKm, u);

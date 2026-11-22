@@ -5,6 +5,7 @@
 // strip and cruise line stay), "hud" took over Kompakt's big rpm and power values.
 import type { EngineConfig, EngineSummary, VehicleSystems } from "../../core/index.ts";
 import { fmt } from "../format.ts";
+import { evConsumption } from "../ev-fields.ts";
 import { RESERVE_SHARE, RETARDER_STAGES, TERRAIN_LABELS } from "../../core/index.ts";
 import { reducedMotion } from "../canvas.ts";
 import { GAS_RAMPS, getSettings, prefs, setSettings } from "../settings.ts";
@@ -178,7 +179,7 @@ export class CockpitView implements LayoutView {
           <dl class="ck__ev num" aria-label="Elektroantrieb" hidden>
             <div class="ck__ev-soc"><dt>Akku</dt><dd data-ck="ev-soc">–</dd></div>
             <div class="ck__ev-range"><dt>Reichweite</dt><dd data-ck="ev-range">–</dd></div>
-            <div class="ck__ev-cons"><dt>Verbrauch</dt><dd><span data-ck="ev-cons">–</span> <small data-ck="ev-cons-unit">kWh/100 km</small></dd></div>
+            <div class="ck__ev-cons"><dt>Ø Verbrauch</dt><dd><span data-ck="ev-cons">–</span> <small data-ck="ev-cons-unit">kWh/100 km</small></dd></div>
             <div class="ck__ev-batt"><dt>Akkutemp.</dt><dd data-ck="ev-batt">–</dd></div>
             <div class="ck__ev-mode"><dt>Fahrmodus</dt><dd><button type="button" class="ck__btn" data-ck="ev-mode" title="Fahrmodus wechseln">Sport</button></dd></div>
           </dl>
@@ -659,8 +660,8 @@ export class CockpitView implements LayoutView {
     const T = (c: number) => toUnit("temp", c, u.temp);
     this.mini("coolant", T(ev.batteryC), fmt(T(ev.batteryC)), dt);
     this.mini("oilT", T(ev.motorC), fmt(T(ev.motorC)), dt);
-    const cons = consumptionText(ev.kwhPer100, u);
-    // at standstill (or regen) the consumption dial rests; the text says "–"
+    // the trip average (never negative): the momentary value goes below zero while regenerating
+    const cons = consumptionText(evConsumption(ev), u);
     const cv = Number.parseFloat(cons.value.replace(/\./g, "").replace(",", "."));
     this.mini("fuel", Number.isFinite(cv) ? Math.max(0, Math.min(40, cv)) : 0, cons.value, dt);
     this.minis.tank.wrap.hidden = false;

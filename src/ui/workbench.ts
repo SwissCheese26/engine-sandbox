@@ -178,6 +178,15 @@ export class Workbench {
     }
   }
 
+  /**
+   * Electric car loaded (#108): the Werkbank shows the Elektroantrieb plates (appended by the app) instead of fuel
+   * switch, engine library, tuning stages and combustion plates (CSS on .bench--ev).
+   */
+  setElectric(on: boolean) {
+    this.el.classList.toggle("bench--ev", on);
+    this.el.querySelector(".bench__title")!.textContent = on ? "Werkbank · Elektroantrieb" : "Werkbank";
+  }
+
   /** Removes the global listener on own engines (App.dispose). */
   dispose() {
     this.unsubscribeMine();

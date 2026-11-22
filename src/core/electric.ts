@@ -51,6 +51,39 @@ export const DRIVE_MODES: Record<EvDriveMode, { label: string; torqueShare: numb
 };
 export const DRIVE_MODE_IDS = Object.keys(DRIVE_MODES) as EvDriveMode[];
 
+/**
+ * Two-speed reduction (#108, Arthur): like the rear axle of the Porsche Taycan / Audi e-tron GT (J1 platform), first
+ * gear ≈ 15:1 for the launch, second ≈ 8:1 for top speed (Porsche Taycan technology press kit 2019, "two-speed
+ * transmission on the rear axle": 15.56 / 8.05). It acts on the rear motors (all motors when there is no rear one);
+ * EvMotorConfig.ratio of those motors is the first gear. The shift interrupts their torque for EV_SHIFT_S (torque
+ * ramps to zero and back; the Taycan shifts in ≈ 0.2 … 0.3 s with the clutch pack).
+ */
+export const EV_SHIFT_S = 0.25;
+/** Downshift this far below the shift point (hysteresis), km/h. */
+export const EV_SHIFT_HYST_KMH = 20;
+
+/** Is this motor on the two-speed axle? */
+function onShiftAxle(ev: EvConfig, m: EvMotorConfig): boolean {
+  return !!ev.twoSpeed && (m.axle === "rear" || !ev.motors.some((x) => x.axle === "rear"));
+}
+
+/** Reduction of a motor in a gear (1 or 2); single-speed motors keep their ratio. */
+export function evMotorRatio(ev: EvConfig, m: EvMotorConfig, gear: number): number {
+  return onShiftAxle(ev, m) && gear >= 2 ? ev.twoSpeed!.secondRatio : m.ratio;
+}
+
+/** The configuration as it drives in a gear: the motors of the two-speed axle carry that gear's ratio. */
+export function evInGear(ev: EvConfig, gear: number): EvConfig {
+  if (!ev.twoSpeed || gear < 2) return ev;
+  return { ...ev, motors: ev.motors.map((m) => ({ ...m, ratio: evMotorRatio(ev, m, gear) })) };
+}
+
+/** Top speed the motors' rotor speed allows in the highest gear, km/h (wheel radius in m). */
+export function evRpmVmaxKmh(ev: EvConfig, wheelRadiusM: number): number {
+  const top = ev.twoSpeed ? 2 : 1;
+  return Math.min(...ev.motors.map((m) => (m.maxRpm / evMotorRatio(ev, m, top)) * (Math.PI / 30) * wheelRadiusM * 3.6));
+}
+
 /** Reference ratio of the reflected shaft: the first rear motor's, else the first motor's. */
 export function evRefRatio(ev: EvConfig): number {
   return (ev.motors.find((m) => m.axle === "rear") ?? ev.motors[0])?.ratio ?? 9;
@@ -111,6 +144,12 @@ export class EvSimulator {
   private tripKwh = 0;
   private holdI = 0;
   private startSoc = START_SOC;
+  /** Two-speed reduction: gear now, the gear being shifted to, time left of the shift (s). */
+  private gear = 1;
+  private nextGear = 1;
+  private shiftT = 0;
+  /** The configuration in the present gear (evInGear). */
+  private geared!: EvConfig;
 
   constructor(public ev: EvConfig) {
     this.reset();
@@ -138,6 +177,9 @@ export class EvSimulator {
     this.x = createVehicleBody();
     this.bat = { soc: this.startSoc, tempC: 20, v: nominalV(this.ev.battery), a: 0 };
     this.motorC = this.ev.motors.map(() => 20);
+    this.gear = this.nextGear = 1;
+    this.shiftT = 0;
+    this.geared = this.ev;
     this.initialised = false;
     this.energy = this.regen = this.tripKm = this.tripKwh = 0;
     this.holdI = 0;
@@ -156,7 +198,7 @@ export class EvSimulator {
 
   /** Torque envelope of each motor now (voltage, temperature, drive mode). */
   private maxTorques(rpms: number[], vr: number, share: number): number[] {
-    return this.ev.motors.map((m, i) => motorMaxTorque(m, rpms[i]!, vr, m.inverterA, motorDerate(this.motorC[i]!)) * share);
+    return this.geared.motors.map((m, i) => motorMaxTorque(m, rpms[i]!, vr, m.inverterA, motorDerate(this.motorC[i]!)) * share);
   }
 
   step(dtIn: number, input: SimInputs): EngineState {
@@ -177,8 +219,12 @@ export class EvSimulator {
     const modeId: EvDriveMode = input.evDriveMode ?? "sport";
     const mode = DRIVE_MODES[modeId];
     const pedal = clamp(fin(input.pedal, 0), 0, 1);
-    const ref = evRefRatio(ev);
-    const motors = ev.motors;
+    this.stepGear(dt, input.dynoMode === "vehicle" && input.vehicle ? x.vSpeed * 3.6 : 0);
+    const gev = this.geared;
+    const ref = evRefRatio(gev);
+    const motors = gev.motors;
+    // torque interruption while shifting: the two-speed axle ramps to zero and back
+    const shiftCut = this.shiftT > 0 ? Math.abs(1 - (2 * (EV_SHIFT_S - this.shiftT)) / EV_SHIFT_S) : 1;
     const eta = clamp(ev.gearEfficiency, 0.5, 1);
     const Jref = motors.reduce((a, m) => a + rotorInertia(m) * (m.ratio / ref) ** 2, 0) + 0.02;
     const aux = ready ? (ev.auxKw ?? 0.4) : 0;
@@ -200,10 +246,11 @@ export class EvSimulator {
       const rpms = motors.map((m) => (x.rpm * m.ratio) / ref);
       const tMax = this.maxTorques(rpms, vr, mode.torqueShare);
       const alloc = ready ? this.allocate(c, pedal, mode.pedalExp, rpms, tMax, pDisMax, pChgMax, eta, x) : { torques: motors.map(() => 0), limit: "none" as EvLimit, frontNm: 0, rearNm: 0, friction: c?.brake ?? 0 };
+      if (shiftCut < 1) alloc.torques.forEach((t, i) => onShiftAxle(ev, ev.motors[i]!) && (alloc.torques[i] = t * shiftCut));
       last = alloc;
       const tRef = alloc.torques.reduce((a, t, i) => a + (t * motors[i]!.ratio) / ref, 0);
       if (c) {
-        stepVehicle(x, { ...c, brake: alloc.friction, clutch: 1, clutchCapacityNm: 1e7 }, tRef, Jref, h);
+        stepVehicle(x, { ...c, totalRatio: ref, brake: alloc.friction, clutch: 1, clutchCapacityNm: 1e7 }, tRef, Jref, h);
       } else {
         // motor on the bench (engine dyno modes): rotor + reduction gear spin against the brake and the drag losses
         const drag = wRef > 1 ? (motors.reduce((a, m, i) => a + motorLossKw(m, rpms[i]!, 0), 0) * 1000) / wRef : 0;
@@ -285,7 +332,7 @@ export class EvSimulator {
    * power and (ASR) the tyre limit per axle. Returns the friction-brake pedal that is left.
    */
   private allocate(c: VehicleCoupling | undefined, pedal: number, exp: number, rpms: number[], tMax: number[], pDisMax: number, pChgMax: number, eta: number, x: VehicleBody): Alloc & { friction: number } {
-    const motors = this.ev.motors;
+    const motors = this.geared.motors;
     const r = c?.vehicle.wheelRadiusM ?? 0.33;
     const m = c?.vehicle.massKg ?? 2000;
     const brakePedal = clamp(c?.brake ?? 0, 0, 1);
@@ -305,6 +352,9 @@ export class EvSimulator {
       fReq = Math.pow((pedal - PEDAL_ZERO) / (1 - PEDAL_ZERO), exp) * (capF + capR);
       // a torque cut of the ASR (Drivetrain TractionControl) acts on the request
       if (c?.torqueCut) fReq *= 1 - clamp(c.torqueCut, 0, 0.9);
+      // rotor speed limit of the fastest-turning motor caps the car (the VCU fades the drive torque over the last 2 %),
+      // also when the motors of the other axle could still push (different ratios, electric.md §4.1)
+      fReq *= motors.reduce((k, mo, i) => Math.min(k, clamp((mo.maxRpm - rpms[i]!) / (0.02 * mo.maxRpm), 0, 1)), 1);
     } else {
       // lift-off regen and blended braking; none while ABS regulates (the hydraulics need the full control)
       const absOn = x.absT < 0.3;
@@ -373,10 +423,38 @@ export class EvSimulator {
   }
 
   private dcPower(torques: number[], rpms: number[]): number {
-    return this.ev.motors.reduce((a, m, i) => {
+    return this.geared.motors.reduce((a, m, i) => {
       const mech = (torques[i]! * rpms[i]! * RAD_PER_RPM) / 1000;
       return a + electricPowerKw(mech, Math.abs(torques[i]!) > 1e-6 ? motorLossKw(m, rpms[i]!, torques[i]!) : 0);
     }, 0);
+  }
+
+  /**
+   * Two-speed shift schedule (once per frame, vehicle speed in km/h): up at the shift point or near the rotor's speed
+   * limit, down EV_SHIFT_HYST_KMH below it. The new ratio engages in the middle of the torque gap; the reflected shaft
+   * speed follows the ratio (rotor speed ∝ ratio at the same road speed).
+   */
+  private stepGear(dt: number, kmh: number) {
+    const ts = this.ev.twoSpeed;
+    if (!ts) return;
+    if (this.shiftT > 0) {
+      const before = this.shiftT;
+      this.shiftT = Math.max(0, this.shiftT - dt);
+      if (before > EV_SHIFT_S / 2 && this.shiftT <= EV_SHIFT_S / 2 && this.nextGear !== this.gear) {
+        const oldRef = evRefRatio(this.geared);
+        this.gear = this.nextGear;
+        this.geared = evInGear(this.ev, this.gear);
+        this.x.rpm *= evRefRatio(this.geared) / oldRef;
+      }
+      return;
+    }
+    const ref = evRefRatio(this.geared);
+    const nearMax = this.geared.motors.some((m, i) => onShiftAxle(this.ev, this.ev.motors[i]!) && (this.x.rpm * m.ratio) / ref > 0.95 * m.maxRpm);
+    const want = this.gear === 1 ? (kmh > ts.shiftKmh || nearMax ? 2 : 1) : kmh < ts.shiftKmh - EV_SHIFT_HYST_KMH ? 1 : 2;
+    if (want !== this.gear) {
+      this.nextGear = want;
+      this.shiftT = EV_SHIFT_S;
+    }
   }
 
   private evState(ready: boolean, mode: EvDriveMode, pDc: number, regenKw: number, pMech: number, kmh: number, limit: EvLimit, frontNm: number, rearNm: number, motorC: number, bl = batteryLimits(this.ev.battery, this.bat.soc, this.bat.tempC)) {
@@ -392,6 +470,7 @@ export class EvSimulator {
       motorKw: pMech, rangeKm: (remain / basis) * 100, kwhPer100: kmh > 5 ? (pDc / kmh) * 100 : Number.NaN, tripKwhPer100: trip,
       batteryC: this.bat.tempC, motorC, driveMode: mode, maxDischargeKw: bl.maxDischargeKw, maxChargeKw: bl.maxChargeKw,
       frontNm, rearNm, limitedBy: limit, energyKwh: this.energy, regenKwh: this.regen,
+      ...(this.ev.twoSpeed ? { gear: this.gear, shifting: this.shiftT > 0 } : {}),
     };
   }
 

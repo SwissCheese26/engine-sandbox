@@ -10,9 +10,13 @@
  *    busbars to ≈ 3000 A [S]: above ≈ 1 MW only an 800 V pack helps (P ≈ U·I).
  *  - Cooling: series / sport / track: battery cold plate ×1 / ×2 / ×3.5, motor cooling ×1 / ×1.5 / ×2.5, +10 / +25 kg.
  *  - Traction (μ·m·g) is applied by the simulator; the estimate below drives the car there.
+ *  - Reduction: single-speed 5 … 18:1 or two-speed like the Taycan / e-tron GT rear axle (≈ 15:1 and ≈ 8:1, Porsche
+ *    Taycan technology press kit 2019; electric.ts evMotorRatio), with an editable shift point.
+ *  - Vmax: the electronic limiter can be raised up to what the rotor speed allows in the top gear
+ *    (v = n_max / i · 2π/60 · r, electric.ts evRpmVmaxKmh); above that the motor speed limits.
  * At the top end (4 big motors, 200 kWh, 800 V, max current) the system reaches ≈ 3000 PS.
  */
-import { Drivetrain, EvSimulator, TYRE_TYPES, defaultInputs, evPackKwh, evSystemPowerKw, packMassKg, summarize, torqueAtCurrent } from "../core/index.ts";
+import { Drivetrain, EvSimulator, TYRE_TYPES, defaultInputs, evPackKwh, evRefRatio, evRpmVmaxKmh, evSystemPowerKw, packMassKg, summarize, torqueAtCurrent } from "../core/index.ts";
 import type { CarSetup, EvBatteryConfig, EvChemistry, EvConfig, EvMotorConfig, SimInputs, TyreType } from "../core/index.ts";
 import { defaultConfig } from "./presets.ts";
 
@@ -51,6 +55,15 @@ export interface EvTuning {
   highVoltage: boolean;
   cooling: EvCooling;
   tyre: TyreType;
+  /** Reduction: 1 or 2 gears (two-speed on the rear axle). */
+  gears: number;
+  /** First (or only) gear of the rear axle, motor : wheel. */
+  firstRatio: number;
+  secondRatio: number;
+  /** Upshift speed of the two-speed reduction, km/h. */
+  shiftKmh: number;
+  /** Electronic Vmax limiter, km/h; null = off (the motors' rotor speed limits). */
+  vmaxKmh: number | null;
 }
 
 export const TUNING_LIMITS = {
@@ -60,14 +73,20 @@ export const TUNING_LIMITS = {
   currentScale: { min: 0.5, max: 2 },
   packKwh: { min: 30, max: 200 },
   cRate: { min: 1, max: 15 },
+  firstRatio: { min: 5, max: 18 },
+  secondRatio: { min: 4, max: 12 },
+  shiftKmh: { min: 40, max: 200 },
+  vmaxKmh: { min: 100, max: 450 },
 } as const;
+/** Second gear is at least this much longer than first, ratio steps. */
+const MIN_STEP = 1;
 
 const clamp = (x: number, lo: number, hi: number) => (Number.isFinite(x) ? (x < lo ? lo : x > hi ? hi : x) : lo);
 const isChem = (v: unknown): v is EvChemistry => v === "nmc" || v === "nca" || v === "lfp";
 const isCooling = (v: unknown): v is EvCooling => v === "serie" || v === "sport" || v === "track";
 
 /** The car as it left the factory, as tuning values. */
-export function evTuningOf(ev: EvConfig, tyre: TyreType = "uhp"): EvTuning {
+export function evTuningOf(ev: EvConfig, tyre: TyreType = "uhp", speedLimitKmh: number | null = null): EvTuning {
   const b = ev.battery;
   return {
     frontMotors: ev.motors.filter((m) => m.axle === "front").length,
@@ -80,6 +99,12 @@ export function evTuningOf(ev: EvConfig, tyre: TyreType = "uhp"): EvTuning {
     highVoltage: b.seriesCells * 3.7 > 600,
     cooling: "serie",
     tyre,
+    gears: ev.twoSpeed ? 2 : 1,
+    firstRatio: evRefRatio(ev),
+    // without a second gear: ≈ 8 : 1 like the Taycan, at least MIN_STEP longer than the first
+    secondRatio: ev.twoSpeed?.secondRatio ?? Math.max(TUNING_LIMITS.secondRatio.min, Math.min(8, Math.round((evRefRatio(ev) - MIN_STEP) * 100) / 100)),
+    shiftKmh: ev.twoSpeed?.shiftKmh ?? 100,
+    vmaxKmh: speedLimitKmh,
   };
 }
 
@@ -87,7 +112,7 @@ export function evTuningOf(ev: EvConfig, tyre: TyreType = "uhp"): EvTuning {
 export function validTuning(raw: unknown, fallback: EvTuning): EvTuning {
   const r = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const L = TUNING_LIMITS;
-  const n = (k: keyof typeof L) => (typeof r[k] === "number" && Number.isFinite(r[k]) ? clamp(r[k] as number, L[k].min, L[k].max) : fallback[k]);
+  const n = (k: Exclude<keyof typeof L, "vmaxKmh">) => (typeof r[k] === "number" && Number.isFinite(r[k]) ? clamp(r[k] as number, L[k].min, L[k].max) : fallback[k]);
   let front = Math.round(n("frontMotors"));
   let rear = Math.round(n("rearMotors"));
   if (front + rear < 1) rear = 1;
@@ -98,6 +123,11 @@ export function validTuning(raw: unknown, fallback: EvTuning): EvTuning {
     highVoltage: typeof r.highVoltage === "boolean" ? r.highVoltage : fallback.highVoltage,
     cooling: isCooling(r.cooling) ? r.cooling : fallback.cooling,
     tyre: typeof r.tyre === "string" && r.tyre in TYRE_TYPES ? (r.tyre as TyreType) : fallback.tyre,
+    gears: r.gears === 1 || r.gears === 2 ? r.gears : fallback.gears,
+    firstRatio: n("firstRatio"),
+    secondRatio: Math.min(n("secondRatio"), n("firstRatio") - MIN_STEP),
+    shiftKmh: n("shiftKmh"),
+    vmaxKmh: r.vmaxKmh === null ? null : typeof r.vmaxKmh === "number" && Number.isFinite(r.vmaxKmh) ? clamp(r.vmaxKmh, L.vmaxKmh.min, L.vmaxKmh.max) : fallback.vmaxKmh,
   };
 }
 
@@ -118,6 +148,12 @@ export interface TunedEv {
   limit: PowerLimit;
   /** German notes on what limits the setup. */
   notes: string[];
+  /** Top speed the rotor speed allows in the highest gear, km/h. */
+  rpmVmaxKmh: number;
+  /** Governor to set, km/h; null = off (at or above the rotor speed limit). */
+  governorKmh: number | null;
+  /** What caps the top speed: the limiter or the motors' rotor speed. */
+  vmaxBy: "governor" | "rpm";
 }
 
 export const LIMIT_LABEL: Record<PowerLimit | "traction", string> = {
@@ -125,7 +161,7 @@ export const LIMIT_LABEL: Record<PowerLimit | "traction", string> = {
 };
 
 /** Applies tuning to the car's factory configuration. */
-export function tuneEv(base: EvConfig, tIn: EvTuning): TunedEv {
+export function tuneEv(base: EvConfig, tIn: EvTuning, wheelRadiusM = 0.35): TunedEv {
   const t = validTuning(tIn, evTuningOf(base, tIn.tyre));
   const notes: string[] = [];
   let inverterCapped = false;
@@ -142,9 +178,11 @@ export function tuneEv(base: EvConfig, tIn: EvTuning): TunedEv {
     const torque = torqueAtCurrent(sized, amps);
     return { ...sized, peakTorqueNm: torque, peakPowerKw: sized.peakPowerKw * (torque / sized.peakTorqueNm), inverterA: amps, rotorInertiaKgM2: undefined };
   };
+  // the reduction: rear motors (all of them without a rear axle drive) carry the first gear
+  const geared = t.rearMotors > 0 ? "rear" : "front";
   const motors: EvMotorConfig[] = [
-    ...Array.from({ length: t.frontMotors }, () => build({ ...tpl("front"), axle: "front" })),
-    ...Array.from({ length: t.rearMotors }, () => build({ ...tpl("rear"), axle: "rear" })),
+    ...Array.from({ length: t.frontMotors }, () => build({ ...tpl("front"), axle: "front", ...(geared === "front" ? { ratio: t.firstRatio } : {}) })),
+    ...Array.from({ length: t.rearMotors }, () => build({ ...tpl("rear"), axle: "rear", ratio: t.firstRatio })),
   ];
   // pack: the cell of the chosen type; series count from the voltage class, parallel count from the energy
   const b0 = base.battery;
@@ -181,7 +219,10 @@ export function tuneEv(base: EvConfig, tIn: EvTuning): TunedEv {
     chemistry: t.chemistry, seriesCells: series, parallelCells: parallel, cellAh, cellResistanceMOhm: rMOhm, maxDischargeC: c,
     maxChargeC: b0.maxChargeC, massKg: sameCell ? undefined : energy / cell.kwhPerKg, coolingWPerK: (b0.coolingWPerK ?? 400) * cool.battery,
   };
-  const ev: EvConfig = { ...base, motors, battery, coolingScale: cool.motor };
+  const ev: EvConfig = { ...base, motors, battery, coolingScale: cool.motor, twoSpeed: t.gears === 2 ? { secondRatio: t.secondRatio, shiftKmh: t.shiftKmh } : undefined };
+  if (!ev.twoSpeed) delete ev.twoSpeed;
+  const rpmVmaxKmh = evRpmVmaxKmh(ev, wheelRadiusM);
+  const governorKmh = t.vmaxKmh === null || t.vmaxKmh >= rpmVmaxKmh - 0.5 ? null : t.vmaxKmh;
   const motorKg = (ms: EvMotorConfig[]) => ms.reduce((a, m) => a + m.peakPowerKw * DRIVE_UNIT_KG_PER_KW, 0);
   const deltaKg = motorKg(motors) - motorKg(base.motors) + packMassKg(battery) - packMassKg({ ...b0, massKg: undefined }) + cool.kg;
   const systemKw = evSystemPowerKw(ev);
@@ -190,13 +231,13 @@ export function tuneEv(base: EvConfig, tIn: EvTuning): TunedEv {
   if (limit === "battery" && !busCapped) notes.push("Der Akku begrenzt: größerer Akku, höhere C-Rate oder 800 V bringen mehr.");
   return {
     ev, tuning: t, deltaKg, systemKw, systemPs: systemKw * PS_PER_KW, motorNm: motors[0]?.peakTorqueNm ?? 0, motorKw: motors[0]?.peakPowerKw ?? 0,
-    inverterA: motors[0]?.inverterA ?? 0, limit, notes: [...new Set(notes)],
+    inverterA: motors[0]?.inverterA ?? 0, limit, notes: [...new Set(notes)], rpmVmaxKmh, governorKmh, vmaxBy: governorKmh === null ? "rpm" : "governor",
   };
 }
 
 /** The strongest setup the limits allow ("Maximum"). */
 export function maxTuning(tyre: TyreType = "semi-slick"): EvTuning {
-  return { frontMotors: 2, rearMotors: 2, motorScale: 3, currentScale: 2, packKwh: 200, chemistry: "nca", cRate: 15, highVoltage: true, cooling: "track", tyre };
+  return { frontMotors: 2, rearMotors: 2, motorScale: 3, currentScale: 2, packKwh: 200, chemistry: "nca", cRate: 15, highVoltage: true, cooling: "track", tyre, gears: 2, firstRatio: 15, secondRatio: 8, shiftKmh: 100, vmaxKmh: null };
 }
 
 export interface EvEstimate {
@@ -241,7 +282,7 @@ function* estimateSteps(setup: CarSetup, tuned: TunedEv): Generator<void, EvEsti
   const cfg = defaultConfig("petrol");
   const d = new Drivetrain(cfg, summarize(cfg));
   const tyre = { ...setup.tyre, type: tuned.tuning.tyre };
-  d.applyCar({ ...setup, tyre, vehicle: { ...setup.vehicle, massKg: setup.vehicle.massKg + tuned.deltaKg }, ev: tuned.ev, speedLimitKmh: null });
+  d.applyCar({ ...setup, tyre, vehicle: { ...setup.vehicle, massKg: setup.vehicle.massKg + tuned.deltaKg }, ev: tuned.ev, speedLimitKmh: tuned.governorKmh });
   const sim = new EvSimulator(tuned.ev);
   const inp: SimInputs = { ...defaultInputs(), ignition: true, startWarm: true, dynoMode: "vehicle", evDriveMode: "plaid" };
   const h = 1 / 60;
