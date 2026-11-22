@@ -1,0 +1,265 @@
+/* Electric cars (#108): Ready button, EV variant of every cockpit design, the E-Tacho design, the Elektro-Platte, and
+   what an electric car hides in the Prüfzelle (cutaway engine, nameplate, curve recorder, Werkbank, gearbox controls). */
+
+/* ── console: Ready replaces ignition key and starter ─────────────────── */
+.readybtn {
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 64px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: var(--fs-12);
+  font-weight: 600;
+  cursor: pointer;
+}
+.console.is-ev .readybtn {
+  display: inline-flex;
+}
+.console.is-ev :is(.ignkey, .starter) {
+  display: none;
+}
+.readybtn__cap {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #1a211f;
+  box-shadow: inset 0 0 0 3px #3b4843, 0 2px 0 #111a17;
+  font: 700 11px var(--font);
+  letter-spacing: 0.06em;
+  color: #8a958f;
+  transition: box-shadow 200ms ease, color 200ms ease;
+}
+.readybtn[aria-pressed="true"] .readybtn__cap {
+  color: #5fd068;
+  box-shadow: inset 0 0 0 3px #5fd068, 0 0 12px rgba(95, 208, 104, 0.45);
+}
+.readybtn:focus-visible .readybtn__cap {
+  outline: 2px solid var(--focus, #8ec5ff);
+  outline-offset: 3px;
+}
+
+/* ── Prüfzelle: no engine cutaway, nameplate, ICE curve recorder or Werkbank for an EV ── */
+.cell[data-drive="ev"] :is(.stage__engine, .recorder, .bench-toggle) {
+  display: none;
+}
+.cell.cell[data-drive="ev"] .cell__top .bench-toggle,
+.cell.cell[data-drive="ev"] .shiftpad {
+  display: none;
+}
+/* the Werkbank builds combustion engines: an electric car gets the whole width */
+.cell[data-drive="ev"] {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas: "top" "stage" "deck";
+}
+.cell[data-drive="ev"] > .bench {
+  display: none;
+}
+.instruments [hidden] {
+  display: none !important;
+}
+
+/* ── Getriebe-Pult: single-speed reduction, no gearbox, shift buttons, tank ── */
+.gearbox[data-drive="ev"] :is(label:has([data-control="gearbox"]), label:has([data-control="final-drive"]), .gearbox__shift, .gearbox__keys, .gearbox__tank, .gearbox__hint, .gearbox__calc, .gears),
+.gearbox[data-drive="ev"] .gearbox__readouts div:has([data-out="gear-oil"]),
+.gearbox[data-drive="ev"] .vehicle__num:has([data-field="tank"]) {
+  display: none;
+}
+
+/* ── Elektro-Platte ───────────────────────────────────────────────────── */
+.evp[hidden] {
+  display: none;
+}
+.evp {
+  margin-bottom: var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid #2b3a34;
+  border-radius: 8px;
+}
+.evp__title {
+  margin: 0 0 var(--space-2);
+  font-size: var(--fs-16, 16px);
+}
+.evp__badge {
+  color: #5fd068;
+}
+.evp__modes,
+.evp__charge,
+.evp__tune-btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-2);
+}
+.evp__modes [aria-checked="true"] {
+  outline: 2px solid #5fd068;
+  outline-offset: 1px;
+}
+.evp__readouts,
+.evp__live {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 2px var(--space-3);
+  margin: 0 0 var(--space-2);
+}
+.evp__live {
+  padding: var(--space-2);
+  border-radius: 6px;
+  background: #1a2320;
+}
+.evp__live dd {
+  margin: 0;
+  font-weight: 600;
+}
+.evp__readouts div,
+.evp__live div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.evp__readouts dd {
+  margin: 0;
+}
+.evp__tune-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: var(--space-2);
+  margin: var(--space-2) 0;
+}
+.evp__num {
+  display: grid;
+  grid-template-columns: 1fr 5.5em auto;
+  align-items: center;
+  gap: var(--space-1);
+}
+.evp__num :is(input, select) {
+  min-width: 0;
+}
+.evp__num:has(select) {
+  grid-template-columns: 1fr minmax(0, 11em);
+}
+.evp__preview {
+  min-height: 2.4em;
+  margin: 0 0 var(--space-2);
+}
+
+/* ── cockpit: EV variant of every design ─────────────────────────────── */
+.ck-lamp--green[data-state="on"] {
+  color: var(--ck-green);
+  filter: drop-shadow(0 0 4px rgba(95, 208, 104, 0.55));
+}
+.ck-lamp--ready {
+  display: none;
+}
+.ck[data-drive="ev"] .ck-lamp--ready {
+  display: inline-flex;
+}
+/* oil pressure, coolant, glow plug and alternator lamps do not exist in an EV */
+.ck[data-drive="ev"] :is([data-lamp="oil"], [data-lamp="coolant"], [data-lamp="glow"], [data-lamp="battery"], [data-lamp="gearbox"]) {
+  display: none;
+}
+/* the extra gauges and the tuning bar under the cluster are combustion add-ons (boost, oil, λ, EGT) */
+.ck[data-drive="ev"] .ck__console {
+  display: none;
+}
+.ck__ev[hidden] {
+  display: none !important;
+}
+.ck__ev {
+  display: grid;
+  gap: 2px;
+  margin: var(--space-1) 0 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid #26302c;
+  font-size: var(--fs-14);
+}
+.ck__ev div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.ck__ev dt {
+  color: var(--ck-dim);
+}
+.ck__ev dd {
+  margin: 0;
+  text-align: right;
+}
+.ck__ev .is-limit dd {
+  color: var(--ck-amber);
+}
+.ck__ev [data-ck="ev-mode"] {
+  min-height: 28px;
+  padding: 0 var(--space-2);
+}
+.ck__ev [data-ck="ev-mode"][data-mode="plaid"] {
+  color: #ff5a4f;
+}
+/* compact in the classic designs: charge, range, drive mode; the E-Tacho shows everything */
+.ck:not([data-design="etacho"]) :is(.ck__ev-cons, .ck__ev-batt) {
+  display: none;
+}
+/* power arc / bar in green while regenerating (digital, head-up, motorcycle) */
+.ck[data-band="regen"] .ck__arc-fill {
+  stroke: var(--ck-green);
+}
+.ck[data-band="regen"] .ck__revbar-fill {
+  background: var(--ck-green);
+}
+
+/* ── E-Tacho design: power/regen meter in the middle, big digital speed, EV data ─ */
+.ck[data-design="etacho"] {
+  --ck-housing: #0b1014;
+  --ck-face: #0d1419;
+  --ck-ring: #24323b;
+  --ck-light: #e6f3f8;
+  --ck-dim: #8fa6b2;
+  --ck-needle: #44d7ff;
+}
+.ck[data-design="etacho"] .ck__dial--speed :is(.ck__tube, .ck__read) {
+  display: none;
+}
+@media (min-width: 701px) {
+  .ck[data-design="etacho"] .ck__speed {
+    font-size: clamp(44px, 6vw, 72px);
+  }
+}
+.ck[data-design="etacho"] .ck__speed {
+  min-width: 0;
+  white-space: nowrap;
+}
+/* phones: no empty speedometer box next to the power meter; the design/scale pickers move below the display */
+@media (max-width: 700px) {
+  .ck[data-design="etacho"] {
+    grid-template-areas: "lamps lamps" "rpm rpm" "minis minis" "mfd mfd" "speed speed" "cruise cruise";
+  }
+  .ck[data-design="etacho"] .ck__dial--rpm {
+    width: min(100%, 300px);
+    justify-self: center;
+  }
+  .ck[data-design="etacho"] .ck__speed {
+    font-size: 32px;
+    justify-self: end;
+  }
+}
+.ck[data-design="etacho"] .ck__ev {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  column-gap: var(--space-4, 16px);
+  font-size: var(--fs-16, 16px);
+}
+.ck[data-design="etacho"] .ck__ev-soc dd {
+  color: #5fd068;
+  font-weight: 700;
+}
+.ck[data-design="etacho"] :is([data-mini="oil-pressure"], [data-mini="boost"]) {
+  display: none;
+}
+.rd__cell[hidden] {
+  display: none;
+}

@@ -22,7 +22,8 @@ test("drains by the fuel flow, reserve and empty, refill, saved state is validat
 });
 
 test("every library vehicle has a plausible tank; loading a car fills its tank", () => {
-  for (const c of VEHICLE_LIBRARY) {
+  // electric cars (#108) have a battery, no tank
+  for (const c of VEHICLE_LIBRARY.filter((v) => !v.setup.ev)) {
     const kind = c.setup.kind ?? "car";
     // trucks/buses (issue #31): 200 … 1000 l
     const [lo, hi] = kind === "car" ? [30, 100] : kind === "truck" || kind === "bus" ? [200, 1000] : [10, 30];

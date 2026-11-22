@@ -50,7 +50,7 @@ const KIND_ICON: Record<SetupKind, string> = {
 };
 
 const KIND_TEXT: Record<SetupKind, string> = {
-  car: "Kleinwagen, Limousine, Sportwagen, Geländewagen.",
+  car: "Kleinwagen, Limousine, Sportwagen, Geländewagen, Elektroautos ⚡.",
   commercial: "Sattelzug 40 t und Stadtbus.",
   bike: "Superbikes, Naked Bikes, Tourer.",
   custom: "Gewicht, Luftwiderstand, Reifen, Antrieb und Motor selbst festlegen.",
@@ -384,8 +384,8 @@ export class SandboxWizard {
         l.className = "wizard__vehicle";
         l.innerHTML = `
           <input type="radio" name="vehicle" value="${c.id}" ${c.id === this.vehicleId ? "checked" : ""} />
-          <span class="wizard__vname">${c.name} <small>${c.years}</small></span>
-          <span class="wizard__vfacts num">${fmtDe(f.ps)} PS · ${fmtDe(f.kg)} kg · ${f.drive} · ${f.gearbox} · Tank ${fmtDe(f.tankL, f.tankL % 1 ? 1 : 0)} l</span>`;
+          <span class="wizard__vname">${c.name}${c.setup.ev ? ' <span class="wizard__badge" title="Elektroauto">⚡ Elektro</span>' : ""} <small>${c.years}</small></span>
+          <span class="wizard__vfacts num">${fmtDe(f.ps)} PS · ${fmtDe(f.kg)} kg · ${f.drive} · ${f.gearbox} · ${f.packKwh !== undefined ? `Akku ${fmtDe(f.packKwh)} kWh` : `Tank ${fmtDe(f.tankL, f.tankL % 1 ? 1 : 0)} l`}</span>`;
         l.querySelector("input")!.addEventListener("change", () => (this.vehicleId = c.id));
         list.append(l);
       }

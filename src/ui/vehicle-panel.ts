@@ -7,6 +7,7 @@ import { DEFAULT_SPEED_LIMIT_KMH, SPEED_INDEX, TYRE_TYPES, VEHICLES, frontAxleSh
 import type { CarSetup, Drivetrain, DriveLayout, SpeedIndex, TyreSetup, TyreType, VehicleKind, VehicleParams } from "../core/index.ts";
 import { captureCustom, clearCustom, loadVehicle, saveCustom, setupSig, vehicleKey } from "./vehicle-custom.ts";
 import { VEHICLE_LIBRARY, type LibraryCar } from "../data/vehicle-library.ts";
+import { clearEvTuning } from "./ev-tuning-store.ts";
 import { prefs } from "./settings.ts";
 import { TyreSizePicker, tyreClassOf } from "./tyre-size-picker.ts";
 import { toUnit } from "./units.ts";
@@ -94,12 +95,13 @@ export class VehiclePanel {
         <label class="gearbox__field"><span>Fertiges Fahrzeug</span>
           <select data-control="car">
             <option value="">– eigenes Fahrzeug –</option>
-            ${([["Autos", "car"], ["Lkw & Busse", "commercial"], ["Motorräder", "bike"]] as const).map(([label, group]) => `<optgroup label="${label}">${VEHICLE_LIBRARY
+            ${([["Autos", "car"], ["Elektro ⚡", "ev"], ["Lkw & Busse", "commercial"], ["Motorräder", "bike"]] as const).map(([label, group]) => `<optgroup label="${label}">${VEHICLE_LIBRARY
               .filter((c) => {
                 const k = c.setup.kind ?? "car";
-                return group === (isMotorcycleKind(k) ? "bike" : isCommercialKind(k) ? "commercial" : "car");
+                // electric cars (#108) in their own group
+                return group === (c.setup.ev ? "ev" : isMotorcycleKind(k) ? "bike" : isCommercialKind(k) ? "commercial" : "car");
               })
-              .map((c) => `<option value="${c.id}">${c.name}</option>`).join("")}</optgroup>`).join("")}
+              .map((c) => `<option value="${c.id}">${c.setup.ev ? "⚡ " : ""}${c.name}</option>`).join("")}</optgroup>`).join("")}
           </select>
         </label>
         <button type="button" class="btn btn--small" data-control="load-car">Laden</button>
@@ -225,6 +227,8 @@ export class VehiclePanel {
   resetFactory() {
     if (this.moving) return;
     clearCustom(this.vehicleKey);
+    // the E-Tuner setup of an electric car (#108) belongs to its own changes too
+    clearEvTuning(this.loadedId);
     this.load(this.factory, this.loadedId, this.drivetrain.kind, this.sig);
     this.sync();
     this.onChange();

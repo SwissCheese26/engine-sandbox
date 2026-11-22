@@ -17,6 +17,8 @@ import { isAirCooled } from "./thermal.ts";
 import { PEAK_SLIP, SLIDE_FACTOR, tyreForceFactor } from "./tyres.ts";
 import { HOLD_ROLL_G, holdCapN } from "./parking-brake.ts";
 import { BRAKE_MAX_G, drivenAxleLoadN, drivenBrakeN as drivenBrakeForceN, wheelieLimitN } from "./vehicle.ts";
+/** Re-exported for electric.ts (issue #108); the constant lives in vehicle.ts since #104. */
+export { BRAKE_MAX_G };
 import type { EngineConfig, EngineState, SimInputs, VehicleCoupling, Warning } from "./types.ts";
 import { converterTorques } from "./converter.ts";
 
@@ -91,6 +93,20 @@ interface Internal {
   absT: number;
   absCycles: number;
   grip: number;
+}
+
+/**
+ * Shared longitudinal dynamics (issue #108): the EvSimulator drives the same vehicle model (tyres, brakes, ABS,
+ * gradient, aero) with its motor as the "engine". Only the vehicle part of the state is used there.
+ */
+export type VehicleBody = Internal;
+export function createVehicleBody(ambientC = 20): VehicleBody {
+  return {
+    rpm: 0, crank: 0, pManKpa: 101.325, turbo: { shaftRpm: 0, boostBar: 0 }, thermal: { coolantC: ambientC, oilC: ambientC, egtC: ambientC },
+    knockRetard: 0, idleI: 0, dynoI: 0, running: false, armed: false, stallT: 0, stalled: false, limiterCut: false, relLoad: 0, load: 0,
+    boostCut: 0, initialised: true, wear: 0, destroyed: false, vSpeed: 0, catC: ambientC, vWheel: 0, spin: false, locked: false, tyreF: 0,
+    aLong: 0, vBrk: 0, absF: 0, absRef: 0, absRelease: false, absT: 9, absCycles: 0, grip: 1,
+  };
 }
 
 /** Steady idle command (feed-forward for the idle governor) found by bisection at warm conditions. */
@@ -581,7 +597,7 @@ const LOCK_SLIP = -0.3;
  * negative (locked driven wheels). The service brake acts on the vehicle, limited to μ·m·g (above: locked,
  * 0.9·μ·m·g); at standstill it holds the car like before (tiedStep).
  */
-function stepVehicle(x: Internal, cIn: VehicleCoupling, engineTorqueNm: number, J: number, h: number) {
+export function stepVehicle(x: Internal, cIn: VehicleCoupling, engineTorqueNm: number, J: number, h: number) {
   let c = cIn;
   if (c.parkingBrake) {
     // issue #91 review: the wheels lock only at standstill. Still rolling, the hold brakes like a firm service brake –
@@ -599,12 +615,14 @@ function stepVehicle(x: Internal, cIn: VehicleCoupling, engineTorqueNm: number, 
   const atRest = x.vSpeed <= 1e-3;
   const traction = c.grip !== undefined && Number.isFinite(c.grip) && veh.driveLayout !== undefined;
   x.absT = Math.min(9, x.absT + h);
-  if (!traction) {
-    tiedStep(x, c, engineTorqueNm, J, h);
+  const braked = atRest && pedalB > 0.05 && x.vWheel <= 0.05;
+  if (!traction || (braked && !c.converter)) {
+    tiedStep(x, c, engineTorqueNm, J, h, traction ? Math.max(0.01, c.grip!) : undefined);
     return;
   }
-  // issue #104: at standstill the service brake holds the driven wheels themselves (brake stand / stall test)
-  if (atRest && pedalB > 0.05 && x.vWheel <= 0.05 && brakeStandStep(x, c, engineTorqueNm, J, h, pedalB)) return;
+  // issue #104: converter at standstill – the service brake holds the driven wheels themselves (brake stand / stall
+  // test). Clutch gearboxes and electric drives keep the tied model above.
+  if (braked && brakeStandStep(x, c, engineTorqueNm, J, h, pedalB)) return;
   const gr = gradeOf(c);
   const mu = Math.max(0.01, c.grip!) * gr.cos;
   x.grip = mu;
@@ -619,7 +637,7 @@ function stepVehicle(x: Internal, cIn: VehicleCoupling, engineTorqueNm: number, 
   // service brake through the braked wheels' tyre force (issue #23: brake slip, ABS)
   const fBrake = atRest ? 0 : stepBrakes(x, c, pedalB, mu, h);
   // issue #104: car (practically) standing, driven wheels spinning against their own service brake (brake stand)
-  const fBd = x.vSpeed <= HOLD_STOP_MS && x.vWheel > 0 ? drivenBrakeN(c, pedalB) : 0;
+  const fBd = c.converter && x.vSpeed <= HOLD_STOP_MS && x.vWheel > 0 ? drivenBrakeN(c, pedalB) : 0;
   const brakeLocked = fBrake > 0 && x.vSpeed > 0.5 && slipRatio(x.vBrk, x.vSpeed) < LOCK_SLIP;
   const R = roadLoadN(veh, x.vSpeed, airRho(c), gr.cos) + m * G * gr.sin + fBrake;
   const N = drivenAxleLoadN(veh, x.aLong);
