@@ -6,6 +6,10 @@ _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `
 
 ## 2026-11-22 – Festbremsdrehzahl der Automatik: Bremse hält die Antriebsräder
 
+### Geändert
+
+- Schaltgetriebe werden etwas langsamer heiß: Zahnräder und Wellen zählen jetzt zur Wärmekapazität. Die Warnung kommt beim Handschalter erst ab 130 °C, weil er keinen Schutzmodus hat. ([#53](https://github.com/SwissCheese26/engine-sandbox/issues/53))
+
 ### Behoben
 
 - Automatik: Vollgas bei voll getretener Bremse lässt die Räder nicht mehr frei durchdrehen. Die Bremse hält jetzt auch die Antriebsräder, der Motor bleibt auf der Festbremsdrehzahl des Wandlers (z. B. ≈ 2000 1/min beim Land Cruiser statt durchdrehender Räder). Bei starken Hecktrieblern wie 530d und E 220 d nimmt die Steuerung wie in echt Motormoment zurück, damit die Bremse hält (≈ 1800 statt über 4000 1/min). Das Getriebeöl wird dabei schnell heiß. ([#104](https://github.com/SwissCheese26/engine-sandbox/issues/104), [#118](https://github.com/SwissCheese26/engine-sandbox/issues/118), [#119](https://github.com/SwissCheese26/engine-sandbox/issues/119))

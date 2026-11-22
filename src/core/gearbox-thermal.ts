@@ -41,6 +41,8 @@ export interface GearboxThermalSpec {
 /** Oil ρ·c ≈ 0.87 kg/l · 2.0 kJ/(kg K); aluminium casing 0.9 kJ/(kg K), half of the casing mass (vehicle.md §8). */
 const oilJK = (litres: number) => litres * 0.87 * 2000;
 const caseJK = (kg: number) => 0.5 * kg * 900;
+/** Gears and shafts run in the oil and follow it fully: steel c ≈ 0.46 kJ/(kg K) (vehicle.md §8). */
+const steelJK = (kg: number) => kg * 460;
 
 /**
  * Per gearbox type (vehicle.md §8): MQ350 manual, DQ381 wet DCT, ZF 8HP converter automatic, chain CVT, motorcycle
@@ -48,7 +50,7 @@ const caseJK = (kg: number) => 0.5 * kg * 900;
  * compact car on the motorway at 120 km/h settles at ≈ 85 °C (manual) and ≈ 90 °C (automatic, cooler on).
  */
 export const GEARBOX_THERMAL: Record<GearboxThermalKind, GearboxThermalSpec> = {
-  manual: { heatCapacityJK: oilJK(2) + caseJK(45), ua0WK: 6, uaRamWK: 16, uaEngineWK: 4, coolerWK: 0, churnW: 300, nRefRpm: 3000, clutchOilShare: 0.15, warnC: 120, protectC: null, damageC: 150 },
+  manual: { heatCapacityJK: oilJK(2) + caseJK(45) + steelJK(18), ua0WK: 6, uaRamWK: 16, uaEngineWK: 4, coolerWK: 0, churnW: 300, nRefRpm: 3000, clutchOilShare: 0.15, warnC: 130, protectC: null, damageC: 150 },
   dct: { heatCapacityJK: oilJK(5.2) + caseJK(90), ua0WK: 7, uaRamWK: 18, uaEngineWK: 4, coolerWK: 120, churnW: 600, nRefRpm: 3000, clutchOilShare: 1, warnC: 120, protectC: 130, damageC: 150 },
   automatic: { heatCapacityJK: oilJK(8.5) + caseJK(85), ua0WK: 7, uaRamWK: 16, uaEngineWK: 4, coolerWK: 150, churnW: 500, nRefRpm: 3000, clutchOilShare: 1, warnC: 120, protectC: 130, damageC: 150 },
   cvt: { heatCapacityJK: oilJK(7) + caseJK(80), ua0WK: 7, uaRamWK: 16, uaEngineWK: 4, coolerWK: 120, churnW: 600, nRefRpm: 3000, clutchOilShare: 1, warnC: 120, protectC: 130, damageC: 150 },
