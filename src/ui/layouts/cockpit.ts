@@ -24,7 +24,7 @@ import type { EvConfig } from "../../core/index.ts";
 import { consumptionText, driveModeLabel, evField, evLamps, powerMeterScale, powerMeterValue, rangeText, socText } from "./ev-logic.ts";
 
 type LampKey = keyof LampSet;
-const LAMPS: { k: LampKey; color: "red" | "amber" | "ice"; icon: string; on: string; text?: string }[] = [
+const LAMPS: { k: LampKey; color: "red" | "amber" | "ice" | "green"; icon: string; on: string; text?: string }[] = [
   { k: "park", color: "red", icon: BASE_ICON.park, on: "Feststellbremse angezogen" },
   { k: "battery", color: "red", icon: ICON2.battery, on: "Ladekontrolle: Lichtmaschine lädt nicht" },
   { k: "oil", color: "red", icon: ICON2.oil, on: "Öldruck zu niedrig" },
@@ -39,6 +39,7 @@ const LAMPS: { k: LampKey; color: "red" | "amber" | "ice"; icon: string; on: str
   { k: "gearbox", color: "amber", icon: ICON2.gearbox, on: "Getriebe heiß" },
   { k: "air", color: "red", icon: ICON2.air, on: "Bremsdruck zu niedrig" },
   { k: "adblue", color: "amber", icon: ICON2.adblue, on: "AdBlue nachfüllen" },
+  { k: "cat", color: "green", icon: ICON2.cat, on: "Kat heizt" },
 ];
 
 /** Shift-light LEDs of the head-up and motorcycle displays (#83). */
@@ -939,6 +940,7 @@ export class CockpitView implements LayoutView {
       parkingBrake: vehicle ? !!ds.parkingBrake : undefined,
       gearbox: vehicle ? { hot: !!ds.gearboxOilWarn, protect: !!ds.gearboxProtect, failed: !!ds.gearboxFailed } : undefined,
       ...lampSystems(f, this.cfg),
+      catHeating: s.coldStart === "cat-heating",
     });
     // electric car (#108): Ready lamp, no oil / coolant / glow / alternator lamps
     const evl = this.ev && s.ev ? evLamps(set, { ready: s.ev.ready, ignition: f.ignition, soc: s.ev.soc, warnings: s.warnings.map((w) => w.code) }) : null;

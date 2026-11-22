@@ -729,6 +729,19 @@ kbd {
   margin-left: -1px;
   background: var(--signal);
 }
+.meter__lamp {
+  display: inline-flex;
+  vertical-align: middle;
+  color: var(--hammer-light);
+}
+.meter__lamp svg {
+  width: 24px;
+  height: 17px;
+}
+.meter__lamp[data-state="on"] {
+  color: var(--ok);
+  filter: drop-shadow(0 0 3px rgba(111, 154, 98, 0.7));
+}
 .meter.is-limit .meter__value,
 .meter.is-limit .meter__label {
   color: var(--signal);

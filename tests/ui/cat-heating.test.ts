@@ -9,6 +9,8 @@ import { toastInputs } from "../../src/ui/toasts.ts";
 import { fieldAvailable, formatField, type FieldInputs } from "../../src/ui/layouts/fields-logic.ts";
 import { gaugeAvailable, gaugeValue } from "../../src/ui/layouts/extras-logic.ts";
 import { FIELD_IDS, GAUGE_IDS } from "../../src/ui/layouts/designs.ts";
+import { BULB_CHECK_S, clusterLamps } from "../../src/ui/layouts/logic.ts";
+import { evLamps } from "../../src/ui/layouts/ev-logic.ts";
 
 const U = { temp: "°C", pressure: "bar", speed: "km/h", fuel: "l/100km", distance: "km", power: "kW", torque: "Nm" } as never;
 
@@ -48,5 +50,15 @@ describe("catalyst heating in the cockpit (#135)", () => {
     const tr = new ControlTracker(deriveVoice(cfg, summarize(cfg)));
     expect(tr.next(s, 0).rough).toBe(1);
     expect(tr.next({ ...s, coldStart: undefined }, 0).rough).toBe(0);
+  });
+
+  test("lamp \"Kat heizt\" lights while the catalyst is heated, off otherwise and in an EV", () => {
+    const base = { ignition: true, running: true, sinceIgnitionS: BULB_CHECK_S + 5, diesel: false, coolantC: 20, coolantMaxC: 115, oilPressureBar: 2, damaged: false, warnings: [] };
+    expect(clusterLamps({ ...base, catHeating: s.coldStart === "cat-heating" }).cat).toBe("on");
+    expect(clusterLamps({ ...base, catHeating: false }).cat).toBe("off");
+    expect(clusterLamps({ ...base, running: false, catHeating: true }).cat).toBe("off");
+    expect(clusterLamps({ ...base, ignition: false, catHeating: true }).cat).toBe("off");
+    const on = clusterLamps({ ...base, catHeating: true });
+    expect(evLamps(on, { ready: true, ignition: true, soc: 0.8, warnings: [] }).cat).toBe("off");
   });
 });

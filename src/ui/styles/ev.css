@@ -218,7 +218,7 @@
   display: inline-flex;
 }
 /* oil pressure, coolant, glow plug and alternator lamps do not exist in an EV */
-.ck[data-drive="ev"] :is([data-lamp="oil"], [data-lamp="coolant"], [data-lamp="glow"], [data-lamp="battery"], [data-lamp="gearbox"]) {
+.ck[data-drive="ev"] :is([data-lamp="oil"], [data-lamp="coolant"], [data-lamp="glow"], [data-lamp="battery"], [data-lamp="gearbox"], [data-lamp="cat"]) {
   display: none;
 }
 /* the extra gauges and the tuning bar under the cluster are combustion add-ons (boost, oil, λ, EGT) */
