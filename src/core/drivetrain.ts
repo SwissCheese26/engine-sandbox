@@ -1290,17 +1290,7 @@ export class Drivetrain {
       s.maxSpeedKmh = s.speedKmh;
       s.maxSpeedLimited = this.govActive && s.speedLimitKmh !== null && s.speedKmh >= s.speedLimitKmh - 3;
     }
-    if (s.speedKmh < 0.5 && pedal > 0.05 && s.t0to100Running === null) s.t0to100Running = 0;
-    if (s.t0to100Running !== null) {
-      if ((s.speedKmh < 0.5 && pedal < 0.02) || !engine.running) s.t0to100Running = null;
-      else {
-        s.t0to100Running += dt;
-        if (s.speedKmh >= 100) {
-          s.t0to100S = s.t0to100Running;
-          s.t0to100Running = null;
-        }
-      }
-    }
+    this.track0to100(dt, pedal, brake, engine.running);
 
     const converter = conv && s.gear > 0 && engine.running && !this.gbFailed ? this.converterCoupling() : undefined;
     // gearbox oil (issue #53): the output shaft turns with the wheels also in N
@@ -1337,6 +1327,36 @@ export class Drivetrain {
    * BTM_BRAKE_ON … BTM_BRAKE_FULL (no torque step at the threshold). 0 = no cap
    * needed (the brakes hold full stall, e.g. AWD).
    */
+  /**
+   * 0–100 km/h timer: it starts when the car is let go from standstill under throttle (gas on, brake off; revving
+   * against the brake or launch control does not count yet) and only counts a run under continuous throttle.
+   * Lifting off for longer than a short shift pause, braking, or the engine stopping discards the run.
+   */
+  private t100LiftS = 0;
+  private track0to100(dt: number, pedal: number, brake: number, running: boolean) {
+    const s = this.st;
+    const standing = s.speedKmh < 0.5;
+    if (!running || (standing && (pedal <= 0.05 || brake > 0.05))) {
+      s.t0to100Running = null;
+      this.t100LiftS = 0;
+      return;
+    }
+    if (s.t0to100Running === null) {
+      if (!standing) return; // already rolling: only a standing start counts
+      s.t0to100Running = 0;
+    }
+    this.t100LiftS = pedal < 0.05 ? this.t100LiftS + dt : 0;
+    if (brake > 0.05 || this.t100LiftS > 0.6) {
+      s.t0to100Running = null; // off the throttle: this run does not count
+      return;
+    }
+    s.t0to100Running += dt;
+    if (s.speedKmh >= 100) {
+      s.t0to100S = s.t0to100Running;
+      s.t0to100Running = null;
+    }
+  }
+
   private brakeStandLimit(totalRatio: number, efficiency: number, brake: number): number {
     const mu0 = Math.max(1, this.spec.converter?.stallTorqueRatio ?? 1);
     if (!(totalRatio > 0)) return 0;
@@ -1402,17 +1422,7 @@ export class Drivetrain {
       s.maxSpeedKmh = s.speedKmh;
       s.maxSpeedLimited = this.govActive && s.speedLimitKmh !== null && s.speedKmh >= s.speedLimitKmh - 3;
     }
-    if (s.speedKmh < 0.5 && pedal > 0.05 && s.t0to100Running === null) s.t0to100Running = 0;
-    if (s.t0to100Running !== null) {
-      if ((s.speedKmh < 0.5 && pedal < 0.02) || !engine.running) s.t0to100Running = null;
-      else {
-        s.t0to100Running += dt;
-        if (s.speedKmh >= 100) {
-          s.t0to100S = s.t0to100Running;
-          s.t0to100Running = null;
-        }
-      }
-    }
+    this.track0to100(dt, pedal, brake, engine.running);
     const motorC = engine.ev?.motorC ?? this.env.ambientC;
     this.gbOilC = motorC;
     Object.assign(s, { gearboxOilC: motorC, gearboxOilWarn: false, gearboxProtect: false, gearboxWear: 0, gearboxFailed: false });
