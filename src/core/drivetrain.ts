@@ -1340,7 +1340,8 @@ export class Drivetrain {
       this.updateRoad(dt);
     }
     // the "clutch" of an EV is always closed; for the Auto-Hold release it counts as open (drive-away by pedal only)
-    Object.assign(s, { gear: 1, gearCount: 1, ratio: 1, shifting: false, clutch: 0, manualMode: false, launchArmed: false, wheelie: false, electric: true });
+    // two-speed reduction (Taycan-like): the EvSimulator shifts, the drivetrain shows its gear
+    Object.assign(s, { gear: engine.ev?.gear ?? 1, gearCount: ev.twoSpeed ? 2 : 1, ratio: 1, shifting: !!engine.ev?.shifting, clutch: 0, manualMode: false, launchArmed: false, wheelie: false, electric: true });
     this.updateHold(Number.isFinite(vRoad) ? vRoad : 0, pedal, brake, engine);
     const held = !!s.parkingBrake;
     this.lastRpm = engine.rpm;

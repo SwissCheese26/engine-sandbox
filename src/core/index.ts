@@ -82,7 +82,7 @@ export {
 } from "./gearbox-thermal.ts";
 export type { GearboxOilInput, GearboxThermalKind, GearboxThermalSpec } from "./gearbox-thermal.ts";
 // issue #108: electric drive (motor, inverter, battery, regen, single-speed reduction, multi-motor AWD)
-export { EvSimulator, DRIVE_MODES, DRIVE_MODE_IDS, START_SOC, evRefRatio, evSystemPowerKw, evPackKwh, motorRpmAt } from "./electric.ts";
+export { EvSimulator, DRIVE_MODES, DRIVE_MODE_IDS, START_SOC, EV_SHIFT_S, evInGear, evMotorRatio, evRefRatio, evRpmVmaxKmh, evSystemPowerKw, evPackKwh, motorRpmAt } from "./electric.ts";
 export {
   CONSTANT_POWER_RATIO, INVERTER_EFFICIENCY, MOTOR_DERATE_C, MOTOR_MAX_C, baseRpm, electricPowerKw, motorDerate, motorEfficiency, motorLossKw,
   motorMaxPowerKw, motorMaxTorque, stepMotorTemp, torqueAtCurrent,
