@@ -23,6 +23,7 @@ export const CHANGELOG: ChangelogEntry[] = [
     date: "2026-11-22",
     title: "Elektroantrieb in der Werkbank, 2-Gang-Getriebe und Vmax für E-Autos, Live-Reichweite für alle Fahrzeuge und Fahrstufen P N D, Bremse hält bei der Automatik die Antriebsräder",
     items: [
+      { kind: "neu", text: "Drei neue fertige Autos mit eigenem Motor: Cupra Leon Sportstourer VZ 2.0 TSI 4Drive (333 PS, 420 Nm, DSG, Allrad), Audi A1 1.4 TFSI (122 PS, 7-Gang S tronic) und BMW 116i F20 (136 PS, 6-Gang-Handschalter, Hinterradantrieb). Du findest sie in der Fahrzeugliste, im Sandbox-Assistenten und ihre Motoren in der Motorliste.", refs: [131, 132] },
       { kind: "neu", text: "Jedes Fahrzeug zeigt jetzt seine Reichweite, auch Benziner und Diesel: Tankinhalt geteilt durch den Verbrauch der letzten Kilometer und Minuten, live und ohne Sprünge. Sie steht in jedem Cockpit-Design neben Tank oder Ladezustand und in der Prüfzelle neben dem Tankinhalt. Auf dem Motorprüfstand ohne Fahrzeug bleibt sie ausgeblendet.", refs: [129, 130] },
       { kind: "behoben", text: "Im E-Tuner lassen sich jetzt 4 Motoren wählen, z. B. 2 vorn und 2 hinten wie beim Rimac, aber auch 1 + 3, 3 + 1, 0 + 4 oder 4 + 0. Die Achse, die du gerade einstellst, bleibt, die andere gibt nach.", refs: [127, 128] },
       { kind: "geändert", text: "Beim eigenen Fahrzeug kommt der Antrieb zuerst: Motor, Getriebe und Antrieb, dann Reifen, dann Gewicht, cW-Wert und Stirnfläche, zuletzt der Tank.", refs: [127, 128] },
