@@ -634,3 +634,20 @@ Das Thermoelement vor der Turbine sitzt im Krümmer. Dessen Wandmasse (Grauguss 
 - Aufheizen unter Last: Die Messung folgt dem Gas mit τ ≈ 1 s (Rohrkrümmer) bis 2,5 s (Gusskrümmer).
 - Abkühlen mit Gasdurchsatz (Schub, Leerlauf): Die Wand gibt Wärme ans Gas ab. Die Anzeige fällt etwa 3× langsamer, typisch 850 → 500 °C in ca. 5–10 s.
 - Motor aus, ohne Durchsatz: nur Eigenkonvektion, τ ≈ 4–5 min. Der Krümmer bleibt minutenlang heiß.
+
+## Nachtrag: Kaltstart und Katheizen (Issue #135)
+Gilt für Benziner; der Diesel-Heizmodus steht in diesel.md „Nachtrag: Kaltstart-Heizmodus“. Umsetzung: `src/core/cold-start.ts`.
+
+**§K1 Abgasnorm.** Ob ein Steuergerät den Kat aktiv heizt, hängt an der Norm, nicht am Baujahr allein. `EngineConfig.emissions` (Vertrag #134); fehlt das Feld, gilt: kein Kat oder Vergaser = vor Euro 1, Saugrohreinspritzung mit Kat = Euro 3, Direkteinspritzung = Euro 5, Diesel mit SCR = Euro 6, mit DPF = Euro 5, sonst Euro 3. Nicht-EU-Motoren bekommen die vergleichbare Epoche.
+
+**§K2 Katheizen.** Seit Euro 3 (Richtlinie 98/69/EG) beginnt die Abgasmessung im NEFZ direkt beim Start; die 40 s Leerlauf vorher entfallen. Die meisten Emissionen entstehen deshalb in den ersten 20–60 s, bevor der Kat anspringt. Das Steuergerät heizt deshalb aktiv [Reif (Hrsg.), *Ottomotor-Management*, Bosch Fachinformation, Kap. „Katalysatorheizen“; Bosch, *Kraftfahrtechnisches Taschenbuch*, Abschnitt Abgasnachbehandlung]:
+- Leerlauf angehoben auf ≈ 1100–1500 1/min (mehr Abgasmassenstrom),
+- Zündung stark spät, ≈ 5–15° n. OT statt ≈ 20–25° v. OT, also ≈ 30 °KW hinter MBT. Der Wirkungsgrad sinkt (η_ign, §3.5), die Abgasenergie steigt (fExh, §3.10). Für dasselbe Leerlaufmoment braucht der Motor mehr Luft und Kraftstoff.
+- optional Sekundärluft (nicht modelliert).
+- Spätzündung verbrennt langsam im sich ausdehnenden Brennraum: Die zyklischen Schwankungen steigen (COV des p_mi ≈ 2 % → 5–8 %, Heywood, *Internal Combustion Engine Fundamentals*, 2. Aufl., §9.4). Der Leerlauf klingt rauer.
+- Dauer: Mindestens ≈ 20 s, sonst bis das Kat-Modell des Steuergeräts Light-off meldet, höchstens ≈ 60 s. Ein Kaltstart ist es, wenn das Kühlmittel beim Start unter ≈ 40 °C liegt und der Kat kalt ist.
+- Mit dem Gaspedal nimmt das Steuergerät die Spätzündung zurück, weil der Fahrer Moment anfordert.
+
+**§K3 Kat-Temperatur.** Der Monolith ist eine Wärmekapazität, die das Abgas aufheizt. Es gilt τ = C_Kat/(ṁ·c_p) mit c_p ≈ 1100 J/(kg·K). Für die vordere Light-off-Zone eines motornahen Kats gilt C_Kat ≈ 0,25 kJ/K + 0,25 kJ/K je Liter Hubraum. Daraus folgt τ ≈ 60 s bei Katheizen eines 2-l-Motors und ≈ 2 min im warmen Leerlauf, mindestens 6 s (Warmpfad aus #16). Light-off (50 % Umsatz) liegt beim Dreiwegekat bei ≈ 250–300 °C, beim Oxidationskat (Diesel) bei ≈ 200 °C [Heywood §11.6; Bosch KTB]. Ab Light-off setzt der Kat CO/HC um und erwärmt sich über das Gas hinaus, ≈ 90 K je % CO-Äquivalent. Bei λ ≈ 1 sind das ≈ 60 K, beim mageren Diesel ≈ 15 K; der Umsatz folgt einer S-Kurve um Light-off (±40 K).
+
+**§K4 Kalter Schnellleerlauf.** Nach dem Katheizen bleibt der Leerlauf leicht erhöht, weil der kalte Motor mehr Reibung hat und der Lauf ruhig bleiben soll. Er fällt linear mit der Kühlmitteltemperatur. Steuergerät ab Euro 3: +200 1/min bei 20 °C, 0 bei 70 °C. Ältere Motoren (Startautomatik am Vergaser, frühe Einspritzer mit Zusatzluftschieber): +350 1/min bei 20 °C, 0 bei 60 °C. Unter 20 °C sind höchstens 1,5× davon möglich. Das Steuergerät führt die Solldrehzahl mit τ ≈ 1,5 s nach, sodass beim Phasenwechsel kein Sprung entsteht. Luftgekühlte Motoren messen am Zylinderkopf, der ≈ 70 K wärmer ist.

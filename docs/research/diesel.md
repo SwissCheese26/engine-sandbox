@@ -673,3 +673,13 @@ Belegt [B] heißt: Wert aus einer der folgenden Quellen bzw. aus Standard-Lehrbu
 - engine-specs.net – Cummins 6BT (Holset HX35, 120 … 160 kW, 542 … 569 Nm @ 1600, ≈ 498 kg): https://engine-specs.net/cummins/6bt.html
 - Nicht abrufbar (Berechtigung abgelaufen): Tupy, *Compacted Graphite Iron for Diesel* – Spitzendruckgrenzen je Blockmaterial in Kap. 4.2 daher [S].
 
+
+## Nachtrag: Kaltstart-Heizmodus (Issue #135)
+Definitionen in petrol.md „Nachtrag: Kaltstart und Katheizen“ §K1–§K4. Umsetzung: `src/core/cold-start.ts`.
+
+**§K5 Diesel ab Euro 5 (DPF/SCR).** Der Diesel hat keine Zündung, die man verstellen könnte. Nach einem Kaltstart läuft deshalb ein Heizmodus [Reif (Hrsg.), *Dieselmotor-Management*, Bosch Fachinformation, Kap. „Einspritzverlauf: Nacheinspritzung“ und „Glühsysteme: Nachglühen“]:
+- Leerlauf um ≈ 250 1/min angehoben,
+- angelagerte Nacheinspritzung von ≈ 30 % der Hauptmenge. Sie verbrennt spät und leistet kaum Arbeit; ≈ 70 % ihrer Wärme landen im Abgas: ΔT = 0,7·ṁ_post·H_u/(ṁ_Abgas·c_p). Mehrverbrauch ohne Mehrmoment.
+- Nachglühen hält die Verbrennung ruhig (Geräusch, HC). Es hat keinen Momenteneffekt und ist nicht eigens modelliert.
+- Dauer wie §K2 (20–60 s). Im Leerlauf erreicht der Oxidationskat seine ≈ 200 °C oft erst später unter Last; das ist realistisch.
+Euro 3/4-Diesel haben keinen Heizmodus, nur den kalten Schnellleerlauf (+150 1/min bei 20 °C, §K4). Ältere Reihen- und Verteilerpumpen leisten dasselbe mit der Kaltstartanhebung (KSB).
