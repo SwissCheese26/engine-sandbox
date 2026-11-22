@@ -466,8 +466,8 @@ export class Drivetrain {
   private fresh(type: GearboxType, finalDrive: number, speedLimitKmh: number | null): DrivetrainState {
     const g = this.spec;
     return {
-      type, gear: 1, gearCount: type === "cvt" ? 1 : g.ratios.length,
-      ratio: g.ratios[0]!, finalDrive, manualMode: type === "manual", shifting: false, clutch: 0,
+      type, gear: 1, gearCount: this.evCfg || type === "cvt" ? 1 : g.ratios.length,
+      ratio: this.evCfg ? 1 : g.ratios[0]!, finalDrive, manualMode: !this.evCfg && type === "manual", shifting: false, clutch: 0,
       speedKmh: 0, maxSpeedKmh: 0, t0to100S: null, t0to100Running: null,
       speedLimitKmh, limiting: false, maxSpeedLimited: false, wheelie: false,
       wheelSpin: false, wheelsLocked: false, tyreTempC: this.tyreT, grip: this.currentGrip(),
@@ -477,7 +477,7 @@ export class Drivetrain {
       parkingBrake: false, autoHold: this.autoHoldOn,
       gearboxOilC: Number.isFinite(this.gbOilC) ? this.gbOilC : this.env.ambientC, gearboxOilWarn: this.gbWarn,
       gearboxProtect: this.gbProtect, gearboxWear: this.gbWear, gearboxFailed: this.gbFailed,
-      ...(this.evCfg ? { electric: true, gearCount: 1, ratio: 1, manualMode: false } : { electric: false }),
+      electric: !!this.evCfg,
     };
   }
 
