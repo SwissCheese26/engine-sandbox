@@ -20,6 +20,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    date: "2026-11-22",
+    title: "Festbremsdrehzahl der Automatik: Bremse hält die Antriebsräder",
+    items: [
+      { kind: "behoben", text: "Automatik: Vollgas bei voll getretener Bremse lässt die Räder nicht mehr frei durchdrehen. Die Bremse hält jetzt auch die Antriebsräder, der Motor bleibt auf der Festbremsdrehzahl des Wandlers (z. B. ≈ 2000 1/min beim Land Cruiser statt durchdrehender Räder). Bei starken Hecktrieblern wie 530d und E 220 d nimmt die Steuerung wie in echt Motormoment zurück, damit die Bremse hält (≈ 1800 statt über 4000 1/min). Das Getriebeöl wird dabei schnell heiß.", refs: [104, 118, 119] },
+    ],
+  },
+  {
     date: "2026-11-21",
     title: "Elektroautos mit E-Tuner und E-Tacho, Zusatzinstrumente im Look jedes Cockpits, Druckluft, Retarder und AdBlue, Kurven mit Schräglage, Reifenqualm, aufgeräumter Rollenprüfstand, Einstellungen pro Fahrzeug und Getriebeölkühler",
     items: [

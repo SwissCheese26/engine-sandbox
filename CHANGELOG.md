@@ -4,6 +4,12 @@ Alle sichtbaren Änderungen an der Prüfzelle, neueste zuerst. Aufbau nach [Keep
 
 _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `bun scripts/changelog.ts` ausführen._
 
+## 2026-11-22 – Festbremsdrehzahl der Automatik: Bremse hält die Antriebsräder
+
+### Behoben
+
+- Automatik: Vollgas bei voll getretener Bremse lässt die Räder nicht mehr frei durchdrehen. Die Bremse hält jetzt auch die Antriebsräder, der Motor bleibt auf der Festbremsdrehzahl des Wandlers (z. B. ≈ 2000 1/min beim Land Cruiser statt durchdrehender Räder). Bei starken Hecktrieblern wie 530d und E 220 d nimmt die Steuerung wie in echt Motormoment zurück, damit die Bremse hält (≈ 1800 statt über 4000 1/min). Das Getriebeöl wird dabei schnell heiß. ([#104](https://github.com/SwissCheese26/engine-sandbox/issues/104), [#118](https://github.com/SwissCheese26/engine-sandbox/issues/118), [#119](https://github.com/SwissCheese26/engine-sandbox/issues/119))
+
 ## 2026-11-21 – Elektroautos mit E-Tuner und E-Tacho, Zusatzinstrumente im Look jedes Cockpits, Druckluft, Retarder und AdBlue, Kurven mit Schräglage, Reifenqualm, aufgeräumter Rollenprüfstand, Einstellungen pro Fahrzeug und Getriebeölkühler
 
 ### Neu

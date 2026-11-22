@@ -38,6 +38,25 @@ export function drivenAxleLoadN(v: VehicleParams, accelMs2: number): number {
   return clamp(n, 0, w);
 }
 
+/** Brake system force capacity at full pedal, in g: enough to lock any tyre (ABS: issue #23) [S]. */
+export const BRAKE_MAX_G = 1.6;
+
+/**
+ * Service-brake force at the driven wheels, N (issue #104): full-pedal capacity BRAKE_MAX_G·m·g split between the
+ * axles by the static axle load (brake balance ≈ load distribution, Breuer/Bill, Bremsenhandbuch, ch. "Bremskraft-
+ * verteilung", docs/research/vehicle.md [B22]) [S]; AWD: all four wheels are driven. 530d: ≈ 0.78·m·g on the rear axle.
+ */
+export function drivenBrakeN(v: VehicleParams, pedalB: number, cosGrade = 1): number {
+  const w = v.massKg * G;
+  const share = v.driveLayout === "awd" ? 1 : clamp(drivenAxleLoadN(v, 0) / w, 0, 1);
+  return clamp(pedalB, 0, 1) * BRAKE_MAX_G * w * cosGrade * share;
+}
+
+/** Drive force the braked driven wheels hold at standstill before they spin: own brake + static tyre force μ·N_d, N (issue #104). */
+export function brakeStandHoldN(v: VehicleParams, pedalB: number, mu: number, cosGrade = 1): number {
+  return drivenBrakeN(v, pedalB, cosGrade) + Math.max(0, mu) * Math.min(v.massKg * G, drivenAxleLoadN(v, 0)) * cosGrade;
+}
+
 function clamp(x: number, lo: number, hi: number) {
   return x < lo ? lo : x > hi ? hi : x;
 }
