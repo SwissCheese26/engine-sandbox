@@ -11,7 +11,7 @@ import { reducedMotion } from "../canvas.ts";
 import { GAS_RAMPS, getSettings, prefs, setSettings } from "../settings.ts";
 import { toUnit } from "../units.ts";
 import { Dial, type DialScale } from "./dial.ts";
-import { DESIGN_CHOICES, FIELD_PRESETS, dialTheme, isCockpitChoice, resolveDesign, type CockpitDesignId, type FieldId, type FieldSet } from "./designs.ts";
+import { COCKPIT_DESIGNS, DESIGN_CHOICES, FIELD_PRESETS, dialTheme, isCockpitChoice, layoutOf, resolveDesign, type CockpitDesignId, type FieldId, type FieldSet } from "./designs.ts";
 import { driveModeWord, fieldAriaLabel, formatField, nextField, shownField, type FieldContext, type FieldInputs } from "./fields-logic.ts";
 import { CockpitExtras } from "./extras.ts";
 import { systemReadings } from "./systems-logic.ts";
@@ -89,7 +89,10 @@ export class CockpitView implements LayoutView {
   /** Unit and range the consumption dial is drawn with (changes when the car starts or stops moving). */
   private fuelKey = "";
   private tankKey = "";
+  /** Arrangement in effect (a skin's base layout, layoutOf): all readout logic and `data-design` go by it. */
   private design: CockpitDesignId | "" = "";
+  /** The chosen design itself (may be a skin of `design`): `data-skin` and the dial theme. */
+  private skin: CockpitDesignId | "" = "";
   private designSel: HTMLSelectElement;
   private fieldBtns: HTMLButtonElement[] = [];
   private fieldCtx: FieldContext = { turbo: false, vehicle: false };
@@ -111,6 +114,8 @@ export class CockpitView implements LayoutView {
   private readyEl!: HTMLElement;
   /** Set by the app: next EV drive mode (Chill → Sport → Plaid). */
   onEvMode: () => void = () => {};
+  /** The loaded library car's own cluster (designs.ts carDesign), used when the design is "Automatisch". */
+  preferredDesign: () => CockpitDesignId | undefined = () => undefined;
   /** Set by the app: switches the console to the chassis dyno. */
   onWantVehicle: () => void = () => {};
   /** Set by the app: jump to the Umwelt panel (route, weather, gradient). */
@@ -361,8 +366,10 @@ export class CockpitView implements LayoutView {
   }
 
   /** Puts the design on the root (CSS tokens and arrangement) and its drawing style on every dial (#83). */
-  private applyDesign(id: CockpitDesignId) {
-    if (id === this.design) return;
+  private applyDesign(skin: CockpitDesignId) {
+    if (skin === this.skin) return;
+    this.skin = skin;
+    const id = layoutOf(skin);
     const truckChange = id === "truck" || this.design === "truck";
     this.design = id;
     if (truckChange) {
@@ -370,15 +377,22 @@ export class CockpitView implements LayoutView {
       this.speedKey = "";
     }
     this.el.dataset.design = id;
+    this.el.dataset.skin = skin;
+    // a design can put the consumption (eco) gauge into the rev counter; otherwise it sits in the strip
+    const fuel = this.minis.fuel.wrap;
+    const inset = COCKPIT_DESIGNS.find((d) => d.id === skin)?.inset === "fuel";
+    if (inset && !fuel.classList.contains("ck-mini--inset")) this.el.querySelector("[data-slot=rpm]")!.append(fuel);
+    else if (!inset && fuel.classList.contains("ck-mini--inset")) this.minis.tank.wrap.before(fuel);
+    fuel.classList.toggle("ck-mini--inset", inset);
     if (id === "race" && !this.race) {
       this.race = new RaceView();
       this.race.configure(this.cfg, this.summary, this.info);
       this.race.setElectric(this.ev);
       this.el.querySelector("[data-slot=alt]")!.append(this.race.el);
     }
-    const t = dialTheme(id);
+    const t = dialTheme(skin);
     for (const d of [this.speedo, this.tacho, ...Object.values(this.minis).map((m) => m.dial)]) d.setTheme(t);
-    this.extras.setDesign(id);
+    this.extras.setDesign(skin);
     for (const k of Object.keys(this.last)) this.last[k] = "";
     this.redraw();
   }
@@ -516,7 +530,7 @@ export class CockpitView implements LayoutView {
       (this.customIn.closest("[data-ck-custom]") as HTMLElement).hidden = st.speedo !== "custom";
     }
     if (this.designSel.value !== st.cockpitDesign) this.designSel.value = st.cockpitDesign;
-    this.applyDesign(resolveDesign(st.cockpitDesign, d.kind, !!this.ev));
+    this.applyDesign(resolveDesign(st.cockpitDesign, d.kind, !!this.ev, this.preferredDesign()));
     const vmaxShown = toUnit("speed", this.info.vmaxKmh, u.speed);
     const truck = this.design === "truck";
     // truck design (#83): fixed 125 km/h scale with the vehicle's top-speed limiter (Directive 92/6/EEC) marked

@@ -42,6 +42,11 @@ export interface LibraryCar {
     rollout?: boolean;
   };
   source: string;
+  /**
+   * Preferred cockpit design id (src/ui/layouts/designs.ts) for the cockpit's "Automatisch" choice: the car's own
+   * cluster look. A plain string so the data layer does not depend on the UI; unknown ids are ignored there.
+   */
+  cockpitDesign?: string;
 }
 
 const DRIVER_KG = 75;

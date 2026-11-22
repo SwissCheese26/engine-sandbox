@@ -68,6 +68,7 @@ describe("console gauges take on the design (#83)", () => {
   const EXPECTED: Record<CockpitDesignId, [GaugeDisplay, GaugeDisplay]> = {
     classic: ["round", "bar"], "night-orange": ["round", "bar"], italian: ["round", "bar"], oldschool: ["round", "bar"], truck: ["round", "bar"], etacho: ["round", "bar"],
     digital: ["tile", "segment"], hud: ["tile", "segment"], race: ["tile", "segment"], motorrad: ["tile", "segment"],
+    "copper-digital": ["tile", "segment"], "ingolstadt-red": ["round", "bar"], "munich-orange": ["round", "bar"],
   };
   test("every design maps to a gauge style", () => {
     for (const d of COCKPIT_DESIGNS) {
