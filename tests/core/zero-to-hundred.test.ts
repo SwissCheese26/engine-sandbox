@@ -52,3 +52,12 @@ describe("0–100 km/h timer", () => {
     expect(dt.state.t0to100Running).not.toBeNull();
   });
 });
+
+describe("0–100 km/h timer edge cases", () => {
+  test("braking during the run discards it", () => {
+    const { dt, step } = rig();
+    for (let i = 0; i < 120; i++) step(1);
+    step(1, 0.5);
+    expect(dt.state.t0to100Running).toBeNull();
+  });
+});

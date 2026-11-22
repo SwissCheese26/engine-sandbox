@@ -8,7 +8,8 @@ _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `
 
 ### Geändert
 
-- 0–100 km/h zählt erst, wenn du aus dem Stand mit Gas losfährst (Gas gegen die Bremse zählt noch nicht). Gehst du unterwegs vom Gas oder bremst, wird der Lauf verworfen; kurze Schaltpausen sind erlaubt. ([#122](https://github.com/SwissCheese26/engine-sandbox/issues/122))
+- 0–100 km/h zählt erst, wenn du aus dem Stand mit Gas losfährst (Gas gegen die Bremse zählt noch nicht). Gehst du unterwegs vom Gas oder bremst, wird der Lauf verworfen; kurze Schaltpausen sind erlaubt. ([#122](https://github.com/SwissCheese26/engine-sandbox/issues/122), [#123](https://github.com/SwissCheese26/engine-sandbox/issues/123))
+- Schaltgetriebe warnen erst ab 130 °C Öltemperatur, weil sie keinen Schutzmodus haben. Die Erwärmung selbst war schon realistisch (etwa 10 °C pro Minute unter Dauervollgas). ([#53](https://github.com/SwissCheese26/engine-sandbox/issues/53), [#123](https://github.com/SwissCheese26/engine-sandbox/issues/123))
 
 ### Behoben
 
