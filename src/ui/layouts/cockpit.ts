@@ -5,6 +5,7 @@
 // strip and cruise line stay), "hud" took over Kompakt's big rpm and power values.
 import type { EngineConfig, EngineSummary, VehicleSystems } from "../../core/index.ts";
 import { fmt } from "../format.ts";
+import { evConsumption } from "../ev-fields.ts";
 import { RESERVE_SHARE, RETARDER_STAGES, TERRAIN_LABELS } from "../../core/index.ts";
 import { reducedMotion } from "../canvas.ts";
 import { GAS_RAMPS, getSettings, prefs, setSettings } from "../settings.ts";
@@ -178,7 +179,7 @@ export class CockpitView implements LayoutView {
           <dl class="ck__ev num" aria-label="Elektroantrieb" hidden>
             <div class="ck__ev-soc"><dt>Akku</dt><dd data-ck="ev-soc">–</dd></div>
             <div class="ck__ev-range"><dt>Reichweite</dt><dd data-ck="ev-range">–</dd></div>
-            <div class="ck__ev-cons"><dt>Verbrauch</dt><dd><span data-ck="ev-cons">–</span> <small data-ck="ev-cons-unit">kWh/100 km</small></dd></div>
+            <div class="ck__ev-cons"><dt>Ø Verbrauch</dt><dd><span data-ck="ev-cons">–</span> <small data-ck="ev-cons-unit">kWh/100 km</small></dd></div>
             <div class="ck__ev-batt"><dt>Akkutemp.</dt><dd data-ck="ev-batt">–</dd></div>
             <div class="ck__ev-mode"><dt>Fahrmodus</dt><dd><button type="button" class="ck__btn" data-ck="ev-mode" title="Fahrmodus wechseln">Sport</button></dd></div>
           </dl>
@@ -667,8 +668,10 @@ export class CockpitView implements LayoutView {
     this.mini("tank", ev.soc * 100, fmt(Math.round(ev.soc * 100)), dt);
     this.put("ev-soc", socText(ev.soc));
     this.put("ev-range", rangeText(ev.rangeKm, u));
-    this.put("ev-cons", cons.value);
-    this.put("ev-cons-unit", cons.unit);
+    // the text shows the trip average: the momentary value goes negative while regenerating
+    const avg = consumptionText(evConsumption(ev), u);
+    this.put("ev-cons", avg.value);
+    this.put("ev-cons-unit", avg.unit);
     this.put("ev-batt", `${fmt(T(ev.batteryC))} ${u.temp}`);
     this.put("ev-mode", driveModeLabel(ev.driveMode));
     this.out["ev-soc"]!.parentElement!.classList.toggle("is-limit", ev.soc < 0.1);

@@ -4,6 +4,7 @@ import { evSystemPowerKw } from "../core/index.ts";
 import type { EngineConfig, EngineState, EngineSummary, EvConfig, WarningCode } from "../core/index.ts";
 import { fitCanvas, reducedMotion, tokens } from "./canvas.ts";
 import { setText } from "./dom.ts";
+import { evConsumption } from "./ev-fields.ts";
 import { clamp, fmt, mixHex, niceCeil, tickStep } from "./format.ts";
 import { UNITS, makeSwitchable, saveUnit, savedUnit, type UnitOpt } from "./units.ts";
 import { FALLBACK_LIMITS as L, egtLimitC, lambdaLimit } from "./limits-fallback.ts";
@@ -407,7 +408,7 @@ export class InstrumentPanel {
         new Meter(temp("ev-batt", "Akku", 70, 55, (s) => E(s)?.batteryC ?? Number.NaN, ["battery-hot"])),
         new Meter(temp("ev-motor", "E-Motor", 180, 150, (s) => E(s)?.motorC ?? Number.NaN, ["motor-hot"])),
         new Meter({ id: "ev-regen", label: "Rekuperation", unit: "kW", decimals: 0, min: 0, max: () => niceCeil(Math.max(50, sys * 0.4)), limit: () => Infinity, value: (s) => E(s)?.regenKw ?? 0, warns: [] }),
-        new Meter({ id: "ev-cons", label: "Verbrauch", unit: "kWh/100 km", decimals: 1, min: 0, max: () => 60, limit: () => Infinity, value: (s) => E(s)?.kwhPer100 ?? Number.NaN, warns: [] }),
+        new Meter({ id: "ev-cons", label: "Ø Verbrauch", unit: "kWh/100 km", decimals: 1, min: 0, max: () => 60, limit: () => Infinity, value: (s) => { const e = E(s); return e ? evConsumption(e) : Number.NaN; }, warns: [] }),
       ];
       const cfgStub = {} as EngineConfig;
       for (const m of meters) m.configure(cfgStub);

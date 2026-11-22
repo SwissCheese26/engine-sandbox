@@ -45,24 +45,154 @@
   outline-offset: 3px;
 }
 
-/* ── Prüfzelle: no engine cutaway, nameplate, ICE curve recorder or Werkbank for an EV ── */
-.cell[data-drive="ev"] :is(.stage__engine, .recorder, .bench-toggle) {
-  display: none;
-}
-.cell.cell[data-drive="ev"] .cell__top .bench-toggle,
-.cell.cell[data-drive="ev"] .shiftpad {
-  display: none;
-}
-/* the Werkbank builds combustion engines: an electric car gets the whole width */
-.cell[data-drive="ev"] {
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-areas: "top" "stage" "deck";
-}
-.cell[data-drive="ev"] > .bench {
+/* ── Prüfzelle: no engine cutaway, nameplate or ICE curve recorder for an EV ── */
+.cell[data-drive="ev"] :is(.stage__engine, .recorder) {
   display: none;
 }
 .instruments [hidden] {
   display: none !important;
+}
+
+/* ── Werkbank: the Elektroantrieb plates replace fuel switch, library, tuning and combustion plates ── */
+.evb[hidden],
+.bench--ev :is(.fuel-switch, .bench__hint, .bench__tools, .bench__library, .bench__libinfo, .bench__lock, .bench__notes, .plate--tuning, .bench__plates:not(.evb)) {
+  display: none !important;
+}
+.evb__sum {
+  display: grid;
+  gap: 2px;
+  margin: 0 0 var(--space-2);
+  padding: 0 var(--space-2);
+}
+.evb__sum div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  column-gap: var(--space-3);
+  padding: var(--space-1) 0;
+  border-top: 1px solid rgba(35, 41, 42, 0.14);
+}
+.evb__sum dt {
+  font-size: var(--fs-14);
+  color: #4a5250;
+}
+.evb__sum dd {
+  margin: 0 0 0 auto;
+  font-weight: 700;
+  text-align: right;
+}
+.evb__note {
+  min-height: 1.4em;
+  margin: 0 0 var(--space-2);
+  padding: 0 var(--space-2);
+  font-size: var(--fs-14);
+  color: #4a5250;
+}
+.evb__note:empty {
+  display: none;
+}
+.evb__btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
+}
+
+/* ── Getriebe-Pult: drive mode, EV readouts and "Laden auf" in the readout list ── */
+.evmode[hidden],
+.gearbox__ev[hidden] {
+  display: none;
+}
+.evmode {
+  display: grid;
+  gap: var(--space-1);
+}
+.evmode__label {
+  font-size: var(--fs-14);
+  color: var(--alu-shade);
+}
+.evmode__opts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.evmode [aria-checked="true"] {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: var(--engrave);
+}
+.gearbox__readouts .gearbox__ev {
+  flex-wrap: wrap;
+}
+.gearbox__ev dd {
+  margin-left: auto;
+  text-align: right;
+}
+.gearbox__charge dd {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  font-size: inherit;
+}
+.gearbox[data-drive="ev"] .gearbox__gear {
+  display: none;
+}
+
+/* ── drive selector P R N D (in place of ▲ gear ▼) ── */
+.shiftpad.is-ev {
+  grid-template-rows: auto;
+}
+.shiftpad__ev[hidden],
+.shiftpad.is-ev :is(.shiftpad__btn, .shiftpad__gear) {
+  display: none;
+}
+.shiftpad__ev {
+  display: grid;
+  grid-template-columns: repeat(2, 44px);
+  gap: 4px;
+}
+.shiftpad__sel {
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--signal);
+  border-radius: 6px;
+  background: var(--hammer);
+  color: var(--signal);
+  font-size: var(--fs-20);
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.shiftpad__sel[aria-checked="true"] {
+  background: var(--signal);
+  color: var(--engrave);
+}
+.shiftpad__sel:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.shiftpad__sel:focus-visible {
+  outline: 2px solid var(--alu);
+  outline-offset: 2px;
+}
+
+/* phones: touch targets of at least 44 px on the Werkbank and in the Getriebe-Pult */
+@media (max-width: 700px) {
+  .bench .field select,
+  .bench .field__num,
+  .bench .seg__opt span,
+  .evb__btns .btn,
+  .evmode .btn,
+  .gearbox__charge .btn {
+    min-height: 44px;
+  }
+  .bench .seg__opt span {
+    min-width: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
 }
 
 /* ── Getriebe-Pult: single-speed reduction, no gearbox, shift buttons, tank ── */
@@ -70,83 +200,6 @@
 .gearbox[data-drive="ev"] .gearbox__readouts div:has([data-out="gear-oil"]),
 .gearbox[data-drive="ev"] .vehicle__num:has([data-field="tank"]) {
   display: none;
-}
-
-/* ── Elektro-Platte ───────────────────────────────────────────────────── */
-.evp[hidden] {
-  display: none;
-}
-.evp {
-  margin-bottom: var(--space-3);
-  padding: var(--space-3);
-  border: 1px solid #2b3a34;
-  border-radius: 8px;
-}
-.evp__title {
-  margin: 0 0 var(--space-2);
-  font-size: var(--fs-16, 16px);
-}
-.evp__badge {
-  color: #5fd068;
-}
-.evp__modes,
-.evp__charge,
-.evp__tune-btns {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin: 0 0 var(--space-2);
-}
-.evp__modes [aria-checked="true"] {
-  outline: 2px solid #5fd068;
-  outline-offset: 1px;
-}
-.evp__readouts,
-.evp__live {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 2px var(--space-3);
-  margin: 0 0 var(--space-2);
-}
-.evp__live {
-  padding: var(--space-2);
-  border-radius: 6px;
-  background: #1a2320;
-}
-.evp__live dd {
-  margin: 0;
-  font-weight: 600;
-}
-.evp__readouts div,
-.evp__live div {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-2);
-}
-.evp__readouts dd {
-  margin: 0;
-}
-.evp__tune-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: var(--space-2);
-  margin: var(--space-2) 0;
-}
-.evp__num {
-  display: grid;
-  grid-template-columns: 1fr 5.5em auto;
-  align-items: center;
-  gap: var(--space-1);
-}
-.evp__num :is(input, select) {
-  min-width: 0;
-}
-.evp__num:has(select) {
-  grid-template-columns: 1fr minmax(0, 11em);
-}
-.evp__preview {
-  min-height: 2.4em;
-  margin: 0 0 var(--space-2);
 }
 
 /* ── cockpit: EV variant of every design ─────────────────────────────── */
@@ -239,8 +292,9 @@
   .ck[data-design="etacho"] {
     grid-template-areas: "lamps lamps" "rpm rpm" "minis minis" "mfd mfd" "speed speed" "cruise cruise";
   }
+  /* #120: the power meter leaves room for speed, minis and the centre display on a phone screen */
   .ck[data-design="etacho"] .ck__dial--rpm {
-    width: min(100%, 300px);
+    width: min(100%, 220px, 34svh);
     justify-self: center;
   }
   .ck[data-design="etacho"] .ck__speed {
@@ -262,4 +316,23 @@
 }
 .rd__cell[hidden] {
   display: none;
+}
+
+/* phones with the P R N D selector: a tighter control bar, so Ready, selector, P, brake and gas fit in 360 px */
+@media (max-width: 700px) {
+  .deck:has(.shiftpad.is-ev:not([hidden])) {
+    padding-inline: var(--space-2);
+  }
+  .deck:has(.shiftpad.is-ev:not([hidden])) .pedals {
+    gap: var(--space-2);
+  }
+  .deck:has(.shiftpad.is-ev:not([hidden])) .brakepedal__plate {
+    width: 52px;
+  }
+  .console__more {
+    max-width: 100%;
+    min-height: 44px;
+    white-space: normal;
+    text-align: left;
+  }
 }

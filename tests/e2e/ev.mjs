@@ -47,11 +47,12 @@ export async function evChecks({ browser, base, outDir, failures, errors, label,
     cutaway: !!document.querySelector(".stage__engine")?.getClientRects().length,
     evGauges: !!document.querySelector('[data-gauge="ev-power"]')?.getClientRects().length,
     iceRpm: !!document.querySelector('[data-gauge="rpm"]')?.getClientRects().length,
-    panel: !!document.querySelector(".evp")?.getClientRects().length,
+    panel: !!document.querySelector('.gearbox__ev [data-o="soc"]')?.getClientRects().length,
+    selector: !!document.querySelector(".shiftpad.is-ev .shiftpad__sel")?.getClientRects().length,
     car: window.__pruefzelle?.gearbox.vehiclePanel.carId,
   }));
   if (!pz.ready || pz.key || pz.starter) fail(`Bedienpult: Ready statt Zündung/Starter erwartet (${JSON.stringify(pz)})`);
-  if (pz.cutaway || !pz.evGauges || pz.iceRpm || !pz.panel) fail(`Prüfzelle zeigt nicht die E-Instrumente (${JSON.stringify(pz)})`);
+  if (pz.cutaway || !pz.evGauges || pz.iceRpm || !pz.panel || !pz.selector) fail(`Prüfzelle zeigt nicht die E-Instrumente (${JSON.stringify(pz)})`);
   if (pz.car !== "ev-tesla-model-s-plaid") fail(`falsches Auto geladen (${pz.car})`);
   const soc0 = num(await page.textContent('[data-meter="ev-soc"] .meter__value'));
 
@@ -72,6 +73,15 @@ export async function evChecks({ browser, base, outDir, failures, errors, label,
   if (!(peak > 300)) fail(`Leistungsanzeige zeigt keine Volllast (${peak} kW)`);
   if (!(soc1 < soc0)) fail(`Ladezustand fällt nicht (${soc0} → ${soc1} %)`);
   if (!(kmh > 80)) fail(`Plaid beschleunigt nicht (${Math.round(kmh)} km/h)`);
+  // review #115: live readouts in the Getriebe-Pult's list, consumption never negative, P R N D selector
+  const ro = await page.evaluate(() => ({
+    cons: document.querySelector('.gearbox__ev [data-o="cons"]')?.textContent ?? "",
+    range: document.querySelector('.gearbox__ev [data-o="range"]')?.textContent ?? "",
+    charge: !!document.querySelector('.gearbox__charge [data-control="charge-90"]')?.getClientRects().length,
+    refuel: !!document.querySelector('[data-control="refuel"]')?.getClientRects().length,
+    sel: document.querySelector('.shiftpad__sel[aria-checked="true"]')?.textContent,
+  }));
+  if (/[−-]\s*\d/.test(ro.cons) || !/km/.test(ro.range) || !ro.charge || ro.refuel || ro.sel !== "D") fail(`Anzeigen im Getriebe-Pult (${JSON.stringify(ro)})`);
   console.log(`${label}: Elektro Prüfzelle ${peak} kW, SoC ${soc0} → ${soc1} %, ${Math.round(kmh)} km/h`);
 
   // the cockpit, every design, with the car rolling (regen) and then under power
@@ -118,10 +128,12 @@ export async function evChecks({ browser, base, outDir, failures, errors, label,
         const dial = ck.querySelector(".ck__dial--rpm canvas").getBoundingClientRect();
         const mfd = ck.querySelector(".ck__mfd").getBoundingClientRect();
         const spr = sp.getBoundingClientRect();
-        return { clipped: sp.scrollWidth > sp.clientWidth + 1 || spr.right > mfd.right + 1, sw: sp.scrollWidth, cw: sp.clientWidth, r: Math.round(spr.right), mr: Math.round(mfd.right), gap: Math.round(dial.top - lamps.bottom), dialAboveMfd: dial.bottom <= mfd.top + 1 };
+        return { dialH: Math.round(dial.height), clipped: sp.scrollWidth > sp.clientWidth + 1 || spr.right > mfd.right + 1, sw: sp.scrollWidth, cw: sp.clientWidth, r: Math.round(spr.right), mr: Math.round(mfd.right), gap: Math.round(dial.top - lamps.bottom), dialAboveMfd: dial.bottom <= mfd.top + 1 };
       });
       if (geo.clipped) bad.push(`Tempo abgeschnitten (${JSON.stringify(geo)})`);
       if (touch && geo.gap > 24) bad.push(`Leistungsanzeige ${geo.gap} px unter den Leuchten`);
+      // #120: the power meter must not fill the phone screen
+      if (touch && geo.dialH > 230) bad.push(`Leistungsanzeige zu groß (${geo.dialH} px)`);
     }
     if (bad.length) fail(`Cockpit-Design ${id}: ${bad.join(", ")} (${JSON.stringify(r)})`);
     await page.screenshot({ path: join(outDir, `smoke-${label}-ev-cockpit-${id}.png`) });
@@ -161,25 +173,48 @@ export async function evChecks({ browser, base, outDir, failures, errors, label,
   // E-Tuner: Plaid beyond 2000 PS, live figures, apply, drive; stored per vehicle; back to the factory state
   await page.selectOption('.vehicle [data-control="car"]', "ev-tesla-model-s-plaid");
   await page.click('.vehicle [data-control="load-car"]');
-  await page.waitForSelector(".evp:not([hidden]) [data-tune=frontMotors]");
+  // the E-Tuner lives on the Werkbank (review #115): Elektroantrieb plates instead of the combustion plates
+  if (touch) await page.click(".bench-toggle");
+  await page.waitForSelector("#werkbank.bench--ev .evb:not([hidden]) [data-tune=frontMotors]");
+  const benchOk = await page.evaluate(() => ({
+    ice: !!document.querySelector('#werkbank .bench__plates:not(.evb) .plate')?.getClientRects().length,
+    fuel: !!document.querySelector("#werkbank .fuel-switch")?.getClientRects().length,
+    plates: [...document.querySelectorAll("#werkbank .evb .plate__title")].map((h) => h.textContent),
+  }));
+  if (benchOk.ice || benchOk.fuel || benchOk.plates.length !== 4) fail(`Werkbank zeigt nicht die Elektroantrieb-Platten (${JSON.stringify(benchOk)})`);
   const set = async (k, v) => {
-    const sel = `.evp [data-tune="${k}"]`;
-    if ((await page.evaluate((s) => document.querySelector(s).tagName, sel)) === "SELECT") await page.selectOption(sel, String(v));
-    else await page.fill(sel, String(v));
+    const row = `.evb [data-tune="${k}"]`;
+    const kind = await page.evaluate((s) => document.querySelector(s).className, row);
+    if (kind.includes("field--select")) await page.selectOption(`${row} select`, String(v));
+    else if (kind.includes("field--choice-number")) await page.click(`${row} .seg__opt:has(input[value="${v}"])`);
+    else {
+      await page.fill(`${row} .field__num`, String(v));
+      await page.press(`${row} .field__num`, "Enter");
+    }
   };
-  for (const [k, v] of [["frontMotors", 2], ["rearMotors", 2], ["motorScale", 2], ["currentScale", 1.5], ["packKwh", 150], ["chemistry", "nca"], ["cRate", 12], ["highVoltage", 1], ["cooling", "track"], ["tyre", "semi-slick"]]) await set(k, v);
-  // leave the last field (its change event) before reading the live figures
+  for (const [k, v] of [["frontMotors", 2], ["rearMotors", 2], ["motorScale", 200], ["currentScale", 150], ["packKwh", 150], ["chemistry", "nca"], ["cRate", 12], ["highVoltage", 1], ["cooling", "track"], ["tyre", "semi-slick"]]) await set(k, v);
   await page.evaluate(() => document.activeElement?.blur());
   await page.waitForTimeout(200);
-  await page.waitForFunction(() => /\d/.test(document.querySelector('.evp [data-o="t-t100"]')?.textContent ?? ""), null, { timeout: 5000 }).catch(() => {});
-  const live = await page.evaluate(() => Object.fromEntries(["t-power", "t-limit", "t-t100", "t-range", "t-mass"].map((k) => [k, document.querySelector(`.evp [data-o="${k}"]`)?.textContent ?? ""])));
-  const ps = num(live["t-power"].split("PS")[0]);
-  if (!(ps > 2000) || !/s$/.test(live["t-t100"]) || !/km/.test(live["t-range"]) || !/Akku|Wechselrichter|Motoren/.test(live["t-limit"])) fail(`E-Tuner zeigt keine Live-Werte über 2000 PS (${JSON.stringify(live)})`);
-  await page.locator(".evp__tune").screenshot({ path: join(outDir, `smoke-${label}-ev-tuner.png`) });
-  await page.click('.evp [data-control="tune-apply"]');
+  await page.waitForFunction(() => /\d/.test(document.querySelector('.evb [data-o="t100"]')?.textContent ?? ""), null, { timeout: 5000 }).catch(() => {});
+  const live = await page.evaluate(() => Object.fromEntries(["power", "limit", "t100", "range", "mass"].map((k) => [k, document.querySelector(`.evb [data-o="${k}"]`)?.textContent ?? ""])));
+  const ps = num(live.power.split("PS")[0]);
+  if (!(ps > 2000) || !/s$/.test(live.t100) || !/km/.test(live.range) || !/Akku|Wechselrichter|Motoren/.test(live.limit)) fail(`Werkbank-Zusammenfassung zeigt keine Live-Werte über 2000 PS (${JSON.stringify(live)})`);
+  // 360/390 px: nothing sticks out of the Werkbank, no stray "×", touch targets ≥ 44 px
+  const geo = await page.evaluate(() => {
+    const bench = document.querySelector("#werkbank").getBoundingClientRect();
+    const wide = [...document.querySelectorAll("#werkbank .evb *")].filter((e) => e.getClientRects().length && e.getBoundingClientRect().right > Math.min(bench.right, innerWidth) + 1).map((e) => e.className || e.tagName);
+    const small = [...document.querySelectorAll("#werkbank .evb :is(select, .field__num, .seg__opt span, .btn)")].filter((e) => e.getClientRects().length && e.getBoundingClientRect().height < 43.5).map((e) => e.className || e.tagName);
+    return { wide: wide.slice(0, 5), small: matchMedia("(max-width: 700px)").matches ? small.slice(0, 5) : [], stray: /×\s*(Wechselrichter|Spannung)/.test(document.querySelector("#werkbank .evb").innerText), overflow: document.documentElement.scrollWidth - innerWidth };
+  });
+  if (geo.wide.length || geo.small.length || geo.stray || geo.overflow > 0) fail(`Werkbank Elektroantrieb: Überlauf/Touch-Ziele (${JSON.stringify(geo)})`);
+  await page.screenshot({ path: join(outDir, `smoke-${label}-ev-werkbank.png`) });
+  await page.locator(".evb__summary").scrollIntoViewIfNeeded();
+  await page.locator(".evb__summary").screenshot({ path: join(outDir, `smoke-${label}-ev-summary.png`) });
+  await page.click('.evb [data-control="tune-apply"]');
   await page.waitForTimeout(200);
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("pruefzelle.evTuning") ?? "{}")["ev-tesla-model-s-plaid"]);
-  if (!stored || stored.frontMotors !== 2 || !stored.highVoltage) fail(`E-Tuner speichert nicht je Fahrzeug (${JSON.stringify(stored)}; ${await page.textContent(".evp [data-o=preview]")}; ${await page.evaluate(() => window.__pruefzelle?.gearbox.drivetrain.state.speedKmh)})`);
+  if (!stored || stored.frontMotors !== 2 || !stored.highVoltage) fail(`E-Tuner speichert nicht je Fahrzeug (${JSON.stringify(stored)}; ${await page.textContent(".evb [data-o=note]")}; ${await page.evaluate(() => window.__pruefzelle?.gearbox.drivetrain.state.speedKmh)})`);
+  if (touch) await page.click(".bench-toggle");
   await page.click(".readybtn");
   await page.mouse.click(2, 2);
   await page.keyboard.down("w");
@@ -191,7 +226,7 @@ export async function evChecks({ browser, base, outDir, failures, errors, label,
   await page.keyboard.up("w");
   const tunedKmh = await page.evaluate(() => window.__pruefzelle?.gearbox.drivetrain.state.speedKmh ?? 0);
   if (!(tunedPeak > 1100) || !(tunedKmh > 120)) fail(`getunter Plaid fährt nicht mit mehr Leistung (${tunedPeak} kW, ${Math.round(tunedKmh)} km/h)`);
-  console.log(`${label}: E-Tuner ${ps} PS (${live["t-limit"]}, 0–100 ${live["t-t100"]}), gefahren ${tunedPeak} kW, ${Math.round(tunedKmh)} km/h`);
+  console.log(`${label}: E-Tuner ${ps} PS (${live.limit}, 0–100 ${live.t100}), gefahren ${tunedPeak} kW, ${Math.round(tunedKmh)} km/h`);
   await page.keyboard.down("s");
   await page.waitForFunction(() => (window.__pruefzelle?.gearbox.drivetrain.state.speedKmh ?? 99) < 0.5, null, { timeout: 30000 }).catch(() => fail("bremst nicht bis zum Stand (getunt)"));
   await page.keyboard.up("s");
@@ -199,16 +234,17 @@ export async function evChecks({ browser, base, outDir, failures, errors, label,
   await page.click('.vehicle [data-control="factory-reset"]');
   await page.waitForTimeout(300);
   const back = await page.evaluate(() => ({
-    power: document.querySelector('.evp [data-o="t-power"]')?.textContent ?? "",
+    power: document.querySelector('.evb [data-o="power"]')?.textContent ?? "",
     stored: JSON.parse(localStorage.getItem("pruefzelle.evTuning") ?? "{}")["ev-tesla-model-s-plaid"] ?? null,
     motors: window.__pruefzelle?.gearbox.drivetrain.ev?.motors.length,
   }));
   if (!/^1\.0\d\d PS/.test(back.power) || back.stored || back.motors !== 3) fail(`„Auf Werkszustand zurücksetzen“ (Fahrzeug-Platte) klappt nicht (${JSON.stringify(back)})`);
   // the E-Tuner's own reset button does the same
+  if (touch) await page.click(".bench-toggle");
   await set("frontMotors", 2);
-  await page.click('.evp [data-control="tune-apply"]');
+  await page.click('.evb [data-control="tune-apply"]');
   await page.waitForTimeout(200);
-  await page.click('.evp [data-control="tune-reset"]');
+  await page.click('.evb [data-control="tune-reset"]');
   await page.waitForTimeout(300);
   const back2 = await page.evaluate(() => ({ stored: JSON.parse(localStorage.getItem("pruefzelle.evTuning") ?? "{}")["ev-tesla-model-s-plaid"] ?? null, motors: window.__pruefzelle?.gearbox.drivetrain.ev?.motors.length }));
   if (back2.stored || back2.motors !== 3) fail(`„Auf Werkszustand zurücksetzen“ (E-Tuner) klappt nicht (${JSON.stringify(back2)})`);
