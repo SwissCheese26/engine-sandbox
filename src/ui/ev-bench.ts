@@ -18,6 +18,8 @@ export class EvBench {
   private out: Record<string, HTMLElement> = {};
   private car: LibraryCar | null = null;
   private preview: TunedEv | null = null;
+  /** Rotor speed limit of the tuned car in its top gear, km/h (upper end of the Vmax limiter). */
+  private rpmVmax = Infinity;
   private estTimer = 0;
   private estRun: { cancel(): void } | null = null;
   /** Set by the app: apply a tuned configuration (mass, tyre, stored per vehicle); false while the car moves. */
@@ -48,13 +50,14 @@ export class EvBench {
         <div><dt>Je Motor</dt><dd data-o="motor">–</dd></div>
         <div><dt>Wechselrichter</dt><dd data-o="inverter">–</dd></div>
         <div><dt>Begrenzt durch</dt><dd data-o="limit">–</dd></div>
+        <div><dt>Vmax</dt><dd data-o="vmax">–</dd></div>
         <div><dt>0–100 km/h</dt><dd data-o="t100">–</dd></div>
         <div><dt>Reichweite</dt><dd data-o="range">–</dd></div>
         <div><dt>Masse</dt><dd data-o="mass">–</dd></div>
       </dl>
       <p class="evb__note" data-o="note" role="status"></p>
       <div class="evb__btns">
-        <button type="button" class="btn" data-control="tune-apply">Anwenden</button>
+        <button type="button" class="btn btn--primary" data-control="tune-apply">Anwenden</button>
         <button type="button" class="btn btn--small" data-control="tune-max">Maximum</button>
         <button type="button" class="btn btn--small" data-control="tune-reset">Auf Werkszustand</button>
       </div>`;
@@ -80,11 +83,23 @@ export class EvBench {
 
   /** The tuning shown in the form (validated). */
   read(): EvTuning {
-    return readForm(this.values, this.factory());
+    // the rotor speed limit depends on ratios and motors, not on the limiter: computed first, then the limiter read
+    const f = this.factory();
+    this.rpmVmax = tuneEv(this.car!.setup.ev!, readForm(this.values, f), this.radius()).rpmVmaxKmh;
+    return readForm(this.values, f, this.rpmVmax);
   }
 
   private factory(): EvTuning {
-    return evTuningOf(this.car!.setup.ev!, this.car!.setup.tyre.type);
+    return evTuningOf(this.car!.setup.ev!, this.car!.setup.tyre.type, this.car!.setup.speedLimitKmh);
+  }
+
+  private radius(): number {
+    return this.car!.setup.vehicle.wheelRadiusM;
+  }
+
+  /** Upper end of a number field (the Vmax limiter ends at the rotor speed limit). */
+  private maxOf(f: EvField & { kind: "number" }): number {
+    return f.maxIsRpmLimit ? Math.max(f.min, Math.floor(Math.min(f.max, this.rpmVmax) / f.step) * f.step) : f.max;
   }
 
   private field(f: EvField): HTMLElement {
@@ -104,9 +119,10 @@ export class EvBench {
       const val = row.querySelector<HTMLInputElement>(".field__num")!;
       slider.addEventListener("input", () => this.set(f.key, String(Number(slider.value) * f.scale)));
       const commit = () => {
-        const raw = parseNumber(val.value, { min: f.min * f.scale, max: f.max * f.scale });
+        const max = this.maxOf(f);
+        const raw = parseNumber(val.value, { min: f.min * f.scale, max: max * f.scale });
         if (!Number.isFinite(raw)) return this.sync();
-        this.set(f.key, String(snap(clamp(raw / f.scale, f.min, f.max), f.min, f.step) * f.scale));
+        this.set(f.key, String(snap(clamp(raw / f.scale, f.min, max), f.min, f.step) * f.scale));
       };
       val.addEventListener("change", commit);
       val.addEventListener("keydown", (e) => e.key === "Enter" && commit());
@@ -135,18 +151,26 @@ export class EvBench {
   }
 
   private fill(t: EvTuning) {
-    for (const f of EV_FIELDS) this.values[f.key] = formValue(f, t);
+    this.rpmVmax = tuneEv(this.car!.setup.ev!, t, this.radius()).rpmVmaxKmh;
+    for (const f of EV_FIELDS) this.values[f.key] = formValue(f, t, this.maxOf(EV_FIELDS.find((x) => x.key === "vmaxKmh") as EvField & { kind: "number" }));
     this.sync();
     this.updatePreview();
   }
 
   private sync() {
+    const t = this.car ? readForm(this.values, this.factory(), this.rpmVmax) : null;
     for (const f of EV_FIELDS) {
       const row = this.rows.get(f.key)!;
       const v = this.values[f.key] ?? "";
+      row.hidden = !!t && !!f.visible && !f.visible(t);
       if (f.kind === "number") {
         const n = Number(v);
         const slider = row.querySelector<HTMLInputElement>("input[type=range]")!;
+        if (f.maxIsRpmLimit) {
+          const max = this.maxOf(f);
+          slider.max = String(max);
+          row.querySelector(".field__range")!.textContent = `${fmt(f.min)} – ${fmt(max)} (aus)`;
+        }
         slider.value = String(n / f.scale);
         const val = row.querySelector<HTMLInputElement>(".field__num")!;
         if (document.activeElement !== val) val.value = fmt(n, f.decimals);
@@ -159,7 +183,7 @@ export class EvBench {
   private updatePreview() {
     if (!this.car) return;
     const car = this.car;
-    const p = tuneEv(car.setup.ev!, this.read());
+    const p = tuneEv(car.setup.ev!, this.read(), this.radius());
     this.preview = p;
     const u = prefs();
     this.put("power", `${fmt(p.systemPs)} PS · ${fmt(p.systemKw)} kW`);
@@ -167,6 +191,7 @@ export class EvBench {
     this.put("inverter", `${fmt(p.inverterA)} A`);
     this.put("mass", `${fmt(car.setup.vehicle.massKg + p.deltaKg)} kg (${p.deltaKg >= 0 ? "+" : "−"}${fmt(Math.abs(p.deltaKg))})`);
     this.put("limit", LIMIT_LABEL[p.limit]);
+    this.put("vmax", p.governorKmh === null ? `${fmt(p.rpmVmaxKmh)} km/h, begrenzt durch Motordrehzahl` : `${fmt(p.governorKmh)} km/h, Begrenzer`);
     this.put("t100", "…");
     this.put("range", "…");
     if (!this.out.note!.textContent) this.put("note", p.notes.join(" "));

@@ -27,7 +27,7 @@ function readAll(st: Store | null): Record<string, unknown> {
 export function loadEvTuning(car: LibraryCar, st: Store | null = defaultStore()): EvTuning | null {
   if (!car.setup.ev) return null;
   const raw = readAll(st)[car.id];
-  return raw ? validTuning(raw, evTuningOf(car.setup.ev, car.setup.tyre.type)) : null;
+  return raw ? validTuning(raw, evTuningOf(car.setup.ev, car.setup.tyre.type, car.setup.speedLimitKmh)) : null;
 }
 
 export function saveEvTuning(carId: string, t: EvTuning, st: Store | null = defaultStore()) {

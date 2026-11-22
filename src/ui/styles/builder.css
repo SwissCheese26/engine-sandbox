@@ -38,20 +38,24 @@
   min-height: 44px;
 }
 /* buttons on an aluminium plate: engraved instead of light-on-dark */
-.eb .plate .btn {
+.eb .plate .btn,
+.evb .plate .btn {
   color: var(--engrave);
   border-color: var(--engrave);
 }
 .eb .plate .btn--primary,
+.evb .plate .btn--primary,
 .eb .plate .btn[aria-pressed="true"],
 .eb .plate .btn.is-held {
   background: var(--engrave);
   color: var(--alu);
 }
-.eb .plate .btn:hover {
+.eb .plate .btn:hover,
+.evb .plate .btn:hover {
   background: rgba(35, 41, 42, 0.1);
 }
-.eb .plate .btn--primary:hover {
+.eb .plate .btn--primary:hover,
+.evb .plate .btn--primary:hover {
   background: var(--hammer-deep);
 }
 

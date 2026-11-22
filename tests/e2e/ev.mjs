@@ -181,7 +181,7 @@ export async function evChecks({ browser, base, outDir, failures, errors, label,
     fuel: !!document.querySelector("#werkbank .fuel-switch")?.getClientRects().length,
     plates: [...document.querySelectorAll("#werkbank .evb .plate__title")].map((h) => h.textContent),
   }));
-  if (benchOk.ice || benchOk.fuel || benchOk.plates.length !== 4) fail(`Werkbank zeigt nicht die Elektroantrieb-Platten (${JSON.stringify(benchOk)})`);
+  if (benchOk.ice || benchOk.fuel || benchOk.plates.length !== 5) fail(`Werkbank zeigt nicht die Elektroantrieb-Platten (${JSON.stringify(benchOk)})`);
   const set = async (k, v) => {
     const row = `.evb [data-tune="${k}"]`;
     const kind = await page.evaluate((s) => document.querySelector(s).className, row);
@@ -192,12 +192,13 @@ export async function evChecks({ browser, base, outDir, failures, errors, label,
       await page.press(`${row} .field__num`, "Enter");
     }
   };
-  for (const [k, v] of [["frontMotors", 2], ["rearMotors", 2], ["motorScale", 200], ["currentScale", 150], ["packKwh", 150], ["chemistry", "nca"], ["cRate", 12], ["highVoltage", 1], ["cooling", "track"], ["tyre", "semi-slick"]]) await set(k, v);
+  for (const [k, v] of [["frontMotors", 2], ["rearMotors", 2], ["motorScale", 200], ["currentScale", 150], ["packKwh", 150], ["chemistry", "nca"], ["cRate", 12], ["highVoltage", 1], ["cooling", "track"], ["tyre", "semi-slick"], ["gears", 2], ["firstRatio", 15], ["secondRatio", 8], ["shiftKmh", 120], ["vmaxKmh", 450]]) await set(k, v);
   await page.evaluate(() => document.activeElement?.blur());
   await page.waitForTimeout(200);
   await page.waitForFunction(() => /\d/.test(document.querySelector('.evb [data-o="t100"]')?.textContent ?? ""), null, { timeout: 5000 }).catch(() => {});
-  const live = await page.evaluate(() => Object.fromEntries(["power", "limit", "t100", "range", "mass"].map((k) => [k, document.querySelector(`.evb [data-o="${k}"]`)?.textContent ?? ""])));
+  const live = await page.evaluate(() => Object.fromEntries(["power", "limit", "t100", "range", "mass", "vmax"].map((k) => [k, document.querySelector(`.evb [data-o="${k}"]`)?.textContent ?? ""])));
   const ps = num(live.power.split("PS")[0]);
+  if (!/Motordrehzahl/.test(live.vmax)) fail(`Vmax-Begrenzer am Anschlag zeigt nicht „begrenzt durch Motordrehzahl“ (${live.vmax})`);
   if (!(ps > 2000) || !/s$/.test(live.t100) || !/km/.test(live.range) || !/Akku|Wechselrichter|Motoren/.test(live.limit)) fail(`Werkbank-Zusammenfassung zeigt keine Live-Werte über 2000 PS (${JSON.stringify(live)})`);
   // 360/390 px: nothing sticks out of the Werkbank, no stray "×", touch targets ≥ 44 px
   const geo = await page.evaluate(() => {
@@ -213,7 +214,7 @@ export async function evChecks({ browser, base, outDir, failures, errors, label,
   await page.click('.evb [data-control="tune-apply"]');
   await page.waitForTimeout(200);
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("pruefzelle.evTuning") ?? "{}")["ev-tesla-model-s-plaid"]);
-  if (!stored || stored.frontMotors !== 2 || !stored.highVoltage) fail(`E-Tuner speichert nicht je Fahrzeug (${JSON.stringify(stored)}; ${await page.textContent(".evb [data-o=note]")}; ${await page.evaluate(() => window.__pruefzelle?.gearbox.drivetrain.state.speedKmh)})`);
+  if (!stored || stored.frontMotors !== 2 || !stored.highVoltage || stored.gears !== 2 || stored.vmaxKmh !== null) fail(`E-Tuner speichert nicht je Fahrzeug (${JSON.stringify(stored)}; ${await page.textContent(".evb [data-o=note]")}; ${await page.evaluate(() => window.__pruefzelle?.gearbox.drivetrain.state.speedKmh)})`);
   if (touch) await page.click(".bench-toggle");
   await page.click(".readybtn");
   await page.mouse.click(2, 2);

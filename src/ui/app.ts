@@ -1,6 +1,6 @@
 // Prüfzelle: wires workbench, schematic, nameplate, instruments, recorder and console to the
 // simulator and runs the main loop.
-import { BRAKE_MAX_G, EngineSimulator, EvSimulator, TERRAIN_LABELS, VehicleSystems, defaultInputs, evPackKwh, summarize } from "../core/index.ts";
+import { BRAKE_MAX_G, EngineSimulator, EvSimulator, TERRAIN_LABELS, VehicleSystems, defaultInputs, evPackKwh, evRpmVmaxKmh, summarize } from "../core/index.ts";
 import { RangeEstimator } from "./ev-range.ts";
 import type { EvConfig, EvDriveMode } from "../core/index.ts";
 import { EvBench } from "./ev-bench.ts";
@@ -164,7 +164,7 @@ export class App {
     const car = ev ? VEHICLE_LIBRARY.find((c) => c.id === this.gearbox.vehiclePanel.carId && c.setup.ev) ?? null : null;
     const stored = car && !sameCar ? loadEvTuning(car) : null;
     if (car && stored) {
-      const t = tuneEv(car.setup.ev!, stored);
+      const t = tuneEv(car.setup.ev!, stored, car.setup.vehicle.wheelRadiusM);
       this.applyTuned(t, car.setup.vehicle.massKg + t.deltaKg);
       sameCar = false;
     }
@@ -186,7 +186,7 @@ export class App {
     this.console.setElectric(on);
     this.gauges.setElectric(ev as EvConfig | null);
     this.gearbox.el.dataset.drive = on ? "ev" : "ice";
-    this.info.setElectricVmax(ev ? Math.min(...ev.motors.map((m) => (m.maxRpm / m.ratio) * (Math.PI / 30) * this.gearbox.drivetrain.vehicle.wheelRadiusM * 3.6)) : null);
+    this.info.setElectricVmax(ev ? evRpmVmaxKmh(ev as EvConfig, this.gearbox.drivetrain.vehicle.wheelRadiusM) : null);
     for (const v of this.views.values()) if (v instanceof CockpitView) v.setElectric(ev as EvConfig | null);
     this.toasts.clear();
   }
@@ -196,6 +196,8 @@ export class App {
     const d = this.gearbox.drivetrain;
     if (!d.setEv(t.ev)) return false;
     d.setVehicleParams({ massKg });
+    // Vmax limiter of the Werkbank (null: the rotor speed limits)
+    d.setSpeedLimit(t.governorKmh);
     if (d.tyre.type !== t.tuning.tyre) d.setTyre({ ...d.tyre, type: t.tuning.tyre });
     this.gearbox.vehiclePanel.sync();
     return true;

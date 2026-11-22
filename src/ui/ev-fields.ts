@@ -5,10 +5,11 @@ import { TYRE_TYPES } from "../core/index.ts";
 import type { EvChemistry, TyreType } from "../core/index.ts";
 import { CELLS, COOLING, MAX_MOTORS, TUNING_LIMITS, validTuning, type EvCooling, type EvTuning } from "../data/ev-tuning.ts";
 
-export type EvGroupId = "motors" | "battery" | "chassis";
+export type EvGroupId = "motors" | "drive" | "battery" | "chassis";
 
 export const EV_GROUPS: { id: EvGroupId; title: string; effect: string }[] = [
   { id: "motors", title: "Elektromotoren", effect: "Mehr und größere Motoren bringen Leistung und Allrad-Traktion, aber auch Gewicht." },
+  { id: "drive", title: "Getriebe und Vmax", effect: "Kurz übersetzt zieht stärker an, lang übersetzt dreht der Motor später in seine Drehzahlgrenze." },
   { id: "battery", title: "Akku", effect: "Energie bestimmt die Reichweite, Zelltyp, Entladerate und Spannung die Spitzenleistung." },
   { id: "chassis", title: "Kühlung und Reifen", effect: "Kühlung hält die Leistung bei Dauervolllast, Reifen bringen sie auf die Straße." },
 ];
@@ -20,6 +21,8 @@ interface Base {
   group: EvGroupId;
   label: string;
   effect: string;
+  /** Hidden when not applicable (e.g. second gear of a single-speed reduction). */
+  visible?: (t: EvTuning) => boolean;
 }
 export interface EvNumberField extends Base {
   kind: "number";
@@ -30,6 +33,8 @@ export interface EvNumberField extends Base {
   /** Display multiplier (100: factor 1.5 is shown as 150 %). */
   scale: number;
   decimals: number;
+  /** The upper end is the rotor speed limit of the tuned car (Vmax limiter): the right stop means "off". */
+  maxIsRpmLimit?: boolean;
 }
 export interface EvChoiceField extends Base {
   kind: "choice";
@@ -49,6 +54,11 @@ export const EV_FIELDS: EvField[] = [
   { key: "rearMotors", group: "motors", kind: "choice", label: "Motoren hinten", options: count, effect: "Hinten zieht beim Beschleunigen am besten, die Last wandert dorthin." },
   { key: "motorScale", group: "motors", kind: "number", label: "Motorgröße", unit: "%", min: L.motorScale.min, max: L.motorScale.max, step: 0.1, scale: 100, decimals: 0, effect: "+ Größe → mehr Drehmoment und Leistung je Motor, ≈ 0,4 kg je kW." },
   { key: "currentScale", group: "motors", kind: "number", label: "Wechselrichterstrom", unit: "%", min: L.currentScale.min, max: L.currentScale.max, step: 0.05, scale: 100, decimals: 0, effect: "+ Strom → mehr Moment, über dem Nennstrom sättigt das Eisen (höchstens 2500 A)." },
+  { key: "gears", group: "drive", kind: "choice", label: "Gänge", options: [{ value: "1", label: "1-Gang" }, { value: "2", label: "2-Gang" }], effect: "2 Gänge wie bei Porsche Taycan und Audi e-tron GT (Hinterachse): kurzer 1. Gang zum Anfahren, langer 2. für Vmax." },
+  { key: "firstRatio", group: "drive", kind: "number", label: "Untersetzung (1. Gang)", unit: ": 1", min: L.firstRatio.min, max: L.firstRatio.max, step: 0.05, scale: 1, decimals: 2, effect: "+ Untersetzung → mehr Zugkraft, aber die Motordrehzahl begrenzt früher. Taycan 1. Gang ≈ 15 : 1." },
+  { key: "secondRatio", group: "drive", kind: "number", label: "2. Gang", unit: ": 1", min: L.secondRatio.min, max: L.secondRatio.max, step: 0.05, scale: 1, decimals: 2, visible: (t) => t.gears === 2, effect: "Taycan ≈ 8 : 1. Lang für Vmax; mindestens 1 kürzer als der 1. Gang." },
+  { key: "shiftKmh", group: "drive", kind: "number", label: "Schaltpunkt", unit: "km/h", min: L.shiftKmh.min, max: L.shiftKmh.max, step: 5, scale: 1, decimals: 0, visible: (t) => t.gears === 2, effect: "Hochschalten bei diesem Tempo (spätestens an der Drehzahlgrenze), ≈ 0,25 s Zugkraftunterbrechung." },
+  { key: "vmaxKmh", group: "drive", kind: "number", label: "Vmax-Begrenzer", unit: "km/h", min: L.vmaxKmh.min, max: L.vmaxKmh.max, step: 5, scale: 1, decimals: 0, maxIsRpmLimit: true, effect: "Am rechten Anschlag aus: dann begrenzt nur die Motordrehzahl." },
   { key: "packKwh", group: "battery", kind: "number", label: "Energie", unit: "kWh", min: L.packKwh.min, max: L.packKwh.max, step: 5, scale: 1, decimals: 0, effect: "+ Energie → mehr Reichweite und mehr Zellen parallel, aber schwerer." },
   { key: "chemistry", group: "battery", kind: "select", label: "Zelltyp", options: (Object.keys(CELLS) as EvChemistry[]).map((c) => ({ value: c, label: CELLS[c].label })), effect: "NMC speichert viel, NCA gibt viel Strom ab, LFP ist schwer und robust." },
   { key: "cRate", group: "battery", kind: "number", label: "Entladerate", unit: "C", min: L.cRate.min, max: L.cRate.max, step: 0.5, scale: 1, decimals: 1, effect: "Höchststrom als Vielfaches der Kapazität; der Zelltyp setzt die Grenze." },
@@ -58,15 +68,18 @@ export const EV_FIELDS: EvField[] = [
 ];
 
 /** Form value of a tuning entry (selects and segments carry strings, numbers are shown with their scale). */
-export function formValue(f: EvField, t: EvTuning): string {
-  const v = t[f.key];
+export function formValue(f: EvField, t: EvTuning, rpmVmaxKmh = Infinity): string {
+  const v = f.key === "vmaxKmh" && t.vmaxKmh === null ? Math.floor(Math.min(rpmVmaxKmh, L.vmaxKmh.max)) : t[f.key];
   if (typeof v === "boolean") return v ? "1" : "0";
   if (typeof v === "number") return f.kind === "number" ? String(Math.round(v * f.scale * 100) / 100) : String(v);
   return String(v);
 }
 
-/** Form values (key → string, numbers in their shown scale) → validated tuning (unknown parts from `fallback`). */
-export function readForm(values: Partial<Record<keyof EvTuning, string>>, fallback: EvTuning): EvTuning {
+/**
+ * Form values (key → string, numbers in their shown scale) → validated tuning (unknown parts from `fallback`).
+ * A Vmax limiter at the rotor speed limit (`rpmVmaxKmh`) is off (null).
+ */
+export function readForm(values: Partial<Record<keyof EvTuning, string>>, fallback: EvTuning, rpmVmaxKmh = Infinity): EvTuning {
   const raw: Record<string, unknown> = {};
   for (const f of EV_FIELDS) {
     const s = values[f.key];
@@ -79,6 +92,7 @@ export function readForm(values: Partial<Record<keyof EvTuning, string>>, fallba
       raw[f.key] = f.kind === "number" ? n / f.scale : n;
     }
   }
+  if (typeof raw.vmaxKmh === "number" && raw.vmaxKmh >= Math.min(rpmVmaxKmh, L.vmaxKmh.max) - 2.5) raw.vmaxKmh = null;
   return validTuning(raw, fallback);
 }
 

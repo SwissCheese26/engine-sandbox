@@ -336,3 +336,8 @@
     text-align: left;
   }
 }
+
+/* the Vmax limiter of an electric car is set on the Werkbank (Getriebe und Vmax): no second one on the Fahrzeug-Platte */
+.cell[data-drive="ev"] :is(label:has([data-control="speed-limit"]), [data-out="governor-calc"]) {
+  display: none;
+}
