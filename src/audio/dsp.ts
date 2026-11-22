@@ -247,6 +247,7 @@ export class EngineDsp {
       tyreSqueal: num(raw.tyreSqueal ?? 0, p.tyreSqueal ?? 0, 0, 1),
       squealHz: num(raw.squealHz ?? 1000, p.squealHz ?? 1000, 300, 4000),
       absCycles: num(raw.absCycles ?? 0, p.absCycles ?? 0, 0, Number.MAX_SAFE_INTEGER),
+      rough: num(raw.rough ?? 0, p.rough ?? 0, 0, 1),
     };
     // ABS: one rattle per pressure-release cycle (a jump of several counts, e.g. after a pause, is one rattle)
     const ac = f.absCycles ?? 0;
@@ -565,7 +566,8 @@ export class EngineDsp {
         let amp: number;
         if (burn) amp = diesel ? 0.55 + 0.45 * load : 0.22 + 0.78 * load;
         else amp = 0.1 + (cut && diesel ? 0.2 : 0); // compression/expansion only (starter, coast, cut)
-        const jit = 1 - 0.65 * Math.max(load, clamp((rpm - v.idleRpm) / 3000, 0, 1));
+        // catalyst heating (#135, model.ts ControlFrame.rough): late spark → up to 3× the cycle-to-cycle variation
+        const jit = (1 - 0.65 * Math.max(load, clamp((rpm - v.idleRpm) / 3000, 0, 1))) * (1 + 2 * (f.rough ?? 0));
         amp *= rpmGain * v.pulseGain * slot.gain * (1 + v.jitterAmp * jit * (2 * this.rand01() - 1));
         const delay = slot.headerDelayS * this.fs + (v.jitterDeg * jit * this.rand01()) / Math.max(1e-6, degPerSample);
         const len = clamp(v.pulseWidthDeg / Math.max(1e-6, degPerSample), 0.0015 * this.fs, 0.04 * this.fs);
