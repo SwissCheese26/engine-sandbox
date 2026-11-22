@@ -889,3 +889,139 @@
     border-left: 1px solid var(--ck-edge);
   }
 }
+
+/* ── Car-style skins: a design with a `layout` (designs.ts) keeps that layout's data-design and adds data-skin.
+   Generic look only (colour, layout, needle, font); no marks. Everything else (range, P lamp, cruise and limiter
+   marks, damage warnings, tank / SoC, gearbox oil, extra gauges) comes from the base layout unchanged. ── */
+
+/* Spanisch Kupfer (digital): dark, copper accents, sporty rev arc, large central speed */
+.ck[data-skin="copper-digital"] {
+  --ck-light: #f6efe9;
+  --ck-dim: #a99285;
+  --ck-off: #231813;
+  --ck-fill: #d0845a;
+  --ck-panel: #120d0b;
+  --ck-edge: #3a261c;
+  --ck-font: "Barlow", "Bahnschrift", "Segoe UI", system-ui, sans-serif;
+  background: radial-gradient(120% 90% at 50% 0%, #22150f 0%, #0a0706 62%);
+  box-shadow: inset 0 1px 0 rgba(208, 132, 90, 0.12), 0 12px 32px rgba(0, 0, 0, 0.55);
+}
+.ck[data-skin="copper-digital"] .ck__arc-track {
+  stroke: #24170f;
+}
+.ck[data-skin="copper-digital"] .ck__arc path {
+  stroke-width: 12;
+  stroke-linecap: butt;
+}
+.ck[data-skin="copper-digital"] .ck__arc-fill {
+  filter: drop-shadow(0 0 4px rgba(208, 132, 90, 0.6));
+}
+.ck[data-skin="copper-digital"] .ck__speed {
+  font-family: var(--ck-font);
+  font-weight: 700;
+}
+.ck[data-skin="copper-digital"] .ck__speed small,
+.ck[data-skin="copper-digital"] .ck__arc-nums {
+  fill: var(--ck-fill);
+  color: var(--ck-fill);
+}
+.ck[data-skin="copper-digital"] .ck__gear {
+  border-color: var(--ck-fill);
+  color: var(--ck-fill);
+}
+.ck[data-skin="copper-digital"] .ck-field,
+.ck[data-skin="copper-digital"] .ck-pod {
+  --pod-panel: linear-gradient(180deg, #1b120d, var(--ck-panel));
+  background: linear-gradient(180deg, #1b120d, var(--ck-panel));
+}
+.ck[data-skin="copper-digital"] .ck-field:hover {
+  border-color: #6b4430;
+}
+
+/* Ingolstadt Rot: two round dials, white numerals on black, red needles, red-lit scale, small centre display */
+.ck[data-skin="ingolstadt-red"] {
+  --ck-housing: #0b0b0c;
+  --ck-face: #050505;
+  --ck-ring: #8d9096;
+  --ck-light: #f7f7f5;
+  --ck-dim: #e0231c;
+  --ck-needle: #ff2a1a;
+  --ck-hub: #111;
+  --ck-lcd: #070303;
+  --ck-off: #241010;
+  --ck-redline: #ff2a1a;
+  --ck-font: "Helvetica Neue", Arial, system-ui, sans-serif;
+  box-shadow: inset 0 2px 0 rgba(255, 42, 26, 0.06), 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+.ck[data-skin="ingolstadt-red"] .ck__dial .dial,
+.ck[data-skin="ingolstadt-red"] .ck-pod .dial {
+  filter: drop-shadow(0 0 3px rgba(255, 42, 26, 0.28));
+}
+.ck[data-skin="ingolstadt-red"] .ck__mfd {
+  max-width: 260px;
+  justify-self: center;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px #3a1210, inset 0 6px 14px rgba(0, 0, 0, 0.7);
+}
+.ck[data-skin="ingolstadt-red"] :is(.ck__mfd, .ck__trip) dt,
+.ck[data-skin="ingolstadt-red"] .ck-mini figcaption {
+  color: #ff5a4c;
+}
+.ck[data-skin="ingolstadt-red"] .ck__trip {
+  border-top-color: #3a1210;
+}
+.ck[data-skin="ingolstadt-red"] .ck-pod__val {
+  text-shadow: 0 0 5px rgba(255, 42, 26, 0.45);
+}
+
+/* München Orange: amber-orange light, narrow technical scale font, eco / consumption gauge inside the rev counter */
+.ck[data-skin="munich-orange"] {
+  --ck-housing: #0d0c0b;
+  --ck-face: #060606;
+  --ck-ring: #2c2925;
+  --ck-light: #ffa53a;
+  --ck-dim: #c7741f;
+  --ck-needle: #ff6a14;
+  --ck-hub: #0a0908;
+  --ck-lcd: #0a0704;
+  --ck-off: #251a0f;
+  --ck-redline: #ff4a1a;
+  --ck-font: "DIN Alternate", "Bahnschrift", "Arial Narrow", "Roboto Condensed", sans-serif-condensed, sans-serif;
+  box-shadow: inset 0 2px 0 rgba(255, 165, 58, 0.05), 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+.ck[data-skin="munich-orange"] :is(.ck__mfd, .ck__read, .ck-mini figcaption, .ck-pod) {
+  font-family: var(--ck-font);
+}
+.ck[data-skin="munich-orange"] .ck__mfd {
+  box-shadow: inset 0 0 0 1px #33220f, inset 0 6px 14px rgba(0, 0, 0, 0.6);
+}
+.ck[data-skin="munich-orange"] .ck__trip {
+  border-top-color: #33220f;
+}
+.ck[data-skin="munich-orange"] .ck__dial .dial,
+.ck[data-skin="munich-orange"] .ck-pod .dial {
+  filter: drop-shadow(0 0 4px rgba(255, 165, 58, 0.3));
+}
+.ck[data-skin="munich-orange"] .ck-pod__val {
+  text-shadow: 0 0 6px rgba(255, 165, 58, 0.5);
+}
+/* the inset gauge: a small dial in the lower half of the rev counter, value only, above the rpm readout */
+.ck-mini--inset {
+  position: absolute;
+  left: 50%;
+  top: 56%;
+  width: 30%;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.ck .ck-mini--inset .dial {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+}
+.ck-mini--inset figcaption {
+  display: none;
+}
+.ck[data-skin="munich-orange"] .ck__dial--rpm .ck__read {
+  bottom: 4%;
+}

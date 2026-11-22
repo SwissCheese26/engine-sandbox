@@ -2,8 +2,14 @@
 // `.ck[data-design=…]` root (layouts.css) plus a DialTheme for the canvas dials. No design has logic of its own.
 // Also the ids of the switchable fields of the digital design. DOM-free (imported by settings.ts and tests).
 
-export type CockpitDesignId = "classic" | "night-orange" | "italian" | "oldschool" | "digital" | "hud" | "race" | "motorrad" | "truck" | "etacho";
-/** Stored choice: a design, or "auto" = by vehicle (motorcycle → "motorrad", truck/bus → "truck", else "classic"). */
+export type CockpitDesignId =
+  | "classic" | "night-orange" | "italian" | "oldschool" | "digital" | "hud" | "race" | "motorrad" | "truck" | "etacho"
+  // clusters in the style of particular cars (generic look only: colour, layout, needle, font; no marks)
+  | "copper-digital" | "ingolstadt-red" | "munich-orange";
+/**
+ * Stored choice: a design, or "auto" = by vehicle (the library car's own cluster if it has one, else motorcycle →
+ * "motorrad", truck/bus → "truck", electric → "etacho", else "classic").
+ */
 export type CockpitChoice = CockpitDesignId | "auto";
 
 /** How a round dial is drawn. Colours come from the CSS tokens (--ck-face, --ck-needle, …) of the design. */
@@ -39,6 +45,13 @@ export interface CockpitDesign {
   hint: string;
   dial: DialTheme;
   gauges: GaugeKind;
+  /**
+   * A skin of another design: it takes over that design's arrangement and readouts (CSS `data-design` and the
+   * cockpit logic) and only changes the look (CSS `data-skin`, its own DialTheme). Absent: a layout of its own.
+   */
+  layout?: CockpitDesignId;
+  /** Small gauge drawn inside the rev counter instead of the strip below (the consumption / eco gauge). */
+  inset?: "fuel";
 }
 
 export const COCKPIT_DESIGNS: readonly CockpitDesign[] = [
@@ -55,10 +68,16 @@ export const COCKPIT_DESIGNS: readonly CockpitDesign[] = [
   // commercial vehicles (#83, #31): 125 km/h speedometer with the limiter mark, rev counter with the green band
   { id: "truck", label: "Nutzfahrzeug", hint: "Tacho bis 125 km/h mit Begrenzer, Drehzahlmesser mit grünem Bereich, Motorbremse", dial: { needle: "bar", ring: "alu", numeralWeight: 600, numeralScale: 1.1, glow: 3, minorTicks: true }, gauges: "dial" },
   // electric cars (#108): power/regen meter, state of charge, range, consumption, battery temperature, drive mode
+  // fully digital cluster: dark, copper accents, sporty rev arc, large central speed (layout of "digital")
+  { id: "copper-digital", label: "Spanisch Kupfer (digital)", hint: "Volldigital, dunkel mit Kupferakzenten, sportlicher Drehzahlbogen, große Tempoziffern in der Mitte", dial: { ...DEFAULT_DIAL_THEME, numeralWeight: 600 }, gauges: "screen", layout: "digital" },
+  // two analogue round dials, white numerals on black, red needles and red-lit scale, small centre display
+  { id: "ingolstadt-red", label: "Ingolstadt Rot", hint: "Zwei Rundinstrumente, weiße Ziffern auf Schwarz, rote Zeiger, rote Beleuchtung, kleines Display dazwischen", dial: { needle: "taper", ring: "alu", numeralWeight: 500, numeralScale: 1.04, glow: 4, minorTicks: true }, gauges: "dial", layout: "classic" },
+  // analogue round dials with orange-amber light, narrow technical scale font, eco gauge inside the rev counter
+  { id: "munich-orange", label: "München Orange", hint: "Rundinstrumente mit orange-bernsteinfarbener Beleuchtung, schmale Skalenschrift, Verbrauchsanzeige im Drehzahlmesser", dial: { needle: "taper", ring: "tunnel", numeralWeight: 400, numeralScale: 1.1, glow: 6, minorTicks: true }, gauges: "dial", layout: "classic", inset: "fuel" },
   { id: "etacho", label: "E-Tacho", hint: "Für Elektroautos: Leistung und Rekuperation, Ladezustand, Reichweite, kWh/100 km, Akkutemperatur, Fahrmodus", dial: { needle: "bar", ring: "none", numeralWeight: 500, numeralScale: 1, glow: 4, minorTicks: false }, gauges: "dial" },
 ];
 
-export const AUTO_DESIGN = { id: "auto", label: "Automatisch nach Fahrzeug", hint: "Motorrad-Display auf dem Motorrad, Nutzfahrzeug bei Lkw und Bus, E-Tacho im Elektroauto, sonst Klassisch" } as const;
+export const AUTO_DESIGN = { id: "auto", label: "Automatisch nach Fahrzeug", hint: "Das Kombiinstrument des Fahrzeugs, wenn es eines mitbringt; sonst Motorrad-Display auf dem Motorrad, Nutzfahrzeug bei Lkw und Bus, E-Tacho im Elektroauto, sonst Klassisch" } as const;
 
 /** Everything the design picker offers, in its order: "Automatisch" first, then every design (#94). */
 export const DESIGN_CHOICES: readonly { id: CockpitChoice; label: string; hint: string }[] = [AUTO_DESIGN, ...COCKPIT_DESIGNS];
@@ -67,9 +86,37 @@ export function isCockpitChoice(v: unknown): v is CockpitChoice {
   return v === "auto" || isCockpitDesign(v);
 }
 
-/** The design in effect for a stored choice and the vehicle kind on the dyno. */
-export function resolveDesign(choice: CockpitChoice, vehicleKind: string, electric = false): CockpitDesignId {
+/**
+ * Library cars that bring their own cluster look, by id pattern. The ids come from the vehicle library (a car can
+ * also declare `cockpitDesign` there, which wins); patterns so variants of a model (body, years) all match.
+ */
+export const CAR_DESIGN_HINTS: readonly (readonly [RegExp, CockpitDesignId])[] = [
+  [/^car-cupra-leon(?:-|$)/, "copper-digital"],
+  // the A1 8X (2010–2018), not its digital successor GB
+  [/^car-audi-a1(?!-gb)(?:-|$)/, "ingolstadt-red"],
+  // the 1 Series F20/F21 in any engine variant
+  [/^car-bmw-(?:.*-)?f2[01](?:-|$)/, "munich-orange"],
+];
+
+/** The cluster a library car prefers: its own declared hint (if a valid design) or the pattern table; else none. */
+export function carDesign(carId: string, declared?: string): CockpitDesignId | undefined {
+  if (isCockpitDesign(declared)) return declared;
+  if (!carId) return undefined;
+  return CAR_DESIGN_HINTS.find(([re]) => re.test(carId))?.[1];
+}
+
+/** The design whose arrangement and readouts a design uses (itself, or the one it is a skin of). */
+export function layoutOf(id: CockpitDesignId): CockpitDesignId {
+  return COCKPIT_DESIGNS.find((d) => d.id === id)?.layout ?? id;
+}
+
+/**
+ * The design in effect for a stored choice and the vehicle kind on the dyno. On "auto" a car's own cluster
+ * (`preferred`, see carDesign) wins over the rules by kind.
+ */
+export function resolveDesign(choice: CockpitChoice, vehicleKind: string, electric = false, preferred?: CockpitDesignId): CockpitDesignId {
   if (choice !== "auto") return choice;
+  if (preferred) return preferred;
   if (electric) return "etacho";
   if (vehicleKind === "superbike" || vehicleKind === "tourer") return "motorrad";
   return vehicleKind === "truck" || vehicleKind === "bus" ? "truck" : "classic";

@@ -31,6 +31,7 @@ import { Haptics, ScreenWake, isTouch } from "./device.ts";
 import { bugButton, setBugContext } from "./bug-dialog.ts";
 import { RingBuffer, SAMPLE_COUNT, SAMPLE_INTERVAL_S, samplesText, type DiagnosisSection, type ValueSample } from "./bug-report.ts";
 import { VEHICLE_LIBRARY } from "../data/vehicle-library.ts";
+import { carDesign, type CockpitDesignId } from "./layouts/designs.ts";
 import { SmokeOverlay, type SmokeAnchors } from "./smoke-overlay.ts";
 import { emission } from "./smoke-emitters.ts";
 import { FALLBACK_LIMITS } from "./limits-fallback.ts";
@@ -245,6 +246,17 @@ export class App {
           this.announce("Rollenprüfstand mit Getriebe gewählt.");
         };
         c.onEvMode = () => this.setEvMode(nextDriveMode(this.evMode));
+        // "Automatisch": the loaded library car's own cluster, if it brings one (looked up once per car)
+        let carKey: string | null = null;
+        let carPick: CockpitDesignId | undefined;
+        c.preferredDesign = () => {
+          const id = this.gearbox.vehiclePanel.carId;
+          if (id !== carKey) {
+            carKey = id;
+            carPick = carDesign(id, VEHICLE_LIBRARY.find((v) => v.id === id)?.cockpitDesign);
+          }
+          return carPick;
+        };
         c.setElectric(this.evCfg as EvConfig | null);
         // tap on the road line in the cockpit: to the Umwelt panel, route select focused
         c.onWantEnvironment = () => {

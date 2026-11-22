@@ -4,6 +4,7 @@
 // (Arthur's rule: each design has an EV variant): power meter in kW instead of the rev counter, SoC instead of the
 // tank, range in the centre display, the Ready lamp lit, no oil / coolant lamps. "Automatisch" picks the E-Tacho.
 import { join } from "node:path";
+import { deckOverlaps } from "./deck.mjs";
 
 const DESIGNS = ["classic", "night-orange", "italian", "oldschool", "digital", "hud", "race", "motorrad", "truck", "etacho"];
 /** German number readout ("1.020" → 1020, "−45" → -45). */
@@ -150,6 +151,7 @@ export async function evChecks({ browser, base, outDir, failures, errors, label,
       if (touch && geo.dialH > 230) bad.push(`Leistungsanzeige zu groß (${geo.dialH} px)`);
     }
     if (bad.length) fail(`Cockpit-Design ${id}: ${bad.join(", ")} (${JSON.stringify(r)})`);
+    for (const m of await deckOverlaps(page)) fail(`${id}: Bedienleiste: ${m}`);
     await page.screenshot({ path: join(outDir, `smoke-${label}-ev-cockpit-${id}.png`) });
     await page.keyboard.up("w");
   }
