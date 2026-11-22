@@ -57,8 +57,7 @@ export class RaceView implements LayoutView {
         <div class="rd__cell"><span class="rd__lab">Leistung</span><b class="num" data-rd="power">–</b></div>
         <div class="rd__cell rd__cell--warn" data-rd="oil-tile"><span class="rd__lab" data-rd="oil-label">Öl</span><b class="num" data-rd="oil">–</b></div>
         <div class="rd__cell rd__cell--warn" data-rd="water-tile"><span class="rd__lab" data-rd="water-label">Wasser</span><b class="num" data-rd="water">–</b></div>
-        <div class="rd__cell rd__cell--warn" data-rd="tank-tile"><span class="rd__lab" data-rd="tank-label">Tank</span><b class="num" data-rd="tank">–</b></div>
-        <div class="rd__cell" data-rd="range-tile" hidden><span class="rd__lab">Reichweite</span><b class="num" data-rd="range">–</b></div>
+        <div class="rd__cell rd__cell--warn" data-rd="tank-tile"><span class="rd__head"><span class="rd__lab" data-rd="tank-label">Tank</span><span class="rd__range num" data-rd="range-tile" hidden><span class="sr-only">Reichweite </span><span data-rd="range">–</span></span></span><b class="num" data-rd="tank">–</b></div>
       </div>`;
     this.el = el;
     this.leds = [...el.querySelectorAll<HTMLElement>(".rd-led")];
@@ -179,7 +178,8 @@ export class RaceView implements LayoutView {
     this.showRange(f);
   }
 
-  /** Live range beside the tank tile (fuel or electric, range-estimator.ts); hidden on the engine dyno. */
+  /** Live range in the head line of the tank tile (fuel or electric, range-estimator.ts; no extra row on a phone),
+   *  hidden on the engine dyno. */
   private showRange(f: Frame) {
     const km = f.rangeKm ?? Number.NaN;
     const on = f.mode === "vehicle" && Number.isFinite(km);

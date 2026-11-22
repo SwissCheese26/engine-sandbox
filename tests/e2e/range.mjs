@@ -62,6 +62,9 @@ export async function rangeChecks({ browser, base, outDir, failures, errors, lab
       overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
       vw: document.documentElement.clientWidth,
       deck: deck ? `${Math.round(deck.top)}|${Math.round(deck.height)}` : "",
+      deckTop: deck ? Math.round(deck.top) : Infinity,
+      // Renn-Dash: its tiles (incl. the range) must end above the control deck
+      tilesBottom: Math.round(Math.max(0, ...[...(ck?.querySelectorAll(".rd__cell") ?? [])].filter((e) => e.checkVisibility()).map((e) => e.getBoundingClientRect().bottom))),
     };
   });
 
@@ -80,6 +83,7 @@ export async function rangeChecks({ browser, base, outDir, failures, errors, lab
       if (r.left < 0 || r.right > b.vw) bad.push(`Reichweite außerhalb (${r.left}…${r.right} px)`);
     }
     if (b.overflow > 0) bad.push(`horizontaler Überlauf ${b.overflow} px`);
+    if (id === "race" && b.tilesBottom > b.deckTop) bad.push(`Kacheln unter der Bedienleiste (${b.tilesBottom} > ${b.deckTop} px)`);
     if (a.deck !== b.deck) bad.push(`Bedienleiste bewegt sich (${a.deck} → ${b.deck})`);
     if (bad.length) fail(`${id}: ${bad.join(", ")} (${JSON.stringify(b.shown)})`);
     await page.screenshot({ path: join(outDir, `smoke-${label}-range-${id}.png`) });

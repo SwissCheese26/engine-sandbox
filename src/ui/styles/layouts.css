@@ -495,6 +495,26 @@
   font-size: var(--fs-12);
   color: var(--rd-dim);
 }
+/* tank tile: the range sits in the head line, right of the label (same height as the other tiles) */
+.rd__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+.rd__range {
+  font-size: var(--fs-12);
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--rd-text);
+}
+.rd__range[hidden] {
+  display: none;
+}
+.rd__cell--warn.is-limit .rd__range {
+  color: var(--signal-ink);
+}
 .rd__cell b {
   font-size: var(--fs-20);
   font-weight: 600;

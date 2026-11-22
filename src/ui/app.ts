@@ -620,7 +620,6 @@ export class App {
     });
   }
 
-  /** Engine turning (running, cranking or spinning down): the bench is locked. */
   /** Fuel range: tank litres ÷ the rolling consumption; the rated start value follows from the car and the fuel. */
   private stepFuelRange(dt: number, s: EngineState): number {
     const d = this.gearbox.drivetrain;
@@ -635,6 +634,7 @@ export class App {
     return this.fuelRange.rangeKm(d.tank.levelL);
   }
 
+  /** Engine turning (running, cranking or spinning down): the bench is locked. */
   private static turning(s: EngineState): boolean {
     return s.running || s.rpm > 1;
   }

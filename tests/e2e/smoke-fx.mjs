@@ -19,6 +19,8 @@ export async function smokeFxChecks({ browser, base, outDir, failures, errors, l
     if (m.type() === "error" && !/fonts\.(googleapis|gstatic)\.com/.test(`${m.text()} ${m.location()?.url ?? ""}`)) errors.push(`${label}: console.error (Rauch): ${m.text()}`);
   });
   page.on("pageerror", (e) => errors.push(`${label}: pageerror (Rauch): ${e.message}`));
+  // a crashed or closed tab is reported as such instead of failing later on a keyboard call
+  page.on("crash", () => fail("Seite abgestürzt"));
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
   await page.goto(base, { waitUntil: "load" });
   await page.evaluate(() => {
@@ -87,17 +89,21 @@ export async function smokeFxChecks({ browser, base, outDir, failures, errors, l
   await page.waitForTimeout(600);
   /** Brake to a stop until the last smoke has faded (overlay idle and hidden again), then 1st gear. */
   const stopAndClear = async () => {
+    if (page.isClosed()) return false;
     await page.keyboard.up(" ");
     await page.keyboard.down("s");
+    // polled by time, not by animation frame (a throttled frame loop must not stall the wait)
     const ok = await page.waitForFunction(() => {
       const c = document.querySelector("canvas.smoke-overlay");
       return c.dataset.active === "false" && c.hidden && window.__pruefzelle.gearbox.drivetrain.state.speedKmh < 1;
-    }, null, { timeout: 12000 }).then(() => true, () => false);
+    }, null, { timeout: 12000, polling: 100 }).then(() => true, () => false);
+    if (page.isClosed()) return false;
     await page.keyboard.up("s");
+    // bounded: a shift that does not take (shift in progress) must not hang the page in an endless loop
     await page.evaluate(() => {
       const d = window.__pruefzelle.gearbox.drivetrain;
-      while (d.state.gear > 1) d.shift(-1);
-      while (d.state.gear < 1) d.shift(1);
+      for (let i = 0; i < 12 && d.state.gear > 1; i++) d.shift(-1);
+      for (let i = 0; i < 12 && d.state.gear < 1; i++) d.shift(1);
     });
     return ok;
   };
@@ -116,6 +122,7 @@ export async function smokeFxChecks({ browser, base, outDir, failures, errors, l
   await stopAndClear();
   let first = true;
   for (const [layout, design] of VIEWS) {
+    if (page.isClosed()) return fail("Seite vorzeitig geschlossen");
     const name = design ?? layout;
     await setView(layout, design);
     await page.keyboard.down(" ");
