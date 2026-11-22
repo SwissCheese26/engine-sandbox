@@ -17,6 +17,7 @@ _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `
 
 ### Geändert
 
+- E-Tuner: Jetzt gehen bis zu 4 Motoren je Achse, also bis zu 8 insgesamt. Änderungen wirken sofort wie beim Verbrenner, der Knopf „Anwenden“ entfällt. ([#136](https://github.com/SwissCheese26/engine-sandbox/issues/136))
 - Beim eigenen Fahrzeug kommt der Antrieb zuerst: Motor, Getriebe und Antrieb, dann Reifen, dann Gewicht, cW-Wert und Stirnfläche, zuletzt der Tank. ([#127](https://github.com/SwissCheese26/engine-sandbox/issues/127), [#128](https://github.com/SwissCheese26/engine-sandbox/issues/128))
 - Der E-Tuner sitzt jetzt in der Werkbank: Mit einem Elektroauto zeigt sie statt der Motorplatten die Platten „Elektromotoren“, „Getriebe und Vmax“, „Akku“ und „Kühlung und Reifen“ im gleichen Look wie beim Verbrenner, dazu eine Zusammenfassung mit PS, Vmax, 0–100 und Reichweite. Gespeichert wird weiter je Fahrzeug, „Auf Werkszustand“ setzt zurück. ([#108](https://github.com/SwissCheese26/engine-sandbox/issues/108), [#125](https://github.com/SwissCheese26/engine-sandbox/issues/125))
 - Die Reichweite ist jetzt live: Ladezustand mal Akkuinhalt geteilt durch den Verbrauch der letzten Kilometer und Minuten. Wer zügig fährt, sieht sie sinken, Rekuperation hebt sie sanft an. Das gilt in jedem Cockpit, im E-Tacho und im Rollenprüfstand. ([#108](https://github.com/SwissCheese26/engine-sandbox/issues/108), [#125](https://github.com/SwissCheese26/engine-sandbox/issues/125))

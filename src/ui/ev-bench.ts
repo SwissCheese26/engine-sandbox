@@ -57,15 +57,17 @@ export class EvBench {
       </dl>
       <p class="evb__note" data-o="note" role="status"></p>
       <div class="evb__btns">
-        <button type="button" class="btn btn--primary" data-control="tune-apply">Anwenden</button>
         <button type="button" class="btn btn--small" data-control="tune-max">Maximum</button>
         <button type="button" class="btn btn--small" data-control="tune-reset">Auf Werkszustand</button>
       </div>`;
     el.append(sum);
     sum.querySelectorAll<HTMLElement>("[data-o]").forEach((n) => (this.out[n.dataset.o!] = n));
-    sum.querySelector("[data-control=tune-apply]")!.addEventListener("click", () => this.apply());
-    sum.querySelector("[data-control=tune-max]")!.addEventListener("click", () => this.fill(maxTuning()));
+    sum.querySelector("[data-control=tune-max]")!.addEventListener("click", () => {
+      this.fill(maxTuning());
+      this.scheduleApply();
+    });
     sum.querySelector("[data-control=tune-reset]")!.addEventListener("click", () => {
+      clearTimeout(this.applyTimer);
       this.put("note", this.onFactory() ? "Werkszustand." : "Erst anhalten, dann lässt sich das Auto zurücksetzen.");
     });
     this.el = el;
@@ -73,6 +75,7 @@ export class EvBench {
 
   /** The loaded electric car and the tuning it carries now, or null for a combustion car. */
   setCar(car: LibraryCar | null, tuning?: EvTuning) {
+    clearTimeout(this.applyTimer);
     this.car = car?.setup.ev ? car : null;
     this.el.hidden = !this.car;
     if (this.car) {
@@ -145,9 +148,17 @@ export class EvBench {
   private set(k: keyof EvTuning, v: string) {
     this.values[k] = v;
     this.put("note", "");
-    // motor counts are validated together (1 … 4 in all): the axle just picked stays, the other one gives way
+    // motor counts: up to 4 per axle (validTuning)
     const t = this.read(k === "frontMotors" || k === "rearMotors" ? k : undefined);
     this.fill(t);
+    this.scheduleApply();
+  }
+
+  /** Changes take effect right away, like the combustion Werkbank (no "Anwenden"); debounced for sliders. */
+  private applyTimer = 0;
+  private scheduleApply() {
+    clearTimeout(this.applyTimer);
+    this.applyTimer = window.setTimeout(() => this.apply(), 250);
   }
 
   private fill(t: EvTuning) {
@@ -213,7 +224,6 @@ export class EvBench {
     if (!this.preview || !this.car) return;
     const p = this.preview;
     if (!this.onTune(p, this.car.setup.vehicle.massKg + p.deltaKg)) this.put("note", "Erst anhalten, dann lässt sich das Auto umbauen.");
-    else this.put("note", `Umgebaut: ${fmt(p.systemKw * PS_PER_KW)} PS.`);
   }
 
   private put(k: string, v: string) {
