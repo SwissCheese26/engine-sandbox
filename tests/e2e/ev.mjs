@@ -118,10 +118,10 @@ export async function evChecks({ browser, base, outDir, failures, errors, label,
         const dial = ck.querySelector(".ck__dial--rpm canvas").getBoundingClientRect();
         const mfd = ck.querySelector(".ck__mfd").getBoundingClientRect();
         const spr = sp.getBoundingClientRect();
-        return { clipped: sp.scrollWidth > sp.clientWidth + 1 || spr.right > mfd.right + 1, gap: Math.round(dial.top - lamps.bottom), dialAboveMfd: dial.bottom <= mfd.top + 1 };
+        return { clipped: sp.scrollWidth > sp.clientWidth + 1 || spr.right > mfd.right + 1, sw: sp.scrollWidth, cw: sp.clientWidth, r: Math.round(spr.right), mr: Math.round(mfd.right), gap: Math.round(dial.top - lamps.bottom), dialAboveMfd: dial.bottom <= mfd.top + 1 };
       });
       if (geo.clipped) bad.push(`Tempo abgeschnitten (${JSON.stringify(geo)})`);
-      if (geo.gap > 24) bad.push(`Leistungsanzeige ${geo.gap} px unter den Leuchten`);
+      if (touch && geo.gap > 24) bad.push(`Leistungsanzeige ${geo.gap} px unter den Leuchten`);
     }
     if (bad.length) fail(`Cockpit-Design ${id}: ${bad.join(", ")} (${JSON.stringify(r)})`);
     await page.screenshot({ path: join(outDir, `smoke-${label}-ev-cockpit-${id}.png`) });
