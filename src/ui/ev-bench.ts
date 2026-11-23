@@ -48,6 +48,7 @@ export class EvBench {
       <dl class="evb__sum num" aria-live="polite">
         <div><dt>Systemleistung</dt><dd data-o="power">–</dd></div>
         <div><dt>Je Motor</dt><dd data-o="motor">–</dd></div>
+        <div><dt>Dauerleistung</dt><dd data-o="continuous">–</dd></div>
         <div><dt>Wechselrichter</dt><dd data-o="inverter">–</dd></div>
         <div><dt>Begrenzt durch</dt><dd data-o="limit">–</dd></div>
         <div><dt>Vmax</dt><dd data-o="vmax">–</dd></div>
@@ -199,6 +200,7 @@ export class EvBench {
     const u = prefs();
     this.put("power", `${fmt(p.systemPs)} PS · ${fmt(p.systemKw)} kW`);
     this.put("motor", `${p.ev.motors.length} × ${fmt(p.motorKw)} kW · ${fmt(p.motorNm)} Nm`);
+    this.put("continuous", `${fmt(p.continuousKw)} kW · ${fmt(p.heatKw)} kW Wärme je Motor`);
     this.put("inverter", `${fmt(p.inverterA)} A`);
     this.put("mass", `${fmt(car.setup.vehicle.massKg + p.deltaKg)} kg (${p.deltaKg >= 0 ? "+" : "−"}${fmt(Math.abs(p.deltaKg))})`);
     this.put("limit", LIMIT_LABEL[p.limit]);

@@ -328,3 +328,57 @@ describe("EV tuning (electric.md §6)", () => {
     expect(r.peakKw).toBeGreaterThan(1400);
   });
 });
+
+describe("stronger motors: size, type, motor cooling (#141)", () => {
+  const plaidCar = libraryCar("ev-tesla-model-s-plaid");
+  const plaid = plaidCar.setup.ev!;
+  const factory = evTuningOf(plaid, "uhp");
+  // a big pack so the motors, not the battery, decide
+  const pack = { ...factory, packKwh: 200, chemistry: "nca" as const, cRate: 15, highVoltage: true };
+  test("an upgraded motor gives more power, more mass and more heat; 800 V halves the current it needs", () => {
+    const a = tuneEv(plaid, pack);
+    const b = tuneEv(plaid, { ...pack, motorScale: 4 });
+    expect(b.motorKw).toBeCloseTo(4 * 260, 0);
+    expect(b.systemKw).toBeGreaterThan(1.5 * a.systemKw);
+    expect(b.deltaKg - a.deltaKg).toBeCloseTo(3 * (4 - 1) * 260 * 0.4, 0); // 0.4 kg/kW drive unit
+    expect(b.heatKw).toBeCloseTo(4 * a.heatKw, 6);
+    expect(b.inverterA).toBeCloseTo(4 * 900 / 2, 0); // 400 V design rewound for 800 V
+    expect(tuneEv(plaid, { ...factory, motorScale: 4 }).limit).toBe("battery"); // the factory pack caps it, said so
+  });
+  test("axial flux: lighter and stronger, but the disc rotor caps the speed", () => {
+    const r = tuneEv(plaid, pack);
+    const ax = tuneEv(plaid, { ...pack, motorType: "axial" });
+    expect(ax.motorNm).toBeCloseTo(1.3 * r.motorNm, 6);
+    // the same power: a radial motor 1.3 × the size is heavier (≈ 17 vs 7 kW/kg for the motor alone)
+    expect(ax.deltaKg).toBeLessThan(tuneEv(plaid, { ...pack, motorScale: 1.3 }).deltaKg - 30);
+    expect(Math.max(...ax.ev.motors.map((m) => m.maxRpm))).toBe(10000);
+    expect(ax.rpmVmaxKmh).toBeLessThan(r.rpmVmaxKmh);
+  });
+  test("with stator oil cooling the derating comes later, direct winding oil later still", () => {
+    const timeToDerate = (motorCooling: "jacket" | "stator-oil" | "winding-oil") => {
+      const t = tuneEv(plaid, { ...pack, motorScale: 2, motorCooling });
+      const m = t.ev.motors[0]!;
+      let c = 60;
+      let s = 0;
+      while (c < 150 && s < 36000) c = stepMotorTemp(m, c, t.heatKw, 1, 25, t.ev.coolingScale), s++;
+      return { s, cont: t.continuousKw };
+    };
+    const [w, o, d] = [timeToDerate("jacket"), timeToDerate("stator-oil"), timeToDerate("winding-oil")];
+    expect(o.s).toBeGreaterThan(w.s);
+    expect(d.s).toBeGreaterThan(o.s);
+    expect(o.cont).toBeGreaterThan(w.cont);
+  });
+  test("factory values are unchanged: radial, water jacket, the library untouched", () => {
+    for (const c of EV_LIBRARY) {
+      const ev = c.setup.ev!;
+      const before = structuredClone(ev);
+      const t = evTuningOf(ev, c.setup.tyre.type);
+      expect([t.motorType, t.motorCooling, t.motorScale]).toEqual(["radial", "jacket", 1]);
+      const tuned = tuneEv(ev, t);
+      expect(tuned.ev.coolingScale).toBe(1);
+      expect(tuned.deltaKg).toBeCloseTo(0, 6);
+      tuneEv(ev, maxTuning());
+      expect(ev).toEqual(before);
+    }
+  });
+});

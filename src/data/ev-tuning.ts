@@ -19,11 +19,17 @@
  *    electric.md §6.1). Cost: ≈ 0.8 kg sleeve and stronger rotor per motor and 1000 1/min, the factory loss map
  *    (iron ∝ n^1.5, windage ∝ n³, electric-motor.ts lossRefRpm). Above it the motors stay in field weakening
  *    (power ∝ 1/n), so Vmax ends where the drive power meets the driving resistance (evTopSpeed) or at the rpm limit.
- * At the top end (4 big motors, 200 kWh, 800 V, max current) the system reaches ≈ 3000 PS.
+ *  - Stronger motors (#141, electric.md §6.2): size up to ×4 (≈ 1 MW per Plaid-based motor), motor type radial PMSM
+ *    (≈ 7 kW/kg motor alone) or axial flux (≈ 17 kW/kg, ×1.3 torque at the same size, ≤ 10 000 1/min), motor
+ *    cooling water jacket / stator oil spray / direct winding oil (heat removal ×1 / ×1.8 / ×2.6). Losses scale
+ *    with the size (copper ∝ I², iron ∝ n^1.5), the inverter current with power / pack voltage (an 800 V pack halves
+ *    the current of a 400 V design); at most INVERTER_MAX_A per SiC inverter.
+ * At the top end (4 big motors, 200 kWh, 800 V, max current) the system reaches ≈ 3000 PS: the pack caps it.
  */
 import {
-  Drivetrain, EvSimulator, START_SOC, TYRE_TYPES, batteryLimits, defaultInputs, drivingResistanceN, electricPowerKw, evInGear, evPackKwh, evRefRatio, evRpmVmaxKmh,
-  evSystemPowerKw, motorLossKw, motorMaxTorque, nominalV, packMassKg, packOcv, packResistance, currentForPower, summarize, torqueAtCurrent,
+  Drivetrain, EvSimulator, START_SOC, TYRE_TYPES, baseRpm, batteryLimits, defaultInputs, drivingResistanceN, electricPowerKw, evInGear, evPackKwh, evRefRatio, evRpmVmaxKmh,
+  evSystemPowerKw, motorLossKw, motorMaxTorque, nominalV, packMassKg, packOcv, packResistance, currentForPower, stepMotorTemp, summarize, torqueAtCurrent,
+  MOTOR_DERATE_C,
 } from "../core/index.ts";
 import type { CarSetup, EvBatteryConfig, EvChemistry, EvConfig, EvMotorConfig, SimInputs, TyreType } from "../core/index.ts";
 import { defaultConfig } from "./presets.ts";
@@ -38,11 +44,27 @@ export const MAX_MOTORS_TOTAL = 2 * MAX_MOTORS;
 /** Carbon sleeve and stronger rotor per motor and 1000 1/min above the factory speed, kg (#139, electric.md §6.1). */
 export const SLEEVE_KG_PER_KRPM = 0.8;
 
+/** Motor type (#141, electric.md §6.2): motor-only power density, torque at the same size, rotor speed limit. */
+export type EvMotorType = "radial" | "axial";
+export const MOTOR_TYPES: Record<EvMotorType, { label: string; kwPerKg: number; torque: number; maxRpm: number }> = {
+  radial: { label: "Radialfluss-PMSM (Serie)", kwPerKg: 7, torque: 1, maxRpm: Infinity },
+  axial: { label: "Axialfluss (leichter, stärker, teurer)", kwPerKg: 17, torque: 1.3, maxRpm: 10000 },
+};
+/** Rest of a drive unit (inverter, gear, housing) per kW: 0.4 kg/kW in all with a radial motor (electric.md §6). */
+export const DRIVE_UNIT_REST_KG_PER_KW = DRIVE_UNIT_KG_PER_KW - 1 / MOTOR_TYPES.radial.kwPerKg;
+/** Motor cooling (#141, electric.md §6.2): heat removal relative to the water jacket, extra kg per motor (pump, oil). */
+export type EvMotorCooling = "jacket" | "stator-oil" | "winding-oil";
+export const MOTOR_COOLING: Record<EvMotorCooling, { label: string; ua: number; kg: number }> = {
+  jacket: { label: "Wassermantel (Serie)", ua: 1, kg: 0 },
+  "stator-oil": { label: "Stator-Ölsprühkühlung", ua: 1.8, kg: 3 },
+  "winding-oil": { label: "Direkte Wicklungs-Ölkühlung", ua: 2.6, kg: 5 },
+};
+
 export type EvCooling = "serie" | "sport" | "track";
 export const COOLING: Record<EvCooling, { label: string; battery: number; motor: number; kg: number }> = {
   serie: { label: "Serie", battery: 1, motor: 1, kg: 0 },
   sport: { label: "Sport (größerer Kühler)", battery: 2, motor: 1.5, kg: 10 },
-  track: { label: "Rennstrecke (Chiller, Ölsprühkühlung)", battery: 3.5, motor: 2.5, kg: 25 },
+  track: { label: "Rennstrecke (Chiller, großer Kühler)", battery: 3.5, motor: 2.5, kg: 25 },
 };
 
 /** Cell types (electric.md §3): cell, resistance, nominal voltage, pack-level energy density, C-rate limit. */
@@ -57,6 +79,10 @@ export interface EvTuning {
   rearMotors: number;
   /** Motor size relative to the car's own motors. */
   motorScale: number;
+  /** Radial PMSM (factory) or axial flux (#141). */
+  motorType: EvMotorType;
+  /** Motor cooling: water jacket (factory), stator oil spray, direct winding oil (#141). */
+  motorCooling: EvMotorCooling;
   /** Inverter current relative to the motors' design current. */
   currentScale: number;
   packKwh: number;
@@ -83,7 +109,7 @@ export interface EvTuning {
 export const TUNING_LIMITS = {
   frontMotors: { min: 0, max: MAX_MOTORS },
   rearMotors: { min: 0, max: MAX_MOTORS },
-  motorScale: { min: 0.5, max: 3 },
+  motorScale: { min: 0.5, max: 4 },
   currentScale: { min: 0.5, max: 2 },
   packKwh: { min: 30, max: 200 },
   cRate: { min: 1, max: 15 },
@@ -98,6 +124,8 @@ const MIN_STEP = 1;
 
 const clamp = (x: number, lo: number, hi: number) => (Number.isFinite(x) ? (x < lo ? lo : x > hi ? hi : x) : lo);
 const isChem = (v: unknown): v is EvChemistry => v === "nmc" || v === "nca" || v === "lfp";
+const isMotorType = (v: unknown): v is EvMotorType => v === "radial" || v === "axial";
+const isMotorCooling = (v: unknown): v is EvMotorCooling => typeof v === "string" && v in MOTOR_COOLING;
 const isCooling = (v: unknown): v is EvCooling => v === "serie" || v === "sport" || v === "track";
 
 /** The car as it left the factory, as tuning values. */
@@ -107,6 +135,8 @@ export function evTuningOf(ev: EvConfig, tyre: TyreType = "uhp", speedLimitKmh: 
     frontMotors: ev.motors.filter((m) => m.axle === "front").length,
     rearMotors: ev.motors.filter((m) => m.axle === "rear").length,
     motorScale: 1,
+    motorType: "radial",
+    motorCooling: "jacket",
     currentScale: 1,
     packKwh: Math.round(evPackKwh(ev)),
     chemistry: b.chemistry,
@@ -148,7 +178,10 @@ export function validTuning(raw: unknown, fallback: EvTuning, keep?: MotorAxleKe
   else if (keep === "rearMotors") front = Math.min(front, MAX_MOTORS_TOTAL - rear);
   while (front + rear > MAX_MOTORS_TOTAL) rear > front ? rear-- : front--;
   return {
-    frontMotors: front, rearMotors: rear, motorScale: n("motorScale"), currentScale: n("currentScale"), packKwh: n("packKwh"),
+    frontMotors: front, rearMotors: rear, motorScale: n("motorScale"),
+    motorType: isMotorType(r.motorType) ? r.motorType : fallback.motorType,
+    motorCooling: isMotorCooling(r.motorCooling) ? r.motorCooling : fallback.motorCooling,
+    currentScale: n("currentScale"), packKwh: n("packKwh"),
     chemistry: isChem(r.chemistry) ? r.chemistry : fallback.chemistry, cRate: n("cRate"),
     highVoltage: typeof r.highVoltage === "boolean" ? r.highVoltage : fallback.highVoltage,
     cooling: isCooling(r.cooling) ? r.cooling : fallback.cooling,
@@ -187,39 +220,38 @@ export interface TunedEv {
   governorKmh: number | null;
   /** What caps the top speed: the limiter or the motors' rotor speed. */
   vmaxBy: "governor" | "rpm";
+  /** Continuous system power at the derating temperature (heat removal = losses), kW (#141). */
+  continuousKw: number;
+  /** Heat (copper + iron losses) of one motor at peak power, kW (#141). */
+  heatKw: number;
 }
 
 export const LIMIT_LABEL: Record<PowerLimit | "traction", string> = {
   battery: "Akkustrom", inverter: "Wechselrichter", motor: "Motoren", traction: "Haftung",
 };
 
+/**
+ * Continuous power of one motor, kW: the torque at base speed where the heat removal at the derating temperature
+ * equals the losses (stepMotorTemp stays at MOTOR_DERATE_C; electric.md §2.4, §6.2).
+ */
+export function continuousMotorKw(m: EvMotorConfig, coolingScale: number): number {
+  const nb = baseRpm(m);
+  const drift = (x: number) => stepMotorTemp(m, MOTOR_DERATE_C, motorLossKw(m, nb, x * m.peakTorqueNm), 1, 25, coolingScale) - MOTOR_DERATE_C;
+  if (drift(1) <= 0) return m.peakPowerKw;
+  let lo = 0;
+  let hi = 1;
+  for (let i = 0; i < 30; i++) {
+    const x = (lo + hi) / 2;
+    drift(x) > 0 ? (hi = x) : (lo = x);
+  }
+  return lo * m.peakPowerKw;
+}
+
 /** Applies tuning to the car's factory configuration. */
 export function tuneEv(base: EvConfig, tIn: EvTuning, wheelRadiusM = 0.35): TunedEv {
   const t = validTuning(tIn, evTuningOf(base, tIn.tyre));
   const notes: string[] = [];
-  let inverterCapped = false;
-  // rotor speed: every motor scales with the fastest one; a changed rotor keeps its factory loss map (lossRefRpm)
-  const rpmK = t.maxRpm / factoryRpm(base);
-  const tpl = (axle: EvMotorConfig["axle"]) => base.motors.find((m) => m.axle === axle) ?? base.motors[0]!;
-  const build = (m: EvMotorConfig): EvMotorConfig => {
-    const spun = rpmK === 1 ? m : { ...m, maxRpm: Math.round(m.maxRpm * rpmK), lossRefRpm: m.lossRefRpm ?? m.maxRpm };
-    const sized = { ...spun, peakTorqueNm: m.peakTorqueNm * t.motorScale, peakPowerKw: m.peakPowerKw * t.motorScale, inverterA: m.inverterA * t.motorScale };
-    let amps = sized.inverterA * t.currentScale;
-    if (amps > INVERTER_MAX_A) {
-      amps = INVERTER_MAX_A;
-      inverterCapped = true;
-      notes.push(`Wechselrichter am Limit: höchstens ${INVERTER_MAX_A} A je Motor.`);
-    }
-    // more current: torque with saturation, power at base speed in proportion (same voltage)
-    const torque = torqueAtCurrent(sized, amps);
-    return { ...sized, peakTorqueNm: torque, peakPowerKw: sized.peakPowerKw * (torque / sized.peakTorqueNm), inverterA: amps, rotorInertiaKgM2: undefined };
-  };
-  // the reduction: rear motors (all of them without a rear axle drive) carry the first gear
-  const geared = t.rearMotors > 0 ? "rear" : "front";
-  const motors: EvMotorConfig[] = [
-    ...Array.from({ length: t.frontMotors }, () => build({ ...tpl("front"), axle: "front", ...(geared === "front" ? { ratio: t.firstRatio } : {}) })),
-    ...Array.from({ length: t.rearMotors }, () => build({ ...tpl("rear"), axle: "rear", ratio: t.firstRatio })),
-  ];
+  // pack first: its voltage sets the inverter current a motor needs (P ≈ U·I)
   // pack: the cell of the chosen type; series count from the voltage class, parallel count from the energy
   const b0 = base.battery;
   const cell = CELLS[t.chemistry];
@@ -250,32 +282,74 @@ export function tuneEv(base: EvConfig, tIn: EvTuning, wheelRadiusM = 0.35): Tune
     notes.push(`Hochvolt-Schütze und Sicherung begrenzen den Akkustrom auf ${PACK_BUS_MAX_A} A${t.highVoltage ? "" : ": mehr Leistung nur mit 800 V"}.`);
   }
   const cool = COOLING[t.cooling];
+  const mCool = MOTOR_COOLING[t.motorCooling];
+  const type = MOTOR_TYPES[t.motorType];
   const energy = (series * parallel * cell.vNom * cellAh) / 1000;
   const battery: EvBatteryConfig = {
     chemistry: t.chemistry, seriesCells: series, parallelCells: parallel, cellAh, cellResistanceMOhm: rMOhm, maxDischargeC: c,
     maxChargeC: b0.maxChargeC, massKg: sameCell ? undefined : energy / cell.kwhPerKg, coolingWPerK: (b0.coolingWPerK ?? 400) * cool.battery,
   };
-  const ev: EvConfig = { ...base, motors, battery, coolingScale: cool.motor, twoSpeed: t.gears === 2 ? { secondRatio: t.secondRatio, shiftKmh: t.shiftKmh } : undefined };
+  // a motor wound for the tuned pack voltage needs current ∝ 1 / voltage for the same power (electric.md §6.2)
+  const voltK = nominalV(b0) / nominalV(battery);
+  let inverterCapped = false;
+  let needA = 0;
+  let rpmCapped = false;
+  // rotor speed: every motor scales with the fastest one; a changed rotor keeps its factory loss map (lossRefRpm)
+  const rpmK = t.maxRpm / factoryRpm(base);
+  const tpl = (axle: EvMotorConfig["axle"]) => base.motors.find((m) => m.axle === axle) ?? base.motors[0]!;
+  const build = (m: EvMotorConfig): EvMotorConfig => {
+    const spun = rpmK === 1 ? m : { ...m, maxRpm: Math.round(m.maxRpm * rpmK), lossRefRpm: m.lossRefRpm ?? m.maxRpm };
+    // axial flux: a new machine with its own loss map, the disc rotor caps the speed (electric.md §6.2)
+    const typed = spun.maxRpm > type.maxRpm ? { ...spun, maxRpm: type.maxRpm, lossRefRpm: type.maxRpm } : spun;
+    if (typed !== spun) rpmCapped = true;
+    const k = t.motorScale * type.torque;
+    const sized = { ...typed, peakTorqueNm: m.peakTorqueNm * k, peakPowerKw: m.peakPowerKw * k, inverterA: m.inverterA * k * voltK };
+    let amps = sized.inverterA * t.currentScale;
+    needA = Math.max(needA, amps);
+    if (amps > INVERTER_MAX_A) {
+      amps = INVERTER_MAX_A;
+      inverterCapped = true;
+    }
+    // more current: torque with saturation, power at base speed in proportion (same voltage)
+    const torque = torqueAtCurrent(sized, amps);
+    return { ...sized, peakTorqueNm: torque, peakPowerKw: sized.peakPowerKw * (torque / sized.peakTorqueNm), inverterA: amps, rotorInertiaKgM2: undefined };
+  };
+  // the reduction: rear motors (all of them without a rear axle drive) carry the first gear
+  const geared = t.rearMotors > 0 ? "rear" : "front";
+  const motors: EvMotorConfig[] = [
+    ...Array.from({ length: t.frontMotors }, () => build({ ...tpl("front"), axle: "front", ...(geared === "front" ? { ratio: t.firstRatio } : {}) })),
+    ...Array.from({ length: t.rearMotors }, () => build({ ...tpl("rear"), axle: "rear", ratio: t.firstRatio })),
+  ];
+  if (inverterCapped) notes.push(`Wechselrichter am Limit: die Motoren bräuchten ${Math.round(needA)} A, ein SiC-Wechselrichter liefert höchstens ${INVERTER_MAX_A} A${t.highVoltage ? "" : " (800 V halbiert den Strom)"}.`);
+  if (rpmCapped) notes.push(`Axialfluss-Scheibenläufer drehen höchstens ${type.maxRpm} 1/min: kürzere Untersetzung für Vmax.`);
+  const ev: EvConfig = { ...base, motors, battery, coolingScale: cool.motor * mCool.ua, twoSpeed: t.gears === 2 ? { secondRatio: t.secondRatio, shiftKmh: t.shiftKmh } : undefined };
   if (!ev.twoSpeed) delete ev.twoSpeed;
   const rpmVmaxKmh = evRpmVmaxKmh(ev, wheelRadiusM);
   const governorKmh = t.vmaxKmh === null || t.vmaxKmh >= rpmVmaxKmh - 0.5 ? null : t.vmaxKmh;
-  const motorKg = (ms: EvMotorConfig[]) => ms.reduce((a, m) => a + m.peakPowerKw * DRIVE_UNIT_KG_PER_KW, 0);
+  // drive unit: motor (power density of its type) + inverter / gear / housing; the factory motors are radial
+  const unitKg = (ms: EvMotorConfig[], kwPerKg: number) => ms.reduce((a, m) => a + m.peakPowerKw * (DRIVE_UNIT_REST_KG_PER_KW + 1 / kwPerKg), 0);
   const sleeveKg = motors.reduce((a, m) => a + (SLEEVE_KG_PER_KRPM * Math.max(0, m.maxRpm - (m.lossRefRpm ?? m.maxRpm))) / 1000, 0);
   if (sleeveKg > 0) notes.push(`Rotoren mit Karbonhülse: +${Math.round(sleeveKg)} kg, mehr Eisen- und Luftreibungsverluste bei hoher Drehzahl.`);
-  const deltaKg = motorKg(motors) - motorKg(base.motors) + packMassKg(battery) - packMassKg({ ...b0, massKg: undefined }) + cool.kg + sleeveKg;
+  const deltaKg = unitKg(motors, type.kwPerKg) - unitKg(base.motors, MOTOR_TYPES.radial.kwPerKg) + packMassKg(battery) - packMassKg({ ...b0, massKg: undefined }) + cool.kg + mCool.kg * motors.length + sleeveKg;
   const systemKw = evSystemPowerKw(ev);
   const motorSum = motors.reduce((a, m) => a + m.peakPowerKw, 0);
   const limit: PowerLimit = systemKw < 0.97 * motorSum ? "battery" : inverterCapped ? "inverter" : "motor";
   if (limit === "battery" && !busCapped) notes.push("Der Akku begrenzt: größerer Akku, höhere C-Rate oder 800 V bringen mehr.");
+  if (limit === "battery" && motorSum > 1.3 * systemKw) notes.push(`Die Motoren könnten ${Math.round(motorSum)} kW, der Akku liefert ${Math.round(systemKw)} kW.`);
+  // copper + iron losses at peak power (base speed, peak torque) become heat in the motor
+  const m0 = motors[0];
+  const heatKw = m0 ? motorLossKw(m0, baseRpm(m0), m0.peakTorqueNm) : 0;
+  const continuousKw = Math.min(systemKw, motors.reduce((a, m) => a + continuousMotorKw(m, ev.coolingScale ?? 1), 0));
   return {
-    ev, tuning: t, deltaKg, systemKw, systemPs: systemKw * PS_PER_KW, motorNm: motors[0]?.peakTorqueNm ?? 0, motorKw: motors[0]?.peakPowerKw ?? 0,
-    inverterA: motors[0]?.inverterA ?? 0, limit, notes: [...new Set(notes)], rpmVmaxKmh, sleeveKg, governorKmh, vmaxBy: governorKmh === null ? "rpm" : "governor",
+    ev, tuning: t, deltaKg, systemKw, systemPs: systemKw * PS_PER_KW, motorNm: m0?.peakTorqueNm ?? 0, motorKw: m0?.peakPowerKw ?? 0,
+    inverterA: m0?.inverterA ?? 0, limit, notes: [...new Set(notes)], rpmVmaxKmh, sleeveKg, governorKmh, vmaxBy: governorKmh === null ? "rpm" : "governor",
+    continuousKw, heatKw,
   };
 }
 
 /** The strongest setup the limits allow ("Maximum"). */
 export function maxTuning(tyre: TyreType = "semi-slick"): EvTuning {
-  return { frontMotors: 2, rearMotors: 2, motorScale: 3, currentScale: 2, packKwh: 200, chemistry: "nca", cRate: 15, highVoltage: true, cooling: "track", tyre, gears: 2, firstRatio: 15, secondRatio: 8, shiftKmh: 100, vmaxKmh: null, maxRpm: TUNING_LIMITS.maxRpm.max };
+  return { frontMotors: 2, rearMotors: 2, motorScale: TUNING_LIMITS.motorScale.max, motorType: "radial", motorCooling: "winding-oil", currentScale: 2, packKwh: 200, chemistry: "nca", cRate: 15, highVoltage: true, cooling: "track", tyre, gears: 2, firstRatio: 15, secondRatio: 8, shiftKmh: 100, vmaxKmh: null, maxRpm: TUNING_LIMITS.maxRpm.max };
 }
 
 export type VmaxBy = "governor" | "rpm" | "drag";
