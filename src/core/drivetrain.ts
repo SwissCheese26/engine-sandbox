@@ -30,6 +30,7 @@ import { DEFAULT_ENVIRONMENT, airDensity, altitudeToKpa, iceWarning, weatherSurf
 import { isTerrain, roadAt } from "./terrain.ts";
 import { DEFAULT_TANK_L, FuelTank } from "./fuel-tank.ts";
 import type { Environment } from "./environment.ts";
+import { TYRE_HEAT, blowoutRollingExtra, stepTyreHeat, tyreDamageRate, tyreGripFactor, type TyreHeatClass } from "./tyre-heat.ts";
 import { DEFAULT_TYRE, TYRE_TYPES, aquaplaningFactor, compoundFactor, speedRatingKmh, stepTyreTemp, tyreGrip, tyreRadii } from "./tyres.ts";
 import type { RoadSurface, TyreSetup } from "./tyres.ts";
 import { brakeStandHoldN, drivenAxleLoadN, wheelieLimitN } from "./vehicle.ts";
@@ -331,6 +332,16 @@ export interface DrivetrainState {
   gearboxFailed?: boolean;
   /** Issue #108: an electric car is loaded (CarSetup.ev). */
   electric?: boolean;
+  /**
+   * Issue #144 (optional for older consumers; the Drivetrain always sets them): hot-zone temperature of the most
+   * loaded tyre °C, overheating warning, damage 0 … 1, vibration stage (grip reduced) and tyre failed (blowout /
+   * tread separation, realism "real" only, until Drivetrain.repairTyres). docs/research/vehicle.md §11.
+   */
+  tyreCarcassC?: number;
+  tyreWarn?: boolean;
+  tyreDamage?: number;
+  tyreVibration?: boolean;
+  tyreFailed?: boolean;
 }
 
 /** Pedal cap of the TCU protection mode at gearbox oil overtemperature (vehicle.md §8) [S]. */
@@ -416,6 +427,11 @@ export class Drivetrain {
   private gripFactor = 1;
   private spinHold = 0;
   private tyreT = TYRE_AMBIENT_C;
+  /** Tyre heat and damage (issue #144, tyre-heat.ts). */
+  private tyreHeatC = TYRE_AMBIENT_C;
+  private tyreDmg = 0;
+  private tyreWarnOn = false;
+  private tyreBlown = false;
   private env: Environment = { ...DEFAULT_ENVIRONMENT };
   private aquaplane = false;
   private assistSet: AssistSettings = { ...DEFAULT_ASSISTS };
@@ -482,6 +498,8 @@ export class Drivetrain {
       gearboxOilC: Number.isFinite(this.gbOilC) ? this.gbOilC : this.env.ambientC, gearboxOilWarn: this.gbWarn,
       gearboxProtect: this.gbProtect, gearboxWear: this.gbWear, gearboxFailed: this.gbFailed,
       electric: !!this.evCfg,
+      tyreCarcassC: this.tyreHeatC, tyreWarn: this.tyreWarnOn || this.tyreBlown, tyreDamage: this.tyreDmg,
+      tyreVibration: this.tyreDmg > TYRE_HEAT.vibrationAt && !this.tyreBlown, tyreFailed: this.tyreBlown,
     };
   }
 
@@ -726,6 +744,7 @@ export class Drivetrain {
     this.tyreT = this.env.ambientC;
     this.clearTransient();
     this.resetGearboxOil();
+    this.repairTyres();
     this.spec = car.gearboxSpec ? { ...car.gearboxSpec, ratios: [...car.gearboxSpec.ratios] } : GEARBOXES[car.gearbox];
     // electric car (issue #108): one fixed ratio (the reference motor's reduction), see evInputs()
     this.evCfg = car.ev ? structuredClone(car.ev) : null;
@@ -739,7 +758,8 @@ export class Drivetrain {
   private currentGrip(): number {
     const t = this.tyreSetup.type;
     const aq = this.aquaplane ? aquaplaningFactor(t, this.roadKmh, this.tyreSetup.size.widthMm) : 1;
-    return tyreGrip(t, this.surfaceKind, this.tyreT) * this.gripFactor * compoundFactor(t, this.env.ambientC, this.surfaceKind) * aq;
+    return tyreGrip(t, this.surfaceKind, this.tyreT) * this.gripFactor * compoundFactor(t, this.env.ambientC, this.surfaceKind) * aq
+      * tyreGripFactor(this.tyreDmg, this.tyreBlown, this.tyreClass());
   }
 
   private refreshTyreState() {
@@ -791,6 +811,7 @@ export class Drivetrain {
     const keep = { maxSpeedKmh: this.st.maxSpeedKmh, t0to100S: this.st.t0to100S, maxSpeedLimited: this.st.maxSpeedLimited };
     this.clearTransient();
     this.resetGearboxOil();
+    this.repairTyres();
     Object.assign(this.st, this.fresh(this.st.type, this.st.finalDrive, this.st.speedLimitKmh), keep);
     this.positionM = 0;
     this.updateRoad();
@@ -809,9 +830,60 @@ export class Drivetrain {
     this.gbFailed = false;
   }
 
+  /**
+   * "Reifen wechseln/reparieren" (issue #144): new tyres at the outside temperature, no damage. Like refuelling the
+   * UI offers it at standstill; reset() and applyCar() do it too.
+   */
+  repairTyres() {
+    this.tyreHeatC = this.env.ambientC;
+    this.tyreDmg = 0;
+    this.tyreWarnOn = false;
+    this.tyreBlown = false;
+    if (!this.st) return;
+    Object.assign(this.st, { tyreCarcassC: this.tyreHeatC, tyreWarn: false, tyreDamage: 0, tyreVibration: false, tyreFailed: false });
+    this.st.grip = this.currentGrip();
+  }
+
+  private tyreClass(): TyreHeatClass {
+    return isMotorcycleKind(this.kind) ? "motorcycle" : isCommercialKind(this.kind) ? "commercial" : "car";
+  }
+
+  /**
+   * Tyre hot zone, warning and damage (issue #144, tyre-heat.ts, vehicle.md §11). Load relative to the vehicle's
+   * design mass (gross mass of trucks/buses); inflation at its nominal value. Damage per realism level: "real" up to
+   * the blowout, "lenient" stops just before it (warning and grip loss only), "off" none.
+   */
+  private stepTyres(dt: number, vRoad: number) {
+    const s = this.st;
+    const ref = this.fullKg ?? this.emptyKg;
+    const load = ref > 0 ? this.vehicle.massKg / ref : 1;
+    const v = Number.isFinite(vRoad) ? Math.abs(vRoad) : 0;
+    this.tyreHeatC = stepTyreHeat(this.tyreHeatC, dt, v * 3.6, s.tyreRatingKmh, this.env.ambientC, load);
+    const T = this.tyreHeatC;
+    this.tyreWarnOn = this.tyreWarnOn ? T >= TYRE_HEAT.warnC - TYRE_HEAT.hystK : T >= TYRE_HEAT.warnC;
+    if (this.damageLevel !== "off" && !this.tyreBlown) {
+      this.tyreDmg = Math.min(this.damageLevel === "lenient" ? 0.99 : 1, this.tyreDmg + tyreDamageRate(T) * dt);
+      if (this.damageLevel === "real" && this.tyreDmg >= 1) this.tyreBlown = true;
+    }
+    Object.assign(s, {
+      tyreCarcassC: T, tyreWarn: this.tyreWarnOn || this.tyreBlown, tyreDamage: this.tyreDmg,
+      tyreVibration: this.tyreDmg > TYRE_HEAT.vibrationAt && !this.tyreBlown, tyreFailed: this.tyreBlown,
+    });
+  }
+
+  /** Body for the simulator: a failed tyre adds its rolling resistance (issue #144, tyre-heat.ts blowoutRollingExtra). */
+  private couplingVehicle(vRoad: number): VehicleParams {
+    if (!this.tyreBlown) return this.vehicle;
+    const v = Number.isFinite(vRoad) ? vRoad : 0;
+    return { ...this.vehicle, rollingResistance: this.vehicle.rollingResistance + blowoutRollingExtra(v, this.tyreClass()) };
+  }
+
   /** Realism level of the damage model (issue #53, same levels as SimInputs.damage, issue #66). */
   setDamageLevel(level: SimInputs["damage"]) {
     this.damageLevel = level ?? "real";
+    if (this.damageLevel !== "real") this.tyreBlown = false;
+    if (this.damageLevel === "off") this.tyreDmg = 0;
+    if (this.damageLevel === "lenient") this.tyreDmg = Math.min(this.tyreDmg, 0.99);
     if (this.damageLevel === "off") this.gbProtect = false;
     if (this.damageLevel !== "real") this.gbFailed = false;
     if (this.damageLevel === "lenient") this.gbWear = Math.min(this.gbWear, 0.99);
@@ -1257,6 +1329,7 @@ export class Drivetrain {
     const mu = this.currentGrip();
     this.tyreT = stepTyreTemp(this.tyreT, dt, (engine.tyreForceN ?? 0) / Math.max(1, mu * this.vehicle.massKg * 9.81), vRoad, slipMs, this.env.ambientC);
     s.tyreTempC = this.tyreT;
+    this.stepTyres(dt, vRoad);
     s.grip = this.currentGrip();
     this.spinHold = engine.wheelSpin ? 0.3 : Math.max(0, this.spinHold - dt);
     s.wheelSpin = this.spinHold > 0;
@@ -1300,7 +1373,7 @@ export class Drivetrain {
     this.stepGearboxOil(dt, engine, clutch, inputRpm, outputRpm, converter, Number.isFinite(vRoad) ? vRoad : 0);
     const torqueLimitNm = converter && brake > BTM_BRAKE_ON && pedal > 0.02 && Math.abs(Number.isFinite(vRoad) ? vRoad : 0) < 0.1 ? this.brakeStandLimit(ratio * s.finalDrive, g.efficiency, brake) : 0;
     return {
-      vehicle: this.vehicle,
+      vehicle: this.couplingVehicle(vRoad),
       totalRatio: ratio * s.finalDrive,
       // cold, viscous oil costs efficiency (issue #53, vehicle.md §8); not on the shared motorcycle sump
       efficiency: g.efficiency - (s.type === "sequential" ? 0 : gearboxDragPenalty(this.gbOilC)),
@@ -1412,6 +1485,7 @@ export class Drivetrain {
     const mu = this.currentGrip();
     this.tyreT = stepTyreTemp(this.tyreT, dt, (engine.tyreForceN ?? 0) / Math.max(1, mu * this.vehicle.massKg * 9.81), vRoad, slipMs, this.env.ambientC);
     s.tyreTempC = this.tyreT;
+    this.stepTyres(dt, vRoad);
     s.grip = this.currentGrip();
     this.spinHold = engine.wheelSpin ? 0.3 : Math.max(0, this.spinHold - dt);
     s.wheelSpin = this.spinHold > 0;
@@ -1445,7 +1519,7 @@ export class Drivetrain {
     Object.assign(s, { gearboxOilC: motorC, gearboxOilWarn: false, gearboxProtect: false, gearboxWear: 0, gearboxFailed: false });
     const cut = tcr.torqueCut;
     return {
-      vehicle: this.vehicle,
+      vehicle: this.couplingVehicle(vRoad),
       totalRatio: evRefRatio(ev),
       efficiency: ev.gearEfficiency,
       clutch: 1,

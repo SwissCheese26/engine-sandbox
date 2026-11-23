@@ -52,6 +52,9 @@ export {
   formatTyreSize, parseTyreSize,
 } from "./tyres.ts";
 export type { TyreType, RoadSurface, SpeedIndex, TyreSize, TyreSetup, TyreTypeSpec } from "./tyres.ts";
+// issue #144: tyre heat, damage and blowout above the speed index
+export { TYRE_HEAT, blowoutRollingExtra, stepTyreHeat, timeToTyreFailure, tyreDamageRate, tyreGripFactor, tyreHeatTarget } from "./tyre-heat.ts";
+export type { TyreHeatClass } from "./tyre-heat.ts";
 export { drivenAxleLoadN, frontAxleShare } from "./vehicle.ts";
 export { slipRatio } from "./simulator.ts";
 // environment and driver assistance (issue #23)
