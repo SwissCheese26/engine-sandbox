@@ -566,6 +566,11 @@ export interface EvMotorConfig {
   peakPowerKw: number;
   /** Mechanical speed limit of the rotor, 1/min. */
   maxRpm: number;
+  /**
+   * Rotor speed the loss map is normalised to, 1/min (default maxRpm). A rotor tuned above its factory speed (carbon
+   * sleeve, #139) keeps the factory loss map: iron losses keep rising ∝ n^1.5, windage and sleeve losses ∝ n³ above it.
+   */
+  lossRefRpm?: number;
   /** Single-speed reduction motor : wheel. */
   ratio: number;
   /** Phase current limit of the inverter, A (rms). */

@@ -2,7 +2,7 @@
 // plates while an electric car is loaded and uses the same field rows (label, slider, value, unit, effect line) and
 // a summary plate. The tuning is applied at standstill and stored per vehicle by the app (ev-tuning-store.ts).
 import type { LibraryCar } from "../data/vehicle-library.ts";
-import { LIMIT_LABEL, PS_PER_KW, estimateEvAsync, evTuningOf, maxTuning, tuneEv, type EvTuning, type MotorAxleKey, type TunedEv } from "../data/ev-tuning.ts";
+import { LIMIT_LABEL, PS_PER_KW, VMAX_BY_LABEL, estimateEvAsync, evTopSpeed, evTuningOf, maxTuning, tuneEv, type EvTuning, type MotorAxleKey, type TunedEv } from "../data/ev-tuning.ts";
 import { EV_FIELDS, EV_GROUPS, formValue, readForm, type EvField } from "./ev-fields.ts";
 import { clamp, fmt, parseNumber, snap } from "./format.ts";
 import { prefs } from "./settings.ts";
@@ -202,7 +202,8 @@ export class EvBench {
     this.put("inverter", `${fmt(p.inverterA)} A`);
     this.put("mass", `${fmt(car.setup.vehicle.massKg + p.deltaKg)} kg (${p.deltaKg >= 0 ? "+" : "−"}${fmt(Math.abs(p.deltaKg))})`);
     this.put("limit", LIMIT_LABEL[p.limit]);
-    this.put("vmax", p.governorKmh === null ? `${fmt(p.rpmVmaxKmh)} km/h, begrenzt durch Motordrehzahl` : `${fmt(p.governorKmh)} km/h, Begrenzer`);
+    const top = evTopSpeed(car.setup, p);
+    this.put("vmax", `${fmt(top.kmh)} km/h, begrenzt durch ${VMAX_BY_LABEL[top.by]}`);
     this.put("t100", "…");
     this.put("range", "…");
     if (!this.out.note!.textContent) this.put("note", p.notes.join(" "));
