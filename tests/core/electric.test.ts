@@ -7,7 +7,7 @@ import type { EvMotorConfig, SimInputs } from "../../src/core/index.ts";
 import { defaultConfig } from "../../src/data/presets.ts";
 import { libraryCar } from "../../src/data/vehicle-library.ts";
 import { EV_LIBRARY } from "../../src/data/ev-library.ts";
-import { estimateEv, evTuningOf, maxTuning, tuneEv, validTuning } from "../../src/data/ev-tuning.ts";
+import { estimateEv, evTopSpeed, evTuningOf, fastestTuning, maxTuning, tuneEv, validTuning, withMotorType } from "../../src/data/ev-tuning.ts";
 import { driveEv, evRig } from "./ev-run.ts";
 
 // Electric drive (issue #108): motor curve, battery sag, regen, SoC drain and range, AWD split, drive modes, tuning.
@@ -326,5 +326,79 @@ describe("EV tuning (electric.md §6)", () => {
     car.setup.speedLimitKmh = null;
     const r = driveEv(car, 25);
     expect(r.peakKw).toBeGreaterThan(1400);
+  });
+});
+
+describe("stronger motors: size, type, motor cooling (#141)", () => {
+  const plaidCar = libraryCar("ev-tesla-model-s-plaid");
+  const plaid = plaidCar.setup.ev!;
+  const factory = evTuningOf(plaid, "uhp");
+  // a big pack so the motors, not the battery, decide
+  const pack = { ...factory, packKwh: 200, chemistry: "nca" as const, cRate: 15, highVoltage: true };
+  test("an upgraded motor gives more power, more mass and more heat; 800 V halves the current it needs", () => {
+    const a = tuneEv(plaid, pack);
+    const b = tuneEv(plaid, { ...pack, motorScale: 4 });
+    expect(b.motorKw).toBeCloseTo(4 * 260, 0);
+    expect(b.systemKw).toBeGreaterThan(1.5 * a.systemKw);
+    expect(b.deltaKg - a.deltaKg).toBeCloseTo(3 * (4 - 1) * 260 * 0.4, 0); // 0.4 kg/kW drive unit
+    expect(b.heatKw).toBeCloseTo(4 * a.heatKw, 6);
+    expect(b.inverterA).toBeCloseTo(4 * 900 / 2, 0); // 400 V design rewound for 800 V
+    expect(tuneEv(plaid, { ...factory, motorScale: 4 }).limit).toBe("battery"); // the factory pack caps it, said so
+  });
+  test("axial flux: lighter and stronger, but the disc rotor caps the speed", () => {
+    const r = tuneEv(plaid, pack);
+    const ax = tuneEv(plaid, { ...pack, motorType: "axial" });
+    expect(ax.motorNm).toBeCloseTo(1.3 * r.motorNm, 6);
+    // the same power: a radial motor 1.3 × the size is heavier (≈ 17 vs 7 kW/kg for the motor alone)
+    expect(ax.deltaKg).toBeLessThan(tuneEv(plaid, { ...pack, motorScale: 1.3 }).deltaKg - 30);
+    expect(Math.max(...ax.ev.motors.map((m) => m.maxRpm))).toBe(10000);
+    expect(ax.rpmVmaxKmh).toBeLessThan(r.rpmVmaxKmh);
+  });
+  test("with stator oil cooling the derating comes later, direct winding oil later still", () => {
+    const timeToDerate = (motorCooling: "jacket" | "stator-oil" | "winding-oil") => {
+      const t = tuneEv(plaid, { ...pack, motorScale: 2, motorCooling });
+      const m = t.ev.motors[0]!;
+      let c = 60;
+      let s = 0;
+      while (c < 150 && s < 36000) c = stepMotorTemp(m, c, t.heatKw, 1, 25, t.ev.coolingScale), s++;
+      return { s, cont: t.continuousKw };
+    };
+    const [w, o, d] = [timeToDerate("jacket"), timeToDerate("stator-oil"), timeToDerate("winding-oil")];
+    expect(o.s).toBeGreaterThan(w.s);
+    expect(d.s).toBeGreaterThan(o.s);
+    expect(o.cont).toBeGreaterThan(w.cont);
+  });
+  test("Maximum builds the fastest car: no idle motor mass, quicker than factory, high Vmax", () => {
+    const r = plaidCar.setup.vehicle.wheelRadiusM;
+    const t = fastestTuning(plaidCar.setup);
+    const fast = tuneEv(plaid, t, r);
+    const heavy = tuneEv(plaid, maxTuning(), r);
+    expect(fast.systemPs).toBeGreaterThan(2500);
+    expect(fast.ev.motors.reduce((a, m) => a + m.peakPowerKw, 0)).toBeLessThan(1.1 * fast.systemKw); // motors ≈ pack
+    expect(fast.deltaKg).toBeLessThan(heavy.deltaKg - 1000);
+    expect(t.packKwh).toBeLessThan(200);
+    const f100 = estimateEv(plaidCar.setup, tuneEv(plaid, factory, r)).t100!;
+    expect(estimateEv(plaidCar.setup, fast).t100!).toBeLessThan(f100);
+    expect(evTopSpeed(plaidCar.setup, fast).kmh).toBeGreaterThan(380);
+  });
+  test("another motor type adapts the reduction: axial flux keeps a usable Vmax", () => {
+    const r = plaidCar.setup.vehicle.wheelRadiusM;
+    const ax = withMotorType({ ...factory, vmaxKmh: null }, "axial");
+    expect(ax.firstRatio).toBeLessThan(factory.firstRatio);
+    expect(evTopSpeed(plaidCar.setup, tuneEv(plaid, ax, r)).kmh).toBeGreaterThan(250);
+    expect(withMotorType(ax, "radial").firstRatio).toBeGreaterThan(ax.firstRatio); // back: longer reduction again
+  });
+  test("factory values are unchanged: radial, water jacket, the library untouched", () => {
+    for (const c of EV_LIBRARY) {
+      const ev = c.setup.ev!;
+      const before = structuredClone(ev);
+      const t = evTuningOf(ev, c.setup.tyre.type);
+      expect([t.motorType, t.motorCooling, t.motorScale]).toEqual(["radial", "jacket", 1]);
+      const tuned = tuneEv(ev, t);
+      expect(tuned.ev.coolingScale).toBe(1);
+      expect(tuned.deltaKg).toBeCloseTo(0, 6);
+      tuneEv(ev, maxTuning());
+      expect(ev).toEqual(before);
+    }
   });
 });

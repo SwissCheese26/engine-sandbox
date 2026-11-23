@@ -2,7 +2,7 @@
 // plates while an electric car is loaded and uses the same field rows (label, slider, value, unit, effect line) and
 // a summary plate. The tuning is applied at standstill and stored per vehicle by the app (ev-tuning-store.ts).
 import type { LibraryCar } from "../data/vehicle-library.ts";
-import { LIMIT_LABEL, PS_PER_KW, VMAX_BY_LABEL, estimateEvAsync, evTopSpeed, evTuningOf, maxTuning, tuneEv, type EvTuning, type MotorAxleKey, type TunedEv } from "../data/ev-tuning.ts";
+import { LIMIT_LABEL, PS_PER_KW, VMAX_BY_LABEL, estimateEvAsync, evTopSpeed, evTuningOf, fastestTuning, tuneEv, withMotorType, type EvTuning, type MotorAxleKey, type TunedEv } from "../data/ev-tuning.ts";
 import { EV_FIELDS, EV_GROUPS, formValue, readForm, type EvField } from "./ev-fields.ts";
 import { clamp, fmt, parseNumber, snap } from "./format.ts";
 import { prefs } from "./settings.ts";
@@ -48,6 +48,7 @@ export class EvBench {
       <dl class="evb__sum num" aria-live="polite">
         <div><dt>Systemleistung</dt><dd data-o="power">–</dd></div>
         <div><dt>Je Motor</dt><dd data-o="motor">–</dd></div>
+        <div><dt>Dauerleistung</dt><dd data-o="continuous">–</dd></div>
         <div><dt>Wechselrichter</dt><dd data-o="inverter">–</dd></div>
         <div><dt>Begrenzt durch</dt><dd data-o="limit">–</dd></div>
         <div><dt>Vmax</dt><dd data-o="vmax">–</dd></div>
@@ -63,7 +64,7 @@ export class EvBench {
     el.append(sum);
     sum.querySelectorAll<HTMLElement>("[data-o]").forEach((n) => (this.out[n.dataset.o!] = n));
     sum.querySelector("[data-control=tune-max]")!.addEventListener("click", () => {
-      this.fill(maxTuning());
+      this.fill(fastestTuning(this.car!.setup));
       this.scheduleApply();
     });
     sum.querySelector("[data-control=tune-reset]")!.addEventListener("click", () => {
@@ -146,10 +147,13 @@ export class EvBench {
   }
 
   private set(k: keyof EvTuning, v: string) {
+    const prevType = this.read().motorType;
     this.values[k] = v;
     this.put("note", "");
     // motor counts: up to 4 per axle (validTuning)
-    const t = this.read(k === "frontMotors" || k === "rearMotors" ? k : undefined);
+    const read = this.read(k === "frontMotors" || k === "rearMotors" ? k : undefined);
+    // another motor type: the reduction follows its rotor speed limit (#141), so Vmax does not collapse
+    const t = k === "motorType" && read.motorType !== prevType ? withMotorType({ ...read, motorType: prevType }, read.motorType) : read;
     this.fill(t);
     this.scheduleApply();
   }
@@ -199,6 +203,7 @@ export class EvBench {
     const u = prefs();
     this.put("power", `${fmt(p.systemPs)} PS · ${fmt(p.systemKw)} kW`);
     this.put("motor", `${p.ev.motors.length} × ${fmt(p.motorKw)} kW · ${fmt(p.motorNm)} Nm`);
+    this.put("continuous", `${fmt(p.continuousKw)} kW · ${fmt(p.heatKw)} kW Wärme je Motor`);
     this.put("inverter", `${fmt(p.inverterA)} A`);
     this.put("mass", `${fmt(car.setup.vehicle.massKg + p.deltaKg)} kg (${p.deltaKg >= 0 ? "+" : "−"}${fmt(Math.abs(p.deltaKg))})`);
     this.put("limit", LIMIT_LABEL[p.limit]);

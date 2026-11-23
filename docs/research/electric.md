@@ -184,8 +184,8 @@ Siehe `tests/core/ev-library.test.ts`. Ehrlich dokumentierte Ausreißer:
 
 Physikalische Grenzen (`ev-tuning.ts`):
 
-- Motorgröße ×0,5 … ×3 (Leistung und Moment ∝ Baugröße), Antriebseinheit ≈ 0,4 kg/kW **[S]** (≈ 2,5 kW/kg inkl.
-  Wechselrichter und Getriebe).
+- Motorgröße ×0,5 … ×4 (Leistung und Moment ∝ Baugröße), Antriebseinheit ≈ 0,4 kg/kW **[S]** (≈ 2,5 kW/kg inkl.
+  Wechselrichter und Getriebe). Bauart und Motorkühlung: §6.2.
 - Wechselrichterstrom ×0,5 … ×2, Sättigung I^0,75 (§2.2), höchstens 2500 A je Wechselrichter **[S]**.
 - Akku 30 … 200 kWh (≈ 160 Wh/kg), C-Rate 1 … 15 (Hochleistungszellen), 400- oder 800-V-Klasse.
 - Der gesamte Akkustrom ist durch Hochvolt-Schütze, Sicherung und Stromschienen auf ≈ 3000 A begrenzt **[S]**. Bei
@@ -212,3 +212,50 @@ for Speed: EV Motors Breaking the 30,000 rpm Barrier“). Im Tuner reicht die Gr
 - Ergebnis: Model S Plaid ohne Begrenzer 20 000 1/min ≈ 337 km/h, 25 000 1/min ≈ 417 km/h (beides
   Drehzahlgrenze, die drei Motoren geben oben noch ≈ 520 kW); VW ID.3 ab ≈ 22 000 1/min ≈ 226 km/h durch den
   Luftwiderstand begrenzt.
+
+### 6.2 Stärkere Motoren: Baugröße, Bauart, Motorkühlung (#141)
+
+**Baugröße.** Mehr Kupfer und Eisen (längeres Blechpaket, größerer Durchmesser): Moment, Leistung und Strom wachsen
+∝ Baugröße, bis ×4 (Plaid-Motor 260 kW → ≈ 1 MW). Die Verluste skalieren mit (Kupfer ∝ I², Eisen ∝ n^1,5, §2.3), also
+auch die Wärme: ≈ 15 kW je Plaid-Motor bei Spitzenleistung, ≈ 60 kW bei ×4. Masse: der Motor allein hat bei Radialfluss
+≈ 5–10 kW/kg Spitze **[S]** (aktuelle PMSM der Tesla/Lucid-Klasse), im Tuner 7 kW/kg; der Rest der Antriebseinheit (Wechselrichter, Getriebe, Gehäuse)
+≈ 0,26 kg/kW, zusammen wieder 0,4 kg/kW (§6).
+
+**Wechselrichterstrom.** P ≈ U·I: ein auf die Akkuspannung gewickelter Motor braucht für dieselbe Leistung Strom
+∝ 1/U. Ein 400-V-Motor (Plaid 900 A) braucht bei ×4 also 3600 A, auf 800 V umgewickelt 1800 A. Ein SiC-Wechselrichter
+schafft im Tuner höchstens 2500 A (§6), darüber begrenzt er (Sättigung §2.2).
+
+**Bauart.** Axialfluss-Motoren (Scheibenläufer, YASA, Mercedes-AMG) haben den Luftspalt auf großem Radius: mehr Moment
+je kg, deutlich höhere Leistungsdichte. YASA nennt für einen Prototyp 750 kW Spitze (350–400 kW dauernd) aus 12,7 kg,
+59 kW/kg (YASA, „YASA smashes own unofficial power density world record … 59 kW/kg“, 2025); fahrzeugtaugliche
+Axialfluss-Motoren ≈ 15–20 kW/kg **[S]** (die ältere Generation YASA 400: 165 kW bei 700 V aus 24 kg ≈ 7 kW/kg,
+YASA-Produktblatt). Im Tuner: 17 kW/kg für den Motor, ×1,3 Moment und Leistung bei gleicher Baugröße. Nachteile: teurer (Fertigung, viel
+Magnetmaterial) und die Fliehkraft auf die große Scheibe begrenzt die Drehzahl: YASA 400 7500 1/min, YASA 750R
+3250 1/min (Produktblätter, yasa.com). Im Tuner höchstens 10 000 1/min mit eigenem Verlustkennfeld (keine Karbonhülse).
+
+**Motorkühlung.** Wärmeabfuhr relativ zum Wassermantel (Serie, Faktor auf `coolingScale` in `stepMotorTemp`, §2.4):
+- Stator-Ölsprühkühlung ×1,8, +3 kg je Motor (Pumpe, Öl, Öl-Wasser-Wärmetauscher);
+- direkte Wicklungs-Ölkühlung (Öl in der Nut) ×2,6, +5 kg je Motor.
+Belege (zitiert in A. Banerjee et al., „Influence of Different Direct Cooling Systems on Interior Permanent Magnet
+Traction Machine Performance“, WMG University of Warwick, 2023): Ölsprühung auf Hairpin-Wicklungen etwa doppelte
+Stromdichte (23 A/mm²) und doppelte Leistungsdichte, direkte Nutkühlung ≈ 25 A/mm² dauernd (35 A/mm² für 30 s),
+Wassermantel typisch ≈ 10–15 A/mm² **[S]**. Da die Kupferverluste ∝ I² sind, wächst die Dauerleistung etwa mit der
+Wurzel der Wärmeabfuhr (×1,3 bzw. ×1,6). Die „Rennstrecke“-Kühlung (§6) vergrößert den Kühlkreis und multipliziert mit.
+
+**Dauer- gegen Spitzenleistung.** Dauerleistung = das Moment an der Eckdrehzahl, bei dem die Wärmeabfuhr bei 150 °C
+(Beginn der Abregelung, §2.4) die Verluste aufnimmt (`continuousMotorKw`). Plaid ab Werk ≈ 500 von 770 kW.
+
+**Ergebnis.** Akku, Wechselrichter und Haftung begrenzen weiter. 8 Motoren mit ×4 könnten > 10 MW, ein 800-V-Akku
+mit 3000 A liefert aber ≈ 2,1 MW (≈ 2830 PS); die Zusammenfassung nennt den begrenzenden Teil und was die Motoren könnten.
+
+**„Maximum“ = schnellstes Auto (`fastestTuning`).** Nicht alle Regler an den Anschlag (das brächte beim Plaid ≈ 2,5 t
+ungenutzte Motormasse), sondern: 800-V-NCA-Akku an der C-Rate-Grenze, so klein, dass er gerade den Schützstrom
+(3000 A) liefert (Plaid-Zelle: 165 kWh); Motoren so groß, dass ihre Spitzenleistung Akku und Wechselrichter gerade
+ausnutzt; Bauart und Motorzahl nach der simulierten 0–100-Zeit (mehr Motoren nur, wenn die Haftung ≥ 0,05 s
+gewinnt), zweiter Gang für die Drehzahlgrenze bei ≈ 420 km/h. Plaid: Axialfluss 1 + 1, ≈ 2650 PS, ≈ 3010 kg,
+0–100 ≈ 2,75 s (Werk 2,80 s), Vmax ≈ 420 km/h. Ab ≈ 1 g ist der Start haftungsbegrenzt (μ·g, kein Abtrieb im
+Modell): die Mehrleistung zeigt sich vor allem über 100 km/h.
+
+**Bauart wechseln.** Die Untersetzung folgt der neuen Drehzahlgrenze (i ∝ n_max, `withMotorType`), eine ungeschaltete
+Vorderachse ebenso; sonst fiele die Vmax des Plaid mit Axialfluss auf ≈ 170 km/h. Untere Grenzen dafür: 1. Gang 4 : 1,
+2. Gang 3 : 1.

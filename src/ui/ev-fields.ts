@@ -3,7 +3,7 @@
 // Limits and their physics: src/data/ev-tuning.ts (docs/research/electric.md §6).
 import { TYRE_TYPES } from "../core/index.ts";
 import type { EvChemistry, TyreType } from "../core/index.ts";
-import { CELLS, COOLING, MAX_MOTORS, TUNING_LIMITS, validTuning, type EvCooling, type MotorAxleKey, type EvTuning } from "../data/ev-tuning.ts";
+import { CELLS, COOLING, MAX_MOTORS, MOTOR_COOLING, MOTOR_TYPES, TUNING_LIMITS, type EvMotorCooling, type EvMotorType, validTuning, type EvCooling, type MotorAxleKey, type EvTuning } from "../data/ev-tuning.ts";
 
 export type EvGroupId = "motors" | "drive" | "battery" | "chassis";
 
@@ -52,7 +52,9 @@ const count = Array.from({ length: MAX_MOTORS + 1 }, (_, n) => ({ value: String(
 export const EV_FIELDS: EvField[] = [
   { key: "frontMotors", group: "motors", kind: "choice", label: "Motoren vorn", options: count, effect: "Je Achse 0 bis 4 Motoren, zusammen 1 bis 4." },
   { key: "rearMotors", group: "motors", kind: "choice", label: "Motoren hinten", options: count, effect: "Hinten zieht beim Beschleunigen am besten, die Last wandert dorthin." },
-  { key: "motorScale", group: "motors", kind: "number", label: "Motorgröße", unit: "%", min: L.motorScale.min, max: L.motorScale.max, step: 0.1, scale: 100, decimals: 0, effect: "+ Größe → mehr Drehmoment und Leistung je Motor, ≈ 0,4 kg je kW." },
+  { key: "motorScale", group: "motors", kind: "number", label: "Motorgröße", unit: "%", min: L.motorScale.min, max: L.motorScale.max, step: 0.1, scale: 100, decimals: 0, effect: "+ Größe (mehr Kupfer und Eisen) → mehr Drehmoment und Leistung je Motor, aber schwerer, mehr Verlustwärme und mehr Strom." },
+  { key: "motorType", group: "motors", kind: "select", label: "Motorbauart", options: (Object.keys(MOTOR_TYPES) as EvMotorType[]).map((v) => ({ value: v, label: MOTOR_TYPES[v].label })), effect: "Axialfluss wie YASA: ≈ 17 statt 7 kW/kg und mehr Moment, aber teurer und höchstens 10 000 1/min." },
+  { key: "motorCooling", group: "motors", kind: "select", label: "Motorkühlung", options: (Object.keys(MOTOR_COOLING) as EvMotorCooling[]).map((v) => ({ value: v, label: MOTOR_COOLING[v].label })), effect: "Öl direkt an Stator oder Wicklung führt mehr Wärme ab: mehr Dauerleistung, Abregeln erst später (+3 / +5 kg je Motor)." },
   { key: "currentScale", group: "motors", kind: "number", label: "Wechselrichterstrom", unit: "%", min: L.currentScale.min, max: L.currentScale.max, step: 0.05, scale: 100, decimals: 0, effect: "+ Strom → mehr Moment, über dem Nennstrom sättigt das Eisen (höchstens 2500 A)." },
   { key: "gears", group: "drive", kind: "choice", label: "Gänge", options: [{ value: "1", label: "1-Gang" }, { value: "2", label: "2-Gang" }], effect: "2 Gänge wie bei Porsche Taycan und Audi e-tron GT (Hinterachse): kurzer 1. Gang zum Anfahren, langer 2. für Vmax." },
   { key: "firstRatio", group: "drive", kind: "number", label: "Untersetzung (1. Gang)", unit: ": 1", min: L.firstRatio.min, max: L.firstRatio.max, step: 0.05, scale: 1, decimals: 2, effect: "+ Untersetzung → mehr Zugkraft, aber die Motordrehzahl begrenzt früher. Taycan 1. Gang ≈ 15 : 1." },
