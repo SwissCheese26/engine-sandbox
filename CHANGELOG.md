@@ -4,10 +4,11 @@ Alle sichtbaren Änderungen an der Prüfzelle, neueste zuerst. Aufbau nach [Keep
 
 _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `bun scripts/changelog.ts` ausführen._
 
-## 2026-11-23 – E-Tuner: Max. Motordrehzahl für mehr Vmax
+## 2026-11-23 – E-Tuner: Max. Motordrehzahl für mehr Vmax, viel stärkere Motoren mit Axialfluss und Ölkühlung
 
 ### Neu
 
+- Im E-Tuner (Werkbank, „Elektromotoren“) geht die Motorgröße jetzt bis 400 %, beim Plaid also bis etwa 1000 kW je Motor. Neu sind die „Motorbauart“ (Radialfluss wie ab Werk oder Axialfluss: leichter und stärker, aber teurer und höchstens 10 000 1/min) und die „Motorkühlung“ (Wassermantel, Stator-Ölsprühkühlung oder direkte Wicklungs-Ölkühlung: mehr Dauerleistung, der Motor regelt erst später ab). Größere Motoren wiegen mehr, werden wärmer und brauchen mehr Strom; mit 800 V reicht der halbe. Die Zusammenfassung zeigt die Dauerleistung und die Wärme je Motor. Akku, Wechselrichter und Haftung begrenzen weiter: Der stärkste Plaid kommt auf etwa 2800 PS, obwohl seine Motoren über 5000 kW könnten. ([#141](https://github.com/SwissCheese26/engine-sandbox/issues/141), [#147](https://github.com/SwissCheese26/engine-sandbox/issues/147))
 - Im E-Tuner (Werkbank, „Getriebe und Vmax“) lässt sich die „Max. Motordrehzahl“ bis 25 000 1/min anheben, ab Werk steht der Wert des Autos (Plaid 20 000 1/min). Das braucht eine Karbonhülse um den Rotor: etwas mehr Gewicht und mehr Verluste bei hoher Drehzahl. Oben fällt das Moment weiter ab, die Leistung begrenzen Akku und Motoren. Mit ausgeschaltetem Begrenzer fährt der Plaid so etwa 415 statt 335 km/h. Der Vmax-Begrenzer reicht bis zur neuen Grenze, die Zusammenfassung zeigt „begrenzt durch Motordrehzahl“, „Luftwiderstand“ oder „Begrenzer“. ([#139](https://github.com/SwissCheese26/engine-sandbox/issues/139), [#140](https://github.com/SwissCheese26/engine-sandbox/issues/140))
 
 ## 2026-11-22 – Elektroantrieb in der Werkbank, 2-Gang-Getriebe und Vmax für E-Autos, Live-Reichweite für alle Fahrzeuge und Fahrstufen P N D, Bremse hält bei der Automatik die Antriebsräder, Katheizen nach dem Kaltstart
