@@ -19,7 +19,7 @@ import { GearPlate } from "./gear-plate.ts";
 import { CruisePanel } from "./cruise-panel.ts";
 import { prefs } from "./settings.ts";
 import { toUnit } from "./units.ts";
-import { gearboxOilNote } from "./toasts.ts";
+import { gearboxOilNote, tyreNote } from "./toasts.ts";
 
 const TYPE_LABEL: Record<GearboxType, string> = {
   manual: "Handschalter, 6 Gänge",
@@ -113,7 +113,9 @@ export class GearboxPanel {
   }
   private cfg: EngineConfig;
   private summary: EngineSummary;
-  private last = { gear: "", speed: "", vmax: "", t100: "", vmaxNote: false, gov: false, tyre: false, wheelie: false, spin: false, locked: false, tyreRating: 0, oil: "", oilNote: "" };
+  private last = { gear: "", speed: "", vmax: "", t100: "", vmaxNote: false, gov: false, tyre: false, wheelie: false, spin: false, locked: false, tyreRating: 0, oil: "", oilNote: "", tyreT: "", tyreState: "" };
+  private tyreTEl!: HTMLElement;
+  private repairBtn!: HTMLButtonElement;
   private oilEl!: HTMLElement;
   private oilNoteEl!: HTMLElement;
   private moving = false;
@@ -171,6 +173,8 @@ export class GearboxPanel {
         <div><dt>Vmax gemessen</dt><dd class="num"><span data-out="vmax">0</span> <span data-unit="speed">km/h</span><small class="gearbox__vmax-note" hidden> (abgeregelt)</small></dd></div>
         <div><dt data-out="sprint-label">0–100 km/h</dt><dd class="num"><span data-out="t100">–</span> s</dd></div>
         <div><dt>Getriebeöl</dt><dd class="num"><span data-out="gear-oil">–</span></dd></div>
+        <div class="gearbox__tank"><dt>Reifen</dt><dd class="num"><span data-out="tyre-temp">–</span>
+          <button type="button" class="btn btn--small" data-control="tyre-repair">Reifen wechseln</button></dd></div>
         <div class="gearbox__tank"><dt>Tankinhalt</dt><dd class="num"><span data-out="tank">–</span>
           <button type="button" class="btn btn--small" data-control="refuel">Volltanken</button></dd></div>
         <div class="gearbox__range" data-out="range-row"><dt>Reichweite</dt><dd class="num"><span data-out="range">–</span></dd></div>
@@ -221,6 +225,13 @@ export class GearboxPanel {
     this.spinEl = q("[data-out=wheelspin]");
     this.lockEl = q("[data-out=wheels-locked]");
     this.oilEl = q("[data-out=gear-oil]");
+    this.tyreTEl = q("[data-out=tyre-temp]");
+    this.repairBtn = q("[data-control=tyre-repair]");
+    // like refuelling (issue #144): new or repaired tyres only at standstill
+    this.repairBtn.addEventListener("click", () => {
+      if (this.drivetrain.state.speedKmh > 0.5) return;
+      this.drivetrain.repairTyres();
+    });
     this.oilNoteEl = q("[data-out=gearbox-oil]");
     this.vehiclePanel = new VehiclePanel(this.drivetrain);
     // the tank level of the last visit, if it was the same vehicle (library id, or the own vehicle), else full
@@ -411,6 +422,30 @@ export class GearboxPanel {
     return sp.t60;
   }
 
+  /**
+   * Tyre hot-zone temperature, state note (issue #144, toasts.ts tyreNote) over the plain "Reifenfreigabe
+   * überschritten", and the "Reifen wechseln" button (standstill, only when there is something to repair).
+   */
+  private updateTyres(s: DrivetrainState, over: boolean) {
+    const u = prefs().temp;
+    const c = s.tyreCarcassC;
+    const t = c === undefined || !Number.isFinite(c) ? "–" : `${fmt0(toUnit("temp", c, u))} ${u}${s.tyreFailed ? " – geplatzt" : s.tyreVibration ? " – beschädigt" : ""}`;
+    if (t !== this.last.tyreT) {
+      this.last.tyreT = t;
+      this.tyreTEl.textContent = t;
+      this.tyreTEl.classList.toggle("is-low", !!(s.tyreWarn || s.tyreFailed));
+    }
+    const note = tyreNote(s);
+    const key = `${note}|${over}`;
+    if (key !== this.last.tyreState) {
+      this.last.tyreState = key;
+      if (note) this.tyreNoteEl.textContent = note;
+      else this.last.tyreRating = 0;
+      this.tyreNoteEl.hidden = !note && !over;
+    }
+    this.repairBtn.disabled = s.speedKmh > 0.5 || !((s.tyreDamage ?? 0) > 0 || s.tyreFailed);
+  }
+
   /** Gearbox oil temperature in the chosen unit, amber from the warning threshold, and its note (issue #53). */
   private updateGearboxOil(s: DrivetrainState) {
     const u = prefs().temp;
@@ -478,7 +513,8 @@ export class GearboxPanel {
       this.tyreNoteEl.textContent = `Reifenfreigabe ${idx} = ${idx === "(Y)" ? `über ${this.spd(300)}` : this.spd(s.tyreRatingKmh)} überschritten`;
     }
     const tyre = this.last.tyre ? s.speedKmh >= s.tyreRatingKmh - TYRE_WARN_OFF_KMH : s.speedKmh > s.tyreRatingKmh + TYRE_WARN_ON_KMH;
-    if (tyre !== this.last.tyre) this.tyreNoteEl.hidden = !(this.last.tyre = tyre);
+    if (tyre !== this.last.tyre) this.last.tyre = tyre;
+    this.updateTyres(s, tyre);
     if (s.wheelie !== this.last.wheelie) this.wheelieEl.hidden = !(this.last.wheelie = s.wheelie);
     if (s.wheelSpin !== this.last.spin) this.spinEl.hidden = !(this.last.spin = s.wheelSpin);
     if (s.wheelsLocked !== this.last.locked) this.lockEl.hidden = !(this.last.locked = s.wheelsLocked);

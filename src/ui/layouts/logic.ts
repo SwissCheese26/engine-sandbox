@@ -188,6 +188,8 @@ export interface LampInput {
   parkingBrake?: boolean;
   /** Gearbox oil (issue #53, chassis dyno); undefined = engine dyno: the lamp stays dark. */
   gearbox?: { hot: boolean; protect: boolean; failed: boolean };
+  /** Tyres (issue #144, chassis dyno): overheating, vibration stage, failed; undefined = engine dyno. */
+  tyre?: { hot: boolean; vibration: boolean; failed: boolean };
   /** Air reservoir below the warning pressure (#83, trucks/buses on the chassis dyno); undefined = no air brake. */
   airLow?: boolean;
   /** AdBlue (#83, SCR in a vehicle): reserve / empty (limp mode); undefined = no SCR. */
@@ -212,6 +214,8 @@ export interface LampSet {
   park: Lamp;
   /** Gearbox oil too hot (amber, issue #53): on from the warning, blinking in the protection mode, on after a failure. */
   gearbox: Lamp;
+  /** Tyre (amber, issue #144): on from the overheating warning, blinking with vibration or after a blowout. */
+  tyre: Lamp;
   /** Brake air pressure too low (red, #83): on below the warning pressure. */
   air: Lamp;
   /** AdBlue (amber, #83): on at the reserve, blinking when empty (limp mode). */
@@ -243,10 +247,10 @@ export function glowTimeS(coolantC: number): number {
  * - brake air pressure (red, #83) below the warning pressure; AdBlue (amber) at the reserve, blinking when empty.
  */
 export function clusterLamps(x: LampInput): LampSet {
-  const off: LampSet = { abs: "off", esp: "off", espOff: "off", ice: "off", oil: "off", battery: "off", engine: "off", coolant: "off", glow: "off", fuel: "off", park: "off", gearbox: "off", air: "off", adblue: "off", cat: "off" };
+  const off: LampSet = { abs: "off", esp: "off", espOff: "off", ice: "off", oil: "off", battery: "off", engine: "off", coolant: "off", glow: "off", fuel: "off", park: "off", gearbox: "off", tyre: "off", air: "off", adblue: "off", cat: "off" };
   if (!x.ignition) return off;
   if (x.sinceIgnitionS < BULB_CHECK_S && !x.running) {
-    return { abs: "on", esp: "on", espOff: "off", ice: x.ice ? "on" : "off", oil: "on", battery: "on", engine: "on", coolant: "on", glow: x.diesel ? "on" : "off", fuel: x.fuelReserve === undefined ? "off" : "on", park: x.parkingBrake === undefined ? "off" : "on", gearbox: x.gearbox === undefined ? "off" : "on", air: x.airLow === undefined ? "off" : "on", adblue: x.adblue === undefined ? "off" : "on", cat: "off" };
+    return { abs: "on", esp: "on", espOff: "off", ice: x.ice ? "on" : "off", oil: "on", battery: "on", engine: "on", coolant: "on", glow: x.diesel ? "on" : "off", fuel: x.fuelReserve === undefined ? "off" : "on", park: x.parkingBrake === undefined ? "off" : "on", gearbox: x.gearbox === undefined ? "off" : "on", tyre: x.tyre === undefined ? "off" : "on", air: x.airLow === undefined ? "off" : "on", adblue: x.adblue === undefined ? "off" : "on", cat: "off" };
   }
   const l = { ...off };
   l.battery = x.running ? "off" : "on";
@@ -263,6 +267,7 @@ export function clusterLamps(x: LampInput): LampSet {
   l.fuel = x.fuelReserve ? "on" : "off";
   l.park = x.parkingBrake ? "on" : "off";
   if (x.gearbox) l.gearbox = x.gearbox.failed ? "on" : x.gearbox.protect ? "blink" : x.gearbox.hot ? "on" : "off";
+  if (x.tyre) l.tyre = x.tyre.failed || x.tyre.vibration ? "blink" : x.tyre.hot ? "on" : "off";
   l.air = x.airLow ? "on" : "off";
   if (x.adblue) l.adblue = x.adblue.empty ? "blink" : x.adblue.reserve ? "on" : "off";
   l.cat = x.running && x.catHeating ? "on" : "off";

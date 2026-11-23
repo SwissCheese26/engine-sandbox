@@ -4,10 +4,11 @@ Alle sichtbaren Änderungen an der Prüfzelle, neueste zuerst. Aufbau nach [Keep
 
 _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `bun scripts/changelog.ts` ausführen._
 
-## 2026-11-23 – E-Tuner: Max. Motordrehzahl für mehr Vmax
+## 2026-11-23 – E-Tuner: Max. Motordrehzahl für mehr Vmax, Reifen überhitzen und platzen über dem Geschwindigkeitsindex
 
 ### Neu
 
+- Reifen haben jetzt Grenzen: Wer schneller fährt, als der Geschwindigkeitsindex erlaubt (z. B. W = 270 km/h), heizt die Reifen auf. Erst kommt „Reifen überhitzen“ mit gelber Reifenleuchte, dann vibriert der Reifen und hat weniger Grip, am Ende platzt er: kaum Grip, hoher Rollwiderstand, das Fahrzeug fährt nur noch langsam. 10 % zu schnell hält ein paar Minuten, 25 % etwa eine Minute. Das gilt für Autos, Motorräder, Lkw, Busse und E-Autos und folgt der Realismus-Einstellung („nachsichtig“: kein Platzer, „aus“: kein Schaden). Im Stand hilft „Reifen wechseln“ im Rollenprüfstand. Neues Feld und Zusatzinstrument „Reifen“ in jedem Cockpit-Design, dazu leises Rumpeln, Vibration auf dem Handy und Qualm beim Platzer. ([#144](https://github.com/SwissCheese26/engine-sandbox/issues/144), [#148](https://github.com/SwissCheese26/engine-sandbox/issues/148))
 - Im E-Tuner (Werkbank, „Getriebe und Vmax“) lässt sich die „Max. Motordrehzahl“ bis 25 000 1/min anheben, ab Werk steht der Wert des Autos (Plaid 20 000 1/min). Das braucht eine Karbonhülse um den Rotor: etwas mehr Gewicht und mehr Verluste bei hoher Drehzahl. Oben fällt das Moment weiter ab, die Leistung begrenzen Akku und Motoren. Mit ausgeschaltetem Begrenzer fährt der Plaid so etwa 415 statt 335 km/h. Der Vmax-Begrenzer reicht bis zur neuen Grenze, die Zusammenfassung zeigt „begrenzt durch Motordrehzahl“, „Luftwiderstand“ oder „Begrenzer“. ([#139](https://github.com/SwissCheese26/engine-sandbox/issues/139), [#140](https://github.com/SwissCheese26/engine-sandbox/issues/140))
 
 ## 2026-11-22 – Elektroantrieb in der Werkbank, 2-Gang-Getriebe und Vmax für E-Autos, Live-Reichweite für alle Fahrzeuge und Fahrstufen P N D, Bremse hält bei der Automatik die Antriebsräder, Katheizen nach dem Kaltstart

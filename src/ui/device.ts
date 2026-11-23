@@ -156,6 +156,9 @@ export class Haptics {
   static readonly LIMITER: VibratePattern = 15;
   static readonly ABS: VibratePattern = [25, 35, 25];
   static readonly DESTROYED: VibratePattern = [200, 100, 400];
+  /** Damaged tyre (issue #144): a short rumble; blowout: one long jolt. */
+  static readonly TYRE: VibratePattern = [12, 30, 12];
+  static readonly BLOWOUT: VibratePattern = [300];
   /** Seconds between pulses while the limiter or ABS stays active. */
   static readonly REPEAT_S = 0.4;
 
@@ -163,6 +166,8 @@ export class Haptics {
   private lastLimiter = -Infinity;
   private lastAbs = -Infinity;
   private wasDestroyed = false;
+  private lastTyre = -Infinity;
+  private wasBlown = false;
 
   constructor(private vibrate: ((p: VibratePattern) => unknown) | undefined = Haptics.native()) {}
 
@@ -172,8 +177,11 @@ export class Haptics {
   }
 
   /** Per frame. revLimitRpm: limiter of the engine; enabled: setting (and touch for "auto"). */
-  update(dt: number, s: EngineState, revLimitRpm: number, pedal: number, enabled: boolean) {
+  update(dt: number, s: EngineState, revLimitRpm: number, pedal: number, enabled: boolean, tyre?: { vibration: boolean; failed: boolean; moving: boolean }) {
     this.t += dt;
+    const blown = !!tyre?.failed;
+    const newlyBlown = blown && !this.wasBlown;
+    this.wasBlown = blown;
     const destroyed = s.destroyed;
     const newlyDestroyed = destroyed && !this.wasDestroyed;
     this.wasDestroyed = destroyed;
@@ -181,6 +189,15 @@ export class Haptics {
     if (newlyDestroyed) {
       this.buzz(Haptics.DESTROYED);
       return;
+    }
+    if (newlyBlown) {
+      this.buzz(Haptics.BLOWOUT);
+      return;
+    }
+    // tyre damage (issue #144): rumble while rolling, also with an electric car
+    if (tyre?.moving && (tyre.vibration || tyre.failed) && this.t - this.lastTyre >= Haptics.REPEAT_S) {
+      this.lastTyre = this.t;
+      this.buzz(Haptics.TYRE);
     }
     if (!s.running) return;
     // limiter: at the cut-off speed with the gas open (the engine bounces off the limiter)

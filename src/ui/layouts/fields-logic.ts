@@ -36,6 +36,10 @@ export interface FieldInputs {
   /** Gearbox oil temperature (issue #53, chassis dyno; NaN/unset on the engine dyno) and its warning. */
   gearboxOilC?: number;
   gearboxOilWarn?: boolean;
+  /** Tyre hot zone °C (#144, chassis dyno; NaN/unset on the engine dyno), overheating warning, tyre failed. */
+  tyreCarcassC?: number;
+  tyreWarn?: boolean;
+  tyreFailed?: boolean;
   /** Charge-air temperature in the intake manifold, °C, when the core reports it (#83); NaN/undefined = unknown. */
   intakeAirC?: number;
   /** Catalyst temperature, °C (#135, EngineState.catalystC); NaN/undefined = no catalyst. Flag: catalyst heating. */
@@ -75,6 +79,7 @@ export function fieldAvailable(id: FieldId, c: FieldContext): boolean {
     case "range":
     case "road":
     case "gearOil":
+    case "tyre":
     case "sprint": return c.vehicle;
     case "intake": return !!c.intakeAir;
     case "air":
@@ -119,7 +124,7 @@ const NAMES: Record<FieldId, string> = {
   coolant: "Kühlmittel", oilT: "Öltemperatur", gearOil: "Getriebeöl", oilP: "Öldruck", boost: "Ladedruck", egt: "Abgastemperatur",
   fuelNow: "Verbrauch", range: "Reichweite", power: "Leistung", torque: "Drehmoment", lambda: "Lambda", road: "Höhe/Steigung",
   sprint: "0–100 km/h", ambient: "Außentemperatur", intake: "Ansaugluft",
-  battery: "Batterie", air: "Druckluft", retarder: "Retarder", adblue: "AdBlue", lean: "Schräglage", cat: "Kat-Temp",
+  battery: "Batterie", air: "Druckluft", retarder: "Retarder", adblue: "AdBlue", lean: "Schräglage", cat: "Kat-Temp", tyre: "Reifen",
 };
 
 /** Label of a field (no value), e.g. for the accessible name and the settings. */
@@ -143,6 +148,8 @@ export function formatField(id: FieldId, v: FieldInputs, u: UnitPrefs, lim?: Par
     case "coolant": return out(T(v.coolantC), u.temp, !v.airCooled && v.coolantC > (lim?.coolantMaxC ?? Infinity));
     case "oilT": return out(T(v.oilC), u.temp, v.oilC > (lim?.oilMaxC ?? Infinity));
     case "gearOil": return out(T(v.gearboxOilC ?? Number.NaN), u.temp, !!v.gearboxOilWarn);
+    // tyre (#144): hot-zone temperature, "Platzer" once it has failed
+    case "tyre": return v.tyreFailed ? out("Platzer", "", true) : out(T(v.tyreCarcassC ?? Number.NaN), u.temp, !!v.tyreWarn);
     case "oilP": return out(P(v.oilPressureBar), u.pressure, v.running && v.oilPressureBar < (lim?.oilPressureMinBar ?? -Infinity));
     case "boost": return out(P(Math.max(0, v.boostBar), u.pressure === "bar" ? 2 : 1), u.pressure, (lim?.boostMaxBar ?? 0) > 0 && v.boostBar > lim!.boostMaxBar!);
     case "egt": return out(T(v.egtC), u.temp, v.egtC > (lim?.egtMaxC ?? Infinity));
