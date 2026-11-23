@@ -11,6 +11,16 @@ export interface ToastSources {
   outOfFuel: boolean;
   /** Gearbox oil (issue #53), chassis dyno only. */
   gearbox?: Pick<DrivetrainState, "gearboxOilWarn" | "gearboxProtect" | "gearboxFailed">;
+  /** Tyres (issue #144), chassis dyno only. */
+  tyre?: Pick<DrivetrainState, "tyreWarn" | "tyreVibration" | "tyreFailed">;
+}
+
+/** Tyre message (issue #144) for the Getriebe-Pult note and the toast; "" = none. */
+export function tyreNote(s: Pick<DrivetrainState, "tyreWarn" | "tyreVibration" | "tyreFailed">): string {
+  if (s.tyreFailed) return "Reifen geplatzt: kaum Grip, hoher Rollwiderstand. Im Stand „Reifen wechseln“.";
+  if (s.tyreVibration) return "Reifen beschädigt: Vibrationen, weniger Grip. Sofort langsamer fahren.";
+  if (s.tyreWarn) return "Reifen überhitzen: über dem Geschwindigkeitsindex. Langsamer fahren.";
+  return "";
 }
 
 /** Gearbox oil message (issue #53) for the Getriebe-Pult note and the toast; "" = none. */
@@ -22,7 +32,7 @@ export function gearboxOilNote(s: Pick<DrivetrainState, "gearboxOilWarn" | "gear
 }
 
 /** Turns the engine state into toast conditions (pure, tested). */
-export function toastInputs({ state: s, outOfFuel, gearbox }: ToastSources): ToastInput[] {
+export function toastInputs({ state: s, outOfFuel, gearbox, tyre }: ToastSources): ToastInput[] {
   const out: ToastInput[] = [];
   if (s.destroyed) {
     const fatal = [...s.damage].reverse().find((d) => d.fatal);
@@ -35,6 +45,13 @@ export function toastInputs({ state: s, outOfFuel, gearbox }: ToastSources): Toa
     if (gearbox.gearboxFailed) out.push({ key: "gearbox-failed", severity: "critical", always: true, text });
     else if (gearbox.gearboxProtect) out.push({ key: "gearbox-protect", severity: "critical", always: true, text });
     else if (gearbox.gearboxOilWarn) out.push({ key: "gearbox-hot", severity: "warning", text });
+  }
+  // tyres (issue #144): the blowout always, the damage and the overheating warning only with the setting (calm)
+  if (tyre) {
+    const text = tyreNote(tyre);
+    if (tyre.tyreFailed) out.push({ key: "tyre-failed", severity: "critical", always: true, text });
+    else if (tyre.tyreVibration) out.push({ key: "tyre-damaged", severity: "warning", text });
+    else if (tyre.tyreWarn) out.push({ key: "tyre-hot", severity: "warning", text });
   }
   // engine damage and critical warnings are shown in any case; only the limit approach waits for the setting
   for (const d of s.damage.slice(-3)) {

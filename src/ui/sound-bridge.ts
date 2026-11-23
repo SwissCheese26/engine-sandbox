@@ -2,6 +2,7 @@
 // The UI only talks to `SoundOutput`; EngineSound satisfies it structurally.
 import { EngineSound } from "../audio/engine-sound.ts";
 import { EvSound } from "../audio/ev-sound.ts";
+import { TyreRumble, type TyreRumbleInput } from "../audio/tyre-rumble.ts";
 import type { EngineConfig, EngineState, EngineSummary } from "../core/index.ts";
 
 export interface SoundOutput {
@@ -11,6 +12,8 @@ export interface SoundOutput {
   /** Every frame, also while the engine is off (starter and crash need it). */
   update(state: EngineState, pedal: number): void;
   setVolume(v: number): void;
+  /** Tyre rumble at the vibration stage / after a blowout (issue #144); every frame on the chassis dyno. */
+  setTyre?(t: TyreRumbleInput): void;
   /** Pauses / continues the audio clock (menu open, #42). */
   suspend(): Promise<void>;
   resume(): Promise<void>;
@@ -37,12 +40,13 @@ export function createSound(): SoundOutput {
 class DriveSound implements SoundOutput {
   private engine = new EngineSound();
   private ev = new EvSound();
+  private tyre = new TyreRumble();
 
   get running(): boolean {
     return this.engine.running;
   }
   async start() {
-    await Promise.all([this.engine.start(), this.ev.start()]);
+    await Promise.all([this.engine.start(), this.ev.start(), this.tyre.start()]);
   }
   setConfig(cfg: EngineConfig, summary: EngineSummary) {
     this.engine.setConfig(cfg, summary);
@@ -59,15 +63,20 @@ class DriveSound implements SoundOutput {
   setVolume(v: number) {
     this.engine.setVolume(v);
     this.ev.setVolume(v);
+    this.tyre.setVolume(v);
+  }
+  setTyre(t: TyreRumbleInput) {
+    this.tyre.update(t);
   }
   async suspend() {
-    await Promise.all([this.engine.suspend(), this.ev.suspend()]);
+    await Promise.all([this.engine.suspend(), this.ev.suspend(), this.tyre.suspend()]);
   }
   async resume() {
-    await Promise.all([this.engine.resume(), this.ev.resume()]);
+    await Promise.all([this.engine.resume(), this.ev.resume(), this.tyre.resume()]);
   }
   stop() {
     this.engine.stop();
     this.ev.stop();
+    this.tyre.stop();
   }
 }

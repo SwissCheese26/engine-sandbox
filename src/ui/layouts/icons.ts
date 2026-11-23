@@ -20,6 +20,8 @@ export const ICON2 = {
   /** Glow plug coil: diesel pre-glow. */
   glow: `<svg viewBox="0 0 40 28" aria-hidden="true"><path ${S} d="M6 10c0-4 4-5 6-3M34 10c0-4-4-5-6-3M10 13c2 0 2 4 4 4s2-4 4-4 2 4 4 4 2-4 4-4 2 4 4 4M6 21h28"/></svg>`,
   /** Gear wheel with thermometer: gearbox oil temperature (#53). */
+  // tyre warning (#144): tyre cross-section with tread, exclamation mark (like the ISO 2575 tyre lamp)
+  tyre: `<svg viewBox="0 0 40 28" aria-hidden="true"><path ${S} d="M10 5c-4 5-4 13 0 18M30 5c4 5 4 13 0 18M10 23h20M8 26h4M28 26h4M13 23v3M27 23v3"/><path ${S} d="M20 7v9"/><circle cx="20" cy="20.5" r="1.6" fill="currentColor"/></svg>`,
   gearbox: `<svg viewBox="0 0 40 28" aria-hidden="true"><circle cx="15" cy="14" r="6" ${S}/><path ${S} d="M15 4v3M15 21v3M5 14h3M22 14h3M8 7l2 2M20 19l2 2M8 21l2-2M20 9l2-2"/><path ${S} d="M31 4v13"/><circle cx="31" cy="20.5" r="3" fill="currentColor"/></svg>`,
   /** Brake circle between brackets with "!": brake air pressure too low (#83, ISO 2575 brake warning). */
   air: `<svg viewBox="0 0 40 28" aria-hidden="true"><circle cx="20" cy="14" r="8" ${S}/><path ${S} d="M9 6a12 12 0 0 0 0 16M31 6a12 12 0 0 1 0 16M20 9.5v5.5"/><circle cx="20" cy="18.5" r="1.3" fill="currentColor"/></svg>`,

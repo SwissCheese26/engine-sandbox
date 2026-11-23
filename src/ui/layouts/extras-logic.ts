@@ -1,7 +1,7 @@
 // Cockpit extras (#83), pure and DOM-free so they are unit-tested: the additional gauges of the console strip
 // ("Zusatzinstrumente" like in a tuner car), the scales of the truck/bus design and the tuning bar. Everything shown
 // here is a value the core reports or a value of the engine configuration; nothing is estimated in the UI.
-import { AIR_SPRING_BAR, AIR_WARN_BAR, RETARDER_STAGES, type EngineConfig, type EngineLimits, type FuelKind, type GearboxThermalSpec, type WarningCode } from "../../core/index.ts";
+import { AIR_SPRING_BAR, AIR_WARN_BAR, RETARDER_STAGES, TYRE_HEAT, type EngineConfig, type EngineLimits, type FuelKind, type GearboxThermalSpec, type WarningCode } from "../../core/index.ts";
 import { fmt } from "../format.ts";
 import type { UnitPrefs } from "../settings.ts";
 import { toUnit } from "../units.ts";
@@ -15,6 +15,8 @@ import { torqueAt, type CurvePoint } from "./logic.ts";
 export interface GaugeContext {
   turbo: boolean;
   gearOil?: boolean;
+  /** Vehicle on the chassis dyno: tyre temperature (#144). */
+  tyre?: boolean;
   /** The core reports the charge-air temperature (#105). */
   intake?: boolean;
   /** Truck or bus on the chassis dyno: air brake and retarder (#83). */
@@ -36,6 +38,7 @@ export function gaugeAvailable(id: GaugeId, c: GaugeContext): boolean {
   switch (id) {
     case "boost": return c.turbo;
     case "gearOil": return !!c.gearOil;
+    case "tyre": return !!c.tyre;
     case "intake": return !!c.intake;
     case "air":
     case "retarder": return !!c.commercial;
@@ -49,7 +52,8 @@ export function gaugeAvailable(id: GaugeId, c: GaugeContext): boolean {
 /** Why a gauge cannot be chosen (tooltip of its disabled checkbox). */
 export function gaugeUnavailableHint(id: GaugeId): string {
   switch (id) {
-    case "gearOil": return "Nur mit Fahrzeug auf dem Prüfstand";
+    case "gearOil":
+    case "tyre": return "Nur mit Fahrzeug auf dem Prüfstand";
     case "boost": return "Saugmotor: kein Ladedruck";
     case "air":
     case "retarder": return "Nur Lkw und Bus auf dem Prüfstand";
@@ -108,6 +112,12 @@ export function gaugeScale(id: GaugeId, lim: EngineLimits, fuel: FuelKind, u: Un
       const redC = Math.min(160, gear.protectC ?? gear.damageC);
       return { ...scale, zone: { from: T(Math.min(160, gear.warnC)), to: T(redC) }, red: { from: T(redC), to: b } };
     }
+    case "tyre": {
+      // 0–160 °C hot zone (#144, core tyre-heat.ts TYRE_HEAT): yellow from the warning, red from the damage threshold
+      const a = T(0);
+      const b = T(160);
+      return { min: a, max: b, major: (b - a) / 4, minor: (b - a) / 16, zone: { from: T(TYRE_HEAT.warnC), to: T(TYRE_HEAT.limitC) }, red: { from: T(TYRE_HEAT.limitC), to: b } };
+    }
     case "lambda":
       // petrol runs around λ 1 (rich at full load), a diesel always lean (smoke limit ≈ 1.15–1.6, idle far above)
       return fuel === "petrol" ? { min: 0.7, max: 1.3, major: 0.3, minor: 0.1 } : { min: 1, max: 4, major: 1, minor: 0.5 };
@@ -153,6 +163,8 @@ export interface GaugeInputs {
   egtC: number;
   /** Gearbox oil (#53), NaN/undefined without a vehicle. */
   gearboxOilC?: number;
+  /** Tyre hot zone (#144), NaN/undefined without a vehicle. */
+  tyreCarcassC?: number;
   /** Vehicle systems (#83); NaN/undefined where the vehicle has none. */
   intakeAirC?: number;
   /** Catalyst temperature (#135), NaN/undefined without a catalyst. */
@@ -186,6 +198,7 @@ export function gaugeValue(id: GaugeId, v: GaugeInputs, u: UnitPrefs): number {
     case "oilP": return toUnit("pressure", v.oilPressureBar, u.pressure);
     case "oilT": return toUnit("temp", v.oilC, u.temp);
     case "gearOil": return toUnit("temp", v.gearboxOilC ?? Number.NaN, u.temp);
+    case "tyre": return toUnit("temp", v.tyreCarcassC ?? Number.NaN, u.temp);
     case "lambda": return v.lambda;
     case "egt": return toUnit("temp", v.egtC, u.temp);
     case "intake": return toUnit("temp", v.intakeAirC ?? Number.NaN, u.temp);

@@ -21,6 +21,8 @@ export interface SmokeInput {
   wheelSpin?: boolean;
   wheelsLocked?: boolean;
   brakeSlip?: number;
+  /** A tyre has blown (issue #144, DrivetrainState.tyreFailed): shredded rubber on the rim smokes while rolling. */
+  tyreFailed?: boolean;
   /** Liquid cooling; an air-cooled engine has no coolant to boil. */
   liquidCooled: boolean;
   coolantC: number;
@@ -78,7 +80,10 @@ export function slideSpeedMs(x: Pick<SmokeInput, "vehicle" | "vehicleSpeedMs" | 
 
 export function emission(x: SmokeInput): Emission {
   const slide = slideSpeedMs(x);
-  const tyre = slide < TYRE_MIN_SLIDE_MS ? 0 : clamp01(slide / TYRE_FULL_SLIDE_MS);
+  const slideSmoke = slide < TYRE_MIN_SLIDE_MS ? 0 : clamp01(slide / TYRE_FULL_SLIDE_MS);
+  // blown tyre (#144): rubber and rim on the road, more with speed (full at ≈ 100 km/h)
+  const v = Math.abs(fin(x.vehicleSpeedMs));
+  const tyre = Math.max(slideSmoke, x.vehicle && x.tyreFailed && v > 1 ? 0.3 + 0.5 * clamp01(v / 28) : 0);
 
   const warn = (code: Warning["code"]) => x.warnings.find((w) => w.code === code);
   const coolantWarn = warn("overheat-coolant");

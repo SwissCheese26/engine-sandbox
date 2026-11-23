@@ -175,11 +175,12 @@ export class CockpitExtras {
       this.sys = sys;
       this.syncUnits();
     }
-    const avail: GaugeContext = { turbo: this.turbo, gearOil: this.gearOil, ...r.has };
+    const tyreCarcassC = vehicle ? d.state.tyreCarcassC ?? Number.NaN : Number.NaN;
+    const avail: GaugeContext = { turbo: this.turbo, gearOil: this.gearOil, tyre: vehicle, ...r.has };
     // which pods are shown, the style and the tuning bar: only touched when the choice changes
     const shown = gaugeDisplay(this.design, st.ckGaugeStyle);
     const round = shown === "round";
-    const key = `${st.ckGauges.join(",")}|${shown}|${st.ckTuneBar}|${this.turbo}|${this.gearOil}|${Object.values(r.has).join("")}`;
+    const key = `${st.ckGauges.join(",")}|${shown}|${st.ckTuneBar}|${this.turbo}|${this.gearOil}|${vehicle}|${Object.values(r.has).join("")}`;
     if (key !== this.shownKey) {
       this.shownKey = key;
       this.el.dataset.gstyle = shown;
@@ -203,8 +204,8 @@ export class CockpitExtras {
       this.tuneKey = "";
       for (const p of this.pods) if (!p.wrap.hidden) p.dial.draw(true);
     }
-    const fi = { coolantC: s.coolantC, oilC: s.oilC, oilPressureBar: s.oilPressureBar, boostBar: s.boostBar, egtC: s.egtC, lambda: s.lambda, running: s.running, gearboxOilC, gearboxOilWarn: vehicle && !!d.state.gearboxOilWarn, ...r } as unknown as FieldInputs;
-    const gi = { boostBar: s.boostBar, oilPressureBar: s.oilPressureBar, oilC: s.oilC, lambda: s.lambda, egtC: s.egtC, gearboxOilC, ...r };
+    const fi = { coolantC: s.coolantC, oilC: s.oilC, oilPressureBar: s.oilPressureBar, boostBar: s.boostBar, egtC: s.egtC, lambda: s.lambda, running: s.running, gearboxOilC, gearboxOilWarn: vehicle && !!d.state.gearboxOilWarn, tyreCarcassC, tyreWarn: vehicle && !!d.state.tyreWarn, tyreFailed: vehicle && !!d.state.tyreFailed, ...r } as unknown as FieldInputs;
+    const gi = { boostBar: s.boostBar, oilPressureBar: s.oilPressureBar, oilC: s.oilC, lambda: s.lambda, egtC: s.egtC, gearboxOilC, tyreCarcassC, ...r };
     for (const p of this.pods) {
       if (p.wrap.hidden) continue;
       const v = gaugeValue(p.id, gi, u);
