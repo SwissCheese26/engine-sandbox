@@ -113,8 +113,8 @@ export const TUNING_LIMITS = {
   currentScale: { min: 0.5, max: 2 },
   packKwh: { min: 30, max: 200 },
   cRate: { min: 1, max: 15 },
-  firstRatio: { min: 5, max: 18 },
-  secondRatio: { min: 4, max: 12 },
+  firstRatio: { min: 4, max: 18 },
+  secondRatio: { min: 3, max: 12 },
   shiftKmh: { min: 40, max: 200 },
   vmaxKmh: { min: 100, max: 450 },
   maxRpm: { min: 10000, max: 25000 },
@@ -297,6 +297,7 @@ export function tuneEv(base: EvConfig, tIn: EvTuning, wheelRadiusM = 0.35): Tune
   // rotor speed: every motor scales with the fastest one; a changed rotor keeps its factory loss map (lossRefRpm)
   const rpmK = t.maxRpm / factoryRpm(base);
   const tpl = (axle: EvMotorConfig["axle"]) => base.motors.find((m) => m.axle === axle) ?? base.motors[0]!;
+  const frontRatio = (m: EvMotorConfig) => m.ratio * Math.min(1, type.maxRpm / Math.round(m.maxRpm * rpmK));
   const build = (m: EvMotorConfig): EvMotorConfig => {
     const spun = rpmK === 1 ? m : { ...m, maxRpm: Math.round(m.maxRpm * rpmK), lossRefRpm: m.lossRefRpm ?? m.maxRpm };
     // axial flux: a new machine with its own loss map, the disc rotor caps the speed (electric.md §6.2)
@@ -317,11 +318,12 @@ export function tuneEv(base: EvConfig, tIn: EvTuning, wheelRadiusM = 0.35): Tune
   // the reduction: rear motors (all of them without a rear axle drive) carry the first gear
   const geared = t.rearMotors > 0 ? "rear" : "front";
   const motors: EvMotorConfig[] = [
-    ...Array.from({ length: t.frontMotors }, () => build({ ...tpl("front"), axle: "front", ...(geared === "front" ? { ratio: t.firstRatio } : {}) })),
+    // an ungeared front axle keeps its own reduction, longer by the rotor speed the motor type takes away (#141)
+    ...Array.from({ length: t.frontMotors }, () => build({ ...tpl("front"), axle: "front", ratio: geared === "front" ? t.firstRatio : frontRatio(tpl("front")) })),
     ...Array.from({ length: t.rearMotors }, () => build({ ...tpl("rear"), axle: "rear", ratio: t.firstRatio })),
   ];
   if (inverterCapped) notes.push(`Wechselrichter am Limit: die Motoren bräuchten ${Math.round(needA)} A, ein SiC-Wechselrichter liefert höchstens ${INVERTER_MAX_A} A${t.highVoltage ? "" : " (800 V halbiert den Strom)"}.`);
-  if (rpmCapped) notes.push(`Axialfluss-Scheibenläufer drehen höchstens ${type.maxRpm} 1/min: kürzere Untersetzung für Vmax.`);
+  if (rpmCapped) notes.push(`Axialfluss-Scheibenläufer drehen höchstens ${type.maxRpm} 1/min: für Vmax eine kleinere Untersetzung (länger übersetzt) wählen.`);
   const ev: EvConfig = { ...base, motors, battery, coolingScale: cool.motor * mCool.ua, twoSpeed: t.gears === 2 ? { secondRatio: t.secondRatio, shiftKmh: t.shiftKmh } : undefined };
   if (!ev.twoSpeed) delete ev.twoSpeed;
   const rpmVmaxKmh = evRpmVmaxKmh(ev, wheelRadiusM);
@@ -347,9 +349,78 @@ export function tuneEv(base: EvConfig, tIn: EvTuning, wheelRadiusM = 0.35): Tune
   };
 }
 
-/** The strongest setup the limits allow ("Maximum"). */
+/** Rotor speed limit a tuning gives the fastest motor, 1/min (the motor type caps it). */
+function effectiveRpm(t: EvTuning): number {
+  return Math.min(t.maxRpm, MOTOR_TYPES[t.motorType].maxRpm);
+}
+
+/**
+ * Another motor type: the reduction follows the new rotor speed limit (ratio ∝ n_max), so the road speed at the
+ * rpm limit stays where it was (as far as the ratio limits allow; #141).
+ */
+export function withMotorType(t: EvTuning, motorType: EvMotorType): EvTuning {
+  const k = effectiveRpm({ ...t, motorType }) / effectiveRpm(t);
+  const L = TUNING_LIMITS;
+  const first = clamp(Math.round(t.firstRatio * k * 100) / 100, L.firstRatio.min, L.firstRatio.max);
+  const second = clamp(Math.round(t.secondRatio * k * 100) / 100, L.secondRatio.min, first - MIN_STEP);
+  return { ...t, motorType, firstRatio: first, secondRatio: second };
+}
+
+/** Generic strongest setup without a car (all limits at the top; heavy). The tuner uses fastestTuning. */
 export function maxTuning(tyre: TyreType = "semi-slick"): EvTuning {
   return { frontMotors: 2, rearMotors: 2, motorScale: TUNING_LIMITS.motorScale.max, motorType: "radial", motorCooling: "winding-oil", currentScale: 2, packKwh: 200, chemistry: "nca", cRate: 15, highVoltage: true, cooling: "track", tyre, gears: 2, firstRatio: 15, secondRatio: 8, shiftKmh: 100, vmaxKmh: null, maxRpm: TUNING_LIMITS.maxRpm.max };
+}
+
+const MOTOR_LAYOUTS: [number, number][] = [[1, 1], [1, 2], [2, 2], [3, 3], [4, 4]];
+
+/**
+ * "Maximum" (#141): the fastest car, not the heaviest. 800 V NCA pack at its C-rate limit, sized to the smallest
+ * energy that still reaches the contactor current (PACK_BUS_MAX_A); motors sized so their peak power just matches
+ * what pack and inverters deliver (no idle motor mass); then motor type and count (more motors only where traction
+ * gains) by the simulated 0–100 km/h, ties by Vmax. The second gear is set for the rpm limit at ≈ 420 km/h. Last the
+ * tyre: from a standing start a cold semi-slick can grip less than a warm UHP tyre (tyres.ts), so both are tried.
+ * Above ≈ 1 g the launch is traction-limited: more power then mainly shows above 100 km/h.
+ */
+export function fastestTuning(setup: CarSetup): EvTuning {
+  const tyre: TyreType = "uhp";
+  const base = setup.ev!;
+  const r = setup.vehicle.wheelRadiusM;
+  const L = TUNING_LIMITS;
+  const t0: EvTuning = { ...evTuningOf(base, tyre), chemistry: "nca", cRate: CELLS.nca.maxC, highVoltage: true, cooling: "track", motorCooling: "winding-oil", currentScale: 1, gears: 2, vmaxKmh: null, maxRpm: L.maxRpm.max, tyre };
+  // smallest pack (5 kWh steps) whose current reaches the contactor limit
+  const ampsOf = (b: EvBatteryConfig) => b.maxDischargeC * b.parallelCells * b.cellAh;
+  let packKwh: number = L.packKwh.max;
+  for (let kwh = L.packKwh.min; kwh <= L.packKwh.max; kwh += 5) {
+    if (ampsOf(tuneEv(base, { ...t0, packKwh: kwh }, r).ev.battery) >= PACK_BUS_MAX_A - 1) { packKwh = kwh; break; }
+  }
+  let best: { t: EvTuning; t100: number; vmax: number } | null = null;
+  for (const motorType of ["radial", "axial"] as EvMotorType[]) {
+    const rpm = Math.min(L.maxRpm.max, MOTOR_TYPES[motorType].maxRpm);
+    // rpm limit at ≈ 420 km/h in second gear; first gear ≈ 2 × longer for the launch
+    const second = clamp(Math.round(((rpm * Math.PI) / 30 / (420 / 3.6 / r)) * 100) / 100, L.secondRatio.min, L.secondRatio.max);
+    const first = clamp(Math.round(second * 1.9 * 100) / 100, Math.max(L.firstRatio.min, second + MIN_STEP), L.firstRatio.max);
+    for (const [front, rear] of MOTOR_LAYOUTS) {
+      const tl: EvTuning = { ...t0, packKwh, motorType, frontMotors: front, rearMotors: rear, firstRatio: first, secondRatio: second, shiftKmh: Math.min(L.shiftKmh.max, Math.round((rpm * Math.PI) / 30 / first * r * 3.6 * 0.95 / 5) * 5) };
+      const cap = tuneEv(base, { ...tl, motorScale: L.motorScale.max }, r).systemKw;
+      let scale: number = L.motorScale.max;
+      for (let s = L.motorScale.min; s <= L.motorScale.max + 1e-9; s += 0.05) {
+        if (tuneEv(base, { ...tl, motorScale: s }, r).systemKw >= 0.99 * cap) { scale = Math.round(s * 100) / 100; break; }
+      }
+      const t = { ...tl, motorScale: scale };
+      const tuned = tuneEv(base, t, r);
+      const t100 = estimateEv(setup, tuned).t100 ?? Infinity;
+      const vmax = evTopSpeed(setup, tuned).kmh;
+      // more motors only when they gain at least 0.05 s; otherwise the lighter, simpler layout stays
+      if (!best || t100 < best.t100 - 0.05 || (Math.abs(t100 - best.t100) <= 0.05 && vmax > best.vmax + 5)) best = { t, t100, vmax };
+    }
+  }
+  let pick = best!;
+  for (const ty of ["semi-slick"] as TyreType[]) {
+    const t = { ...pick.t, tyre: ty };
+    const t100 = estimateEv(setup, tuneEv(base, t, r)).t100 ?? Infinity;
+    if (t100 < pick.t100) pick = { ...pick, t, t100 };
+  }
+  return pick.t;
 }
 
 export type VmaxBy = "governor" | "rpm" | "drag";

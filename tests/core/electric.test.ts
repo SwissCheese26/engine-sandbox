@@ -7,7 +7,7 @@ import type { EvMotorConfig, SimInputs } from "../../src/core/index.ts";
 import { defaultConfig } from "../../src/data/presets.ts";
 import { libraryCar } from "../../src/data/vehicle-library.ts";
 import { EV_LIBRARY } from "../../src/data/ev-library.ts";
-import { estimateEv, evTuningOf, maxTuning, tuneEv, validTuning } from "../../src/data/ev-tuning.ts";
+import { estimateEv, evTopSpeed, evTuningOf, fastestTuning, maxTuning, tuneEv, validTuning, withMotorType } from "../../src/data/ev-tuning.ts";
 import { driveEv, evRig } from "./ev-run.ts";
 
 // Electric drive (issue #108): motor curve, battery sag, regen, SoC drain and range, AWD split, drive modes, tuning.
@@ -367,6 +367,26 @@ describe("stronger motors: size, type, motor cooling (#141)", () => {
     expect(o.s).toBeGreaterThan(w.s);
     expect(d.s).toBeGreaterThan(o.s);
     expect(o.cont).toBeGreaterThan(w.cont);
+  });
+  test("Maximum builds the fastest car: no idle motor mass, quicker than factory, high Vmax", () => {
+    const r = plaidCar.setup.vehicle.wheelRadiusM;
+    const t = fastestTuning(plaidCar.setup);
+    const fast = tuneEv(plaid, t, r);
+    const heavy = tuneEv(plaid, maxTuning(), r);
+    expect(fast.systemPs).toBeGreaterThan(2500);
+    expect(fast.ev.motors.reduce((a, m) => a + m.peakPowerKw, 0)).toBeLessThan(1.1 * fast.systemKw); // motors ≈ pack
+    expect(fast.deltaKg).toBeLessThan(heavy.deltaKg - 1000);
+    expect(t.packKwh).toBeLessThan(200);
+    const f100 = estimateEv(plaidCar.setup, tuneEv(plaid, factory, r)).t100!;
+    expect(estimateEv(plaidCar.setup, fast).t100!).toBeLessThan(f100);
+    expect(evTopSpeed(plaidCar.setup, fast).kmh).toBeGreaterThan(380);
+  });
+  test("another motor type adapts the reduction: axial flux keeps a usable Vmax", () => {
+    const r = plaidCar.setup.vehicle.wheelRadiusM;
+    const ax = withMotorType({ ...factory, vmaxKmh: null }, "axial");
+    expect(ax.firstRatio).toBeLessThan(factory.firstRatio);
+    expect(evTopSpeed(plaidCar.setup, tuneEv(plaid, ax, r)).kmh).toBeGreaterThan(250);
+    expect(withMotorType(ax, "radial").firstRatio).toBeGreaterThan(ax.firstRatio); // back: longer reduction again
   });
   test("factory values are unchanged: radial, water jacket, the library untouched", () => {
     for (const c of EV_LIBRARY) {

@@ -247,3 +247,15 @@ Wurzel der Wärmeabfuhr (×1,3 bzw. ×1,6). Die „Rennstrecke“-Kühlung (§6)
 
 **Ergebnis.** Akku, Wechselrichter und Haftung begrenzen weiter. 8 Motoren mit ×4 könnten > 10 MW, ein 800-V-Akku
 mit 3000 A liefert aber ≈ 2,1 MW (≈ 2830 PS); die Zusammenfassung nennt den begrenzenden Teil und was die Motoren könnten.
+
+**„Maximum“ = schnellstes Auto (`fastestTuning`).** Nicht alle Regler an den Anschlag (das brächte beim Plaid ≈ 2,5 t
+ungenutzte Motormasse), sondern: 800-V-NCA-Akku an der C-Rate-Grenze, so klein, dass er gerade den Schützstrom
+(3000 A) liefert (Plaid-Zelle: 165 kWh); Motoren so groß, dass ihre Spitzenleistung Akku und Wechselrichter gerade
+ausnutzt; Bauart und Motorzahl nach der simulierten 0–100-Zeit (mehr Motoren nur, wenn die Haftung ≥ 0,05 s
+gewinnt), zweiter Gang für die Drehzahlgrenze bei ≈ 420 km/h. Plaid: Axialfluss 1 + 1, ≈ 2650 PS, ≈ 3010 kg,
+0–100 ≈ 2,75 s (Werk 2,80 s), Vmax ≈ 420 km/h. Ab ≈ 1 g ist der Start haftungsbegrenzt (μ·g, kein Abtrieb im
+Modell): die Mehrleistung zeigt sich vor allem über 100 km/h.
+
+**Bauart wechseln.** Die Untersetzung folgt der neuen Drehzahlgrenze (i ∝ n_max, `withMotorType`), eine ungeschaltete
+Vorderachse ebenso; sonst fiele die Vmax des Plaid mit Axialfluss auf ≈ 170 km/h. Untere Grenzen dafür: 1. Gang 4 : 1,
+2. Gang 3 : 1.
