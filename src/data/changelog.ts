@@ -20,6 +20,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    date: "2026-11-23",
+    title: "E-Tuner: Max. Motordrehzahl für mehr Vmax",
+    items: [
+      { kind: "neu", text: "Im E-Tuner (Werkbank, „Getriebe und Vmax“) lässt sich die „Max. Motordrehzahl“ bis 25 000 1/min anheben, ab Werk steht der Wert des Autos (Plaid 20 000 1/min). Das braucht eine Karbonhülse um den Rotor: etwas mehr Gewicht und mehr Verluste bei hoher Drehzahl. Oben fällt das Moment weiter ab, die Leistung begrenzen Akku und Motoren. Mit ausgeschaltetem Begrenzer fährt der Plaid so etwa 415 statt 335 km/h. Der Vmax-Begrenzer reicht bis zur neuen Grenze, die Zusammenfassung zeigt „begrenzt durch Motordrehzahl“, „Luftwiderstand“ oder „Begrenzer“.", refs: [139, 140] },
+    ],
+  },
+  {
     date: "2026-11-22",
     title: "Elektroantrieb in der Werkbank, 2-Gang-Getriebe und Vmax für E-Autos, Live-Reichweite für alle Fahrzeuge und Fahrstufen P N D, Bremse hält bei der Automatik die Antriebsräder, Katheizen nach dem Kaltstart",
     items: [

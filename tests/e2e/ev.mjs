@@ -208,6 +208,16 @@ export async function evChecks({ browser, base, outDir, failures, errors, label,
       await page.press(`${row} .field__num`, "Enter");
     }
   };
+  // #139: max. motor speed: on the Plaid with the limiter off, 25 000 1/min gives a higher Vmax than the factory 20 000
+  const vmaxText = () => page.textContent('.evb [data-o="vmax"]');
+  await set("vmaxKmh", 450);
+  const vFactory = await vmaxText();
+  await set("maxRpm", 25000);
+  await set("vmaxKmh", 450);
+  const vFast = await vmaxText();
+  const limiterMax = await page.getAttribute('.evb [data-tune="vmaxKmh"] input[type=range]', "max");
+  if (!(num(vFast) > num(vFactory) + 40) || !/begrenzt durch (Motordrehzahl|Luftwiderstand)/.test(vFast) || !(Number(limiterMax) > num(vFactory) + 40)) fail(`Max. Motordrehzahl 25 000 hebt Vmax nicht (${vFactory} → ${vFast}, Begrenzer bis ${limiterMax})`);
+  console.log(`${label}: Plaid Vmax ${vFactory} → ${vFast} (25 000 1/min)`);
   // Arthur: "4 Motoren kann man nicht auswählen": the count just picked stays, the other axle gives way
   const counts = () => page.evaluate(() => ({
     f: document.querySelector('.evb [data-tune="frontMotors"] input:checked')?.value,

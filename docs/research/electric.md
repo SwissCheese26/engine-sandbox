@@ -191,3 +191,24 @@ Physikalische Grenzen (`ev-tuning.ts`):
 - Der gesamte Akkustrom ist durch Hochvolt-Schütze, Sicherung und Stromschienen auf ≈ 3000 A begrenzt **[S]**. Bei
   400 V sind damit ≈ 1,1 MW möglich; erst 800 V bringt ≈ 2 MW (bis etwa 2800 PS).
 - Darüber entscheidet die Haftung: 2000 kW auf 2,5 t sind bei μ = 1,15 nur oberhalb ≈ 250 km/h nutzbar.
+
+### 6.1 Max. Motordrehzahl (Karbonhülse, #139)
+
+Die Drehzahlgrenze eines PMSM-Rotors setzt vor allem die Fliehkraft auf Magnete und Blechpaket. Tesla wickelt den
+Rotor des Plaid mit einer vorgespannten Karbonfaser-Hülse und kommt so auf ≈ 20 000 1/min (Tesla Model S Plaid
+Präsentation 06/2021; CleanTechnica, „More Details On Tesla's Innovative Carbon-Wrapped Motor“, 16.06.2021). Lucid
+nennt für die Air-Antriebseinheit ≈ 20 000 1/min (TorqueNews, „Tech Talk: Lucid's Electric Motors Are The Best In
+The Business“). Serienreife Hochdrehzahl-Motoren mit 25 000 … 30 000 1/min sind in Entwicklung (IDTechEx, „The Need
+for Speed: EV Motors Breaking the 30,000 rpm Barrier“). Im Tuner reicht die Grenze daher bis 25 000 1/min.
+
+- Alle Motoren eines Autos skalieren mit dem schnellsten (`maxRpm` im Tuner).
+- Kosten: Hülse und stärkerer Rotor ≈ 0,8 kg je Motor und 1000 1/min über Werk **[S]**. Der Rotor behält das
+  Verlustkennfeld seiner Werksdrehzahl (`lossRefRpm`): Eisenverluste steigen weiter ∝ n^1,5 (§2.3); dazu kommen
+  Luftreibung im Spalt und Wirbelströme in der Hülse ∝ n³ (Scheibenreibung ∝ ω³, J. E. Vrancik, NASA TN D-4849,
+  1968), ≈ 0,3 % der Spitzenleistung bei +25 % Drehzahl **[S]**.
+- Über der Werksdrehzahl bleibt der Motor in der Feldschwächung (§2.1): oberhalb ≈ 3 × Eckdrehzahl fällt die Leistung
+  ∝ 1/n. Akku, Wechselrichter und Feldschwächung begrenzen also die Leistung; Vmax endet, wo die Antriebsleistung
+  den Fahrwiderstand (Luft + Rollen) trifft (`evTopSpeed`), oder an der Drehzahlgrenze, wenn die zuerst kommt.
+- Ergebnis: Model S Plaid ohne Begrenzer 20 000 1/min ≈ 337 km/h, 25 000 1/min ≈ 417 km/h (beides
+  Drehzahlgrenze, die drei Motoren geben oben noch ≈ 520 kW); VW ID.3 ab ≈ 22 000 1/min ≈ 226 km/h durch den
+  Luftwiderstand begrenzt.

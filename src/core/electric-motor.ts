@@ -11,7 +11,8 @@
  *    ∝ 1/ω²).
  *  - Mechanical speed limit maxRpm (rotor bursting, bearings): torque fades out over the last 2 %.
  * Losses (electric.md §2.3): copper ∝ T² (∝ I²), iron ∝ ω^1.5 (Steinmetz), magnet drag of the PMSM also unloaded,
- * plus a constant share (bearings, windage); inverter ≈ 2 %.
+ * plus a constant share (bearings, windage); inverter ≈ 2 %. Above the factory rotor speed (lossRefRpm, tuned
+ * carbon-sleeved rotor) the air-gap windage and the eddy losses in the sleeve grow ∝ n³ (electric.md §6.1).
  */
 import type { EvMotorConfig } from "./types.ts";
 
@@ -30,6 +31,12 @@ const LOSS: Record<EvMotorConfig["kind"], { cu: number; fe: number; c0: number }
   pmsm: { cu: 0.055, fe: 0.014, c0: 0.002 },
   induction: { cu: 0.08, fe: 0.008, c0: 0.002 },
 };
+
+/**
+ * Extra windage / sleeve loss above the factory rotor speed, share of the peak power at (n / n_ref)³ − 1 (disc
+ * windage ∝ ω³, Vrancik NASA TN D-4849 1968; electric.md §6.1): ≈ 0.3 % of the peak power at +25 % speed.
+ */
+export const OVERSPEED_WINDAGE = 0.003;
 
 /** Peak torque at a phase current: linear up to the design current, saturating above (I^0.75). */
 export function torqueAtCurrent(m: EvMotorConfig, currentA: number, designA = m.inverterA): number {
@@ -81,10 +88,11 @@ export function motorMaxPowerKw(m: EvMotorConfig, rpm: number, voltageRatio = 1,
 export function motorLossKw(m: EvMotorConfig, rpm: number, torqueNm: number): number {
   const c = LOSS[m.kind];
   const tRel = Math.abs(torqueNm) / Math.max(1, m.peakTorqueNm);
-  const nRel = Math.abs(rpm) / Math.max(1, m.maxRpm);
+  const nRel = Math.abs(rpm) / Math.max(1, m.lossRefRpm ?? m.maxRpm);
+  const windage = OVERSPEED_WINDAGE * Math.max(0, nRel ** 3 - 1);
   // the induction motor needs magnetising current as soon as it carries torque (none when it idles along)
   const mag = m.kind === "induction" ? 0.005 * Math.min(1, tRel * 20) : 0;
-  return m.peakPowerKw * (c.cu * tRel * tRel + c.fe * Math.pow(nRel, 1.5) + c.c0 * Math.min(1, nRel * 10) + mag);
+  return m.peakPowerKw * (c.cu * tRel * tRel + c.fe * Math.pow(nRel, 1.5) + c.c0 * Math.min(1, nRel * 10) + mag + windage);
 }
 
 /**
