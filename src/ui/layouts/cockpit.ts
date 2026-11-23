@@ -37,6 +37,7 @@ const LAMPS: { k: LampKey; color: "red" | "amber" | "ice" | "green"; icon: strin
   { k: "ice", color: "ice", icon: BASE_ICON.ice, on: "Glättegefahr" },
   { k: "fuel", color: "amber", icon: ICON2.fuel, on: "Tankreserve" },
   { k: "gearbox", color: "amber", icon: ICON2.gearbox, on: "Getriebe heiß" },
+  { k: "tyre", color: "amber", icon: ICON2.tyre, on: "Reifen überhitzen" },
   { k: "air", color: "red", icon: ICON2.air, on: "Bremsdruck zu niedrig" },
   { k: "adblue", color: "amber", icon: ICON2.adblue, on: "AdBlue nachfüllen" },
   { k: "cat", color: "green", icon: ICON2.cat, on: "Kat heizt" },
@@ -728,6 +729,7 @@ export class CockpitView implements LayoutView {
   /** Digital fields of an EV (#108): same slots, EV quantities (ev-logic.ts evField). */
   private updateFieldsEv(f: Frame, stored: FieldSet) {
     const u = prefs();
+    if (this.fieldCtx.vehicle !== (f.mode === "vehicle")) this.fieldCtx = { ...this.fieldCtx, vehicle: f.mode === "vehicle" };
     stored.forEach((storedId: FieldId, i) => {
       const t = evField(storedId, f.s, u) ?? formatField(shownField(storedId, this.fieldCtx), this.fieldInputs(f), u, this.summary.limits);
       const key = `${t.label}|${t.value}|${t.unit}|${t.warn}`;
@@ -758,6 +760,7 @@ export class CockpitView implements LayoutView {
       altitudeM: (d.environment.terrain ?? "static") === "static" ? Number.NaN : ds.roadAltitudeM ?? Number.NaN,
       gradePct: ds.roadGradePct ?? d.environment.gradePct, t0to100S: ds.t0to100S, t0to100Running: ds.t0to100Running,
       ambientC: d.environment.ambientC, airCooled: false,
+      tyreCarcassC: vehicle ? ds.tyreCarcassC ?? Number.NaN : Number.NaN, tyreWarn: !!ds.tyreWarn, tyreFailed: !!ds.tyreFailed,
     };
   }
 
@@ -875,6 +878,7 @@ export class CockpitView implements LayoutView {
       gradePct: ds.roadGradePct ?? d.environment.gradePct, t0to100S: ds.t0to100S, t0to100Running: ds.t0to100Running,
       ambientC: d.environment.ambientC, airCooled: airCooled(this.cfg), ...r,
       gearboxOilC: vehicle ? ds.gearboxOilC ?? Number.NaN : Number.NaN, gearboxOilWarn: !!ds.gearboxOilWarn,
+      tyreCarcassC: vehicle ? ds.tyreCarcassC ?? Number.NaN : Number.NaN, tyreWarn: !!ds.tyreWarn, tyreFailed: !!ds.tyreFailed,
     };
     stored.forEach((storedId: FieldId, i) => {
       const id = shownField(storedId, this.fieldCtx);
@@ -939,6 +943,7 @@ export class CockpitView implements LayoutView {
       fuelReserve: vehicle ? d.tank.reserve : undefined,
       parkingBrake: vehicle ? !!ds.parkingBrake : undefined,
       gearbox: vehicle ? { hot: !!ds.gearboxOilWarn, protect: !!ds.gearboxProtect, failed: !!ds.gearboxFailed } : undefined,
+      tyre: vehicle ? { hot: !!ds.tyreWarn, vibration: !!ds.tyreVibration, failed: !!ds.tyreFailed } : undefined,
       ...lampSystems(f, this.cfg),
       catHeating: s.coldStart === "cat-heating",
     });

@@ -725,7 +725,7 @@ export class App {
       if (this.wasRunning && !s.running && tankEmpty) this.fuelStall = true;
       if (s.running || !tankEmpty) this.fuelStall = false;
       this.wasRunning = s.running;
-      this.toasts.update({ state: s, outOfFuel: this.fuelStall, gearbox: this.inputs.dynoMode === "vehicle" ? this.gearbox.drivetrain.state : undefined }, now, getSettings().limitHints === "toast");
+      this.toasts.update({ state: s, outOfFuel: this.fuelStall, gearbox: this.inputs.dynoMode === "vehicle" ? this.gearbox.drivetrain.state : undefined, tyre: this.inputs.dynoMode === "vehicle" ? this.gearbox.drivetrain.state : undefined }, now, getSettings().limitHints === "toast");
       if (this.inputs.dynoMode === "vehicle") this.gearbox.update(this.console.brakeHeld);
       {
         const ds = this.gearbox.drivetrain.state;
@@ -734,11 +734,16 @@ export class App {
       this.shiftPad.update(this.inputs.dynoMode === "vehicle");
       // board computer counts only while the car drives on the chassis dyno (#40, #41)
       this.gearbox.trip.step(dt, s, this.inputs.dynoMode === "vehicle");
-      if (this.soundStarted) this.sound.update(s, this.inputs.pedal);
+      if (this.soundStarted) {
+        this.sound.update(s, this.inputs.pedal);
+        const ds = this.gearbox.drivetrain.state;
+        const veh = this.inputs.dynoMode === "vehicle";
+        this.sound.setTyre?.({ vibration: veh && !!ds.tyreVibration, failed: veh && !!ds.tyreFailed, speedMs: ds.speedKmh / 3.6, wheelRadiusM: this.gearbox.drivetrain.vehicle.wheelRadiusM });
+      }
       const st = getSettings();
       this.updateSmoke(s, dt, st.effects);
       this.wake.update(st.wakeLock && s.running);
-      this.haptics.update(dt, s, this.evSim ? Infinity : this.cfg.revLimitRpm, this.inputs.pedal, st.vibration === "on" || (st.vibration === "auto" && isTouch()));
+      this.haptics.update(dt, s, this.evSim ? Infinity : this.cfg.revLimitRpm, this.inputs.pedal, st.vibration === "on" || (st.vibration === "auto" && isTouch()), this.tyreHaptics());
       this.rafId = requestAnimationFrame(frame);
     };
     this.rafId = requestAnimationFrame(frame);
@@ -767,12 +772,20 @@ export class App {
     }
   }
 
+  /** Tyre state for the vibration and the smoke (issue #144); undefined on the engine dyno. */
+  private tyreHaptics(): { vibration: boolean; failed: boolean; moving: boolean } | undefined {
+    if (this.inputs.dynoMode !== "vehicle") return undefined;
+    const ds = this.gearbox.drivetrain.state;
+    return { vibration: !!ds.tyreVibration, failed: !!ds.tyreFailed, moving: ds.speedKmh > 5 };
+  }
+
   /** Smoke and steam from the state values only (smoke-emitters.ts); the lamps' limits, no own thresholds. */
   private updateSmoke(s: EngineState, dt: number, enabled: boolean) {
     const vehicle = this.inputs.dynoMode === "vehicle";
     const cooling = this.cfg.cooling.type;
     const e = emission({
       running: s.running, vehicle, vehicleSpeedMs: s.vehicleSpeedMs, wheelSlip: s.wheelSlip, wheelSpin: s.wheelSpin, wheelsLocked: s.wheelsLocked, brakeSlip: s.brakeSlip,
+      tyreFailed: vehicle && !!this.gearbox.drivetrain.state.tyreFailed,
       liquidCooled: cooling !== "air" && cooling !== "oil-air", coolantC: s.coolantC, coolantMaxC: this.summary.limits.coolantMaxC,
       oilC: s.oilC, oilMaxC: this.summary.limits.oilMaxC, warnings: s.warnings, damaged: s.destroyed || s.damage.length > 0,
       diesel: this.cfg.fuel === "diesel", smoke: s.smoke, smokeMax: FALLBACK_LIMITS.smokeMax,

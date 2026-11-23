@@ -137,6 +137,8 @@ export const FIELD_IDS = [
   "intake", "battery", "air", "retarder", "adblue", "lean",
   // catalyst temperature (#135), engines with a catalyst
   "cat",
+  // tyre hot-zone temperature and state (#144), vehicles on the chassis dyno
+  "tyre",
 ] as const;
 export type FieldId = (typeof FIELD_IDS)[number];
 export type FieldSet = [FieldId, FieldId, FieldId];
@@ -162,20 +164,20 @@ export function validateFields(raw: unknown): FieldSet {
  * Gauges the console strip can show: values of EngineState and of the vehicle systems (core vehicle-systems.ts,
  * #83). Each is offered only where the vehicle has it (gaugeAvailable).
  */
-export const GAUGE_IDS = ["boost", "oilP", "oilT", "gearOil", "lambda", "egt", "cat", "intake", "battery", "air", "retarder", "adblue", "lean"] as const satisfies readonly FieldId[];
+export const GAUGE_IDS = ["boost", "oilP", "oilT", "gearOil", "lambda", "egt", "cat", "intake", "battery", "air", "retarder", "adblue", "lean", "tyre"] as const satisfies readonly FieldId[];
 export type GaugeId = (typeof GAUGE_IDS)[number];
 export type GaugeStyle = "round" | "bar";
 
 export const GAUGE_LABEL: Record<GaugeId, string> = {
   boost: "Ladedruck", oilP: "Öldruck", oilT: "Öltemperatur", gearOil: "Getriebeöl", lambda: "Lambda", egt: "Abgastemperatur",
   intake: "Ansauglufttemperatur", battery: "Batteriespannung", air: "Druckluft (Vorrat)", retarder: "Retarderstufe", adblue: "AdBlue-Füllstand", lean: "Schräglage",
-  cat: "Katalysatortemperatur",
+  cat: "Katalysatortemperatur", tyre: "Reifentemperatur",
 };
 /** Captions under the gauges (narrow on phones); the full name is the tooltip and the picker label. */
 export const GAUGE_SHORT: Record<GaugeId, string> = {
   boost: "Ladedruck", oilP: "Öldruck", oilT: "Öltemp.", gearOil: "Getr.-Öl", lambda: "Lambda", egt: "Abgas",
   intake: "Ansaugl.", battery: "Batterie", air: "Druckluft", retarder: "Retarder", adblue: "AdBlue", lean: "Schräglage",
-  cat: "Kat-Temp",
+  cat: "Kat-Temp", tyre: "Reifen",
 };
 
 /** What the console shows for the chosen style in a design: "tile" and "segment" are the screen equivalents. */

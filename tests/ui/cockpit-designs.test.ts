@@ -129,7 +129,9 @@ describe("field cycling", () => {
     // air pressure, retarder, AdBlue and lean only where the vehicle has them
     for (const id of ["air", "retarder", "adblue", "lean"] as const) expect(fieldAvailable(id, { turbo: true, vehicle: true })).toBe(false);
     expect(fieldAvailable("air", { turbo: true, vehicle: true, commercial: true })).toBe(true);
-    expect(shownField("lean", { turbo: true, vehicle: true })).toBe("coolant");
+    // after lean (and the catalyst) comes the tyre field (#144), which every vehicle has
+    expect(shownField("lean", { turbo: true, vehicle: true })).toBe("tyre");
+    expect(shownField("lean", { turbo: true, vehicle: false })).toBe("coolant");
     expect(nextField("ambient", 1, { turbo: true, vehicle: true })).toBe("battery");
     expect(fieldAvailable("intake", ALL)).toBe(true);
     expect(nextField("ambient", 1, ALL)).toBe("intake");

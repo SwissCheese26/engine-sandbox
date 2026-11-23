@@ -17,7 +17,7 @@ const spd = (kmh: number) => `${Math.round(toUnit("speed", kmh)).toLocaleString(
 
 const LAYOUT_LABEL: Record<DriveLayout, string> = { fwd: "Frontantrieb (FWD)", rwd: "Heckantrieb (RWD)", awd: "Allrad (AWD)" };
 /** Speed indices offered in the list (passenger cars and motorcycles). */
-const INDEX_CHOICES: SpeedIndex[] = ["L", "M", "Q", "S", "T", "H", "V", "W", "Y", "(Y)"];
+const INDEX_CHOICES: SpeedIndex[] = ["L", "M", "Q", "R", "S", "T", "H", "V", "W", "Y", "(Y)"];
 
 const fmt = (n: number, d: number) => n.toLocaleString("de-DE", { minimumFractionDigits: d, maximumFractionDigits: d });
 
