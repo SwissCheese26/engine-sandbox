@@ -235,16 +235,17 @@ describe("drivetrain vehicle API (issue #22)", () => {
     expect(d.inputs(1 / 60, fake, 0).grip).toBeCloseTo(0.5, 5);
   });
 
-  test("slicks warm up with a burnout and gain grip", () => {
+  test("slicks warm up in a wheel-spinning launch and gain grip", () => {
     const car = libraryCar("car-bmw-m3-e46").setup;
     car.tyre.type = "slick";
     const { dt, step, sim } = rig(car, "ref-bmw-s54b32");
     const cold = dt.state.grip;
     expect(cold).toBeLessThan(1.1);
-    // burnout: brake held? no – full throttle in first, wheels spin
+    // full throttle in first: the wheels spin for ≈ 1.5 s (no standing burnout); since #149 the slip heat is the
+    // friction power F·v_slip (tyre-heat.ts), ≈ +15 K here; standing burnouts: tyre-slip.test.ts
     let spinT = 0;
     for (let i = 0; i < 5 * 60; i++) { step(1); if (sim.state.wheelSpin) spinT += 1 / 60; }
-    expect(dt.state.tyreTempC).toBeGreaterThan(40);
+    expect(dt.state.tyreTempC).toBeGreaterThan(30);
     expect(dt.state.grip).toBeGreaterThan(cold);
     expect(spinT).toBeGreaterThan(0);
   });

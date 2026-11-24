@@ -12,13 +12,14 @@ export interface ToastSources {
   /** Gearbox oil (issue #53), chassis dyno only. */
   gearbox?: Pick<DrivetrainState, "gearboxOilWarn" | "gearboxProtect" | "gearboxFailed">;
   /** Tyres (issue #144), chassis dyno only. */
-  tyre?: Pick<DrivetrainState, "tyreWarn" | "tyreVibration" | "tyreFailed">;
+  tyre?: Pick<DrivetrainState, "tyreWarn" | "tyreVibration" | "tyreFailed" | "tyreTreadHot">;
 }
 
 /** Tyre message (issue #144) for the Getriebe-Pult note and the toast; "" = none. */
-export function tyreNote(s: Pick<DrivetrainState, "tyreWarn" | "tyreVibration" | "tyreFailed">): string {
+export function tyreNote(s: Pick<DrivetrainState, "tyreWarn" | "tyreVibration" | "tyreFailed" | "tyreTreadHot">): string {
   if (s.tyreFailed) return "Reifen geplatzt: kaum Grip, hoher Rollwiderstand. Im Stand „Reifen wechseln“.";
   if (s.tyreVibration) return "Reifen beschädigt: Vibrationen, weniger Grip. Sofort langsamer fahren.";
+  if (s.tyreTreadHot) return "Lauffläche überhitzt: Die durchdrehenden Räder kosten Grip und Profil. Gas weg.";
   if (s.tyreWarn) return "Reifen überhitzen: über dem Geschwindigkeitsindex. Langsamer fahren.";
   return "";
 }

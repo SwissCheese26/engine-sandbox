@@ -760,7 +760,7 @@ export class CockpitView implements LayoutView {
       altitudeM: (d.environment.terrain ?? "static") === "static" ? Number.NaN : ds.roadAltitudeM ?? Number.NaN,
       gradePct: ds.roadGradePct ?? d.environment.gradePct, t0to100S: ds.t0to100S, t0to100Running: ds.t0to100Running,
       ambientC: d.environment.ambientC, airCooled: false,
-      tyreCarcassC: vehicle ? ds.tyreCarcassC ?? Number.NaN : Number.NaN, tyreWarn: !!ds.tyreWarn, tyreFailed: !!ds.tyreFailed,
+      tyreCarcassC: vehicle ? ds.tyreHotC ?? ds.tyreCarcassC ?? Number.NaN : Number.NaN, tyreWarn: !!ds.tyreWarn, tyreFailed: !!ds.tyreFailed,
     };
   }
 
@@ -878,7 +878,7 @@ export class CockpitView implements LayoutView {
       gradePct: ds.roadGradePct ?? d.environment.gradePct, t0to100S: ds.t0to100S, t0to100Running: ds.t0to100Running,
       ambientC: d.environment.ambientC, airCooled: airCooled(this.cfg), ...r,
       gearboxOilC: vehicle ? ds.gearboxOilC ?? Number.NaN : Number.NaN, gearboxOilWarn: !!ds.gearboxOilWarn,
-      tyreCarcassC: vehicle ? ds.tyreCarcassC ?? Number.NaN : Number.NaN, tyreWarn: !!ds.tyreWarn, tyreFailed: !!ds.tyreFailed,
+      tyreCarcassC: vehicle ? ds.tyreHotC ?? ds.tyreCarcassC ?? Number.NaN : Number.NaN, tyreWarn: !!ds.tyreWarn, tyreFailed: !!ds.tyreFailed,
     };
     stored.forEach((storedId: FieldId, i) => {
       const id = shownField(storedId, this.fieldCtx);

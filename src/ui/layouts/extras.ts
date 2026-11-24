@@ -175,7 +175,8 @@ export class CockpitExtras {
       this.sys = sys;
       this.syncUnits();
     }
-    const tyreCarcassC = vehicle ? d.state.tyreCarcassC ?? Number.NaN : Number.NaN;
+    // hottest zone of the tyre: #144 hot zone or the tread heated by slip in a burnout (#149)
+    const tyreCarcassC = vehicle ? d.state.tyreHotC ?? d.state.tyreCarcassC ?? Number.NaN : Number.NaN;
     const avail: GaugeContext = { turbo: this.turbo, gearOil: this.gearOil, tyre: vehicle, ...r.has };
     // which pods are shown, the style and the tuning bar: only touched when the choice changes
     const shown = gaugeDisplay(this.design, st.ckGaugeStyle);

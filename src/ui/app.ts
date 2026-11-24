@@ -785,7 +785,7 @@ export class App {
     const cooling = this.cfg.cooling.type;
     const e = emission({
       running: s.running, vehicle, vehicleSpeedMs: s.vehicleSpeedMs, wheelSlip: s.wheelSlip, wheelSpin: s.wheelSpin, wheelsLocked: s.wheelsLocked, brakeSlip: s.brakeSlip,
-      tyreFailed: vehicle && !!this.gearbox.drivetrain.state.tyreFailed,
+      tyreFailed: vehicle && !!this.gearbox.drivetrain.state.tyreFailed, tyreTreadC: vehicle ? this.gearbox.drivetrain.state.tyreTempC : undefined,
       liquidCooled: cooling !== "air" && cooling !== "oil-air", coolantC: s.coolantC, coolantMaxC: this.summary.limits.coolantMaxC,
       oilC: s.oilC, oilMaxC: this.summary.limits.oilMaxC, warnings: s.warnings, damaged: s.destroyed || s.damage.length > 0,
       diesel: this.cfg.fuel === "diesel", smoke: s.smoke, smokeMax: FALLBACK_LIMITS.smokeMax,

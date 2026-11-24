@@ -4,7 +4,9 @@
 // - tyre smoke: the core's wheel-spin / locked-wheel flags (the same as the "Räder drehen durch" /
 //   "Räder blockieren" indicator in gearbox-panel.ts) gate it, the sliding speed sets its strength.
 //   Sliding speed = slip × speed: for spinning wheels wheelSlip·max(v, 1 m/s) = v_wheel − v (simulator.ts),
-//   for locked wheels |brakeSlip|·v.
+//   for locked wheels |brakeSlip|·v. The tread temperature (DrivetrainState.tyreTempC, issue #149) scales it: a cold
+//   tread shows ≈ 40 % of the smoke, from ≈ 200 °C surface temperature (oils and volatiles of the compound boil off,
+//   docs/research/vehicle.md §12) all of it.
 // - steam: the coolant warning lamp rule of the cockpit (clusterLamps in layouts/logic.ts): coolant above the
 //   limit of summarize().limits or an "overheat-coolant" warning. Denser at the critical level (boil-over) or
 //   after engine damage.
@@ -21,6 +23,8 @@ export interface SmokeInput {
   wheelSpin?: boolean;
   wheelsLocked?: boolean;
   brakeSlip?: number;
+  /** Tread surface temperature °C (issue #149); undefined = full smoke from the sliding speed alone. */
+  tyreTreadC?: number;
   /** A tyre has blown (issue #144, DrivetrainState.tyreFailed): shredded rubber on the rim smokes while rolling. */
   tyreFailed?: boolean;
   /** Liquid cooling; an air-cooled engine has no coolant to boil. */
@@ -60,6 +64,9 @@ export const MAX_PARTICLES = 150;
 
 /** Sliding speed (m/s) at which tyre smoke is at full strength (≈ 40 km/h of wheel speed over road speed). */
 export const TYRE_FULL_SLIDE_MS = 11;
+/** Tread temperature from which the smoke grows (issue #149) and at which it is full, °C. */
+export const TYRE_SMOKE_COLD_C = 60;
+export const TYRE_SMOKE_HOT_C = 200;
 /** Below this sliding speed the rubber does not smoke visibly. */
 export const TYRE_MIN_SLIDE_MS = 0.5;
 
@@ -80,7 +87,8 @@ export function slideSpeedMs(x: Pick<SmokeInput, "vehicle" | "vehicleSpeedMs" | 
 
 export function emission(x: SmokeInput): Emission {
   const slide = slideSpeedMs(x);
-  const slideSmoke = slide < TYRE_MIN_SLIDE_MS ? 0 : clamp01(slide / TYRE_FULL_SLIDE_MS);
+  const heat = typeof x.tyreTreadC === "number" && Number.isFinite(x.tyreTreadC) ? 0.4 + 0.6 * clamp01((x.tyreTreadC - TYRE_SMOKE_COLD_C) / (TYRE_SMOKE_HOT_C - TYRE_SMOKE_COLD_C)) : 1;
+  const slideSmoke = slide < TYRE_MIN_SLIDE_MS ? 0 : clamp01(slide / TYRE_FULL_SLIDE_MS) * heat;
   // blown tyre (#144): rubber and rim on the road, more with speed (full at ≈ 100 km/h)
   const v = Math.abs(fin(x.vehicleSpeedMs));
   const tyre = Math.max(slideSmoke, x.vehicle && x.tyreFailed && v > 1 ? 0.3 + 0.5 * clamp01(v / 28) : 0);

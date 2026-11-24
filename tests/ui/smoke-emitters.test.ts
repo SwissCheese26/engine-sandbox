@@ -100,3 +100,14 @@ test("setting Effekte (Rauch/Dampf): on by default, validated", () => {
   expect(validateSettings({ effects: false }).effects).toBe(false);
   expect(validateSettings({ effects: "nein" }).effects).toBe(true);
 });
+
+test("tyre smoke grows with the tread temperature (issue #149); without one it follows the sliding speed alone", () => {
+  const spin = { ...base, vehicle: true, vehicleSpeedMs: 0, wheelSlip: 20, wheelSpin: true };
+  const full = emission(spin).tyre;
+  const cold = emission({ ...spin, tyreTreadC: 20 }).tyre;
+  const hot = emission({ ...spin, tyreTreadC: 220 }).tyre;
+  expect(full).toBeGreaterThan(0.9);
+  expect(cold).toBeLessThan(0.5 * hot);
+  expect(cold).toBeGreaterThan(0);
+  expect(hot).toBeCloseTo(full, 5);
+});
