@@ -30,7 +30,7 @@ import { DEFAULT_ENVIRONMENT, airDensity, altitudeToKpa, iceWarning, weatherSurf
 import { isTerrain, roadAt } from "./terrain.ts";
 import { DEFAULT_TANK_L, FuelTank } from "./fuel-tank.ts";
 import type { Environment } from "./environment.ts";
-import { TYRE_HEAT, blowoutRollingExtra, stepTyreHeat, tyreDamageRate, tyreGripFactor, type TyreHeatClass } from "./tyre-heat.ts";
+import { NO_SLIP_HEAT, TYRE_HEAT, TYRE_SLIP, blowoutRollingExtra, stepTyreHeat, stepTyreSlipHeat, tyreDamageRate, tyreGripFactor, type TyreHeatClass, type TyreSlipHeat } from "./tyre-heat.ts";
 import { DEFAULT_TYRE, TYRE_TYPES, aquaplaningFactor, compoundFactor, speedRatingKmh, stepTyreTemp, tyreGrip, tyreRadii } from "./tyres.ts";
 import type { RoadSurface, TyreSetup } from "./tyres.ts";
 import { brakeStandHoldN, drivenAxleLoadN, wheelieLimitN } from "./vehicle.ts";
@@ -342,6 +342,14 @@ export interface DrivetrainState {
   tyreDamage?: number;
   tyreVibration?: boolean;
   tyreFailed?: boolean;
+  /**
+   * Issue #149: hottest zone of the tyre for the tyre field/gauge, °C: the #144 hot zone, or the tread surface heated
+   * by slip (burnout, locked-wheel skid) when that is hotter. Tread worn by slip 0 … 1 (also in tyreDamage) and the
+   * "Lauffläche überhitzt" flag (also in tyreWarn).
+   */
+  tyreHotC?: number;
+  tyreWear?: number;
+  tyreTreadHot?: boolean;
 }
 
 /** Pedal cap of the TCU protection mode at gearbox oil overtemperature (vehicle.md §8) [S]. */
@@ -432,6 +440,9 @@ export class Drivetrain {
   private tyreDmg = 0;
   private tyreWarnOn = false;
   private tyreBlown = false;
+  /** Slip heat of the hottest driven tyre (issue #149, tyre-heat.ts stepTyreSlipHeat). */
+  private slipHeat: TyreSlipHeat = { ...NO_SLIP_HEAT };
+  private treadHotOn = false;
   private env: Environment = { ...DEFAULT_ENVIRONMENT };
   private aquaplane = false;
   private assistSet: AssistSettings = { ...DEFAULT_ASSISTS };
@@ -498,7 +509,7 @@ export class Drivetrain {
       gearboxOilC: Number.isFinite(this.gbOilC) ? this.gbOilC : this.env.ambientC, gearboxOilWarn: this.gbWarn,
       gearboxProtect: this.gbProtect, gearboxWear: this.gbWear, gearboxFailed: this.gbFailed,
       electric: !!this.evCfg,
-      tyreCarcassC: this.tyreHeatC, tyreWarn: this.tyreWarnOn || this.tyreBlown, tyreDamage: this.tyreDmg,
+      tyreCarcassC: this.tyreHeatC, tyreHotC: this.tyreHeatC, tyreWarn: this.tyreWarnOn || this.tyreBlown, tyreDamage: this.tyreDmg,
       tyreVibration: this.tyreDmg > TYRE_HEAT.vibrationAt && !this.tyreBlown, tyreFailed: this.tyreBlown,
     };
   }
@@ -758,15 +769,25 @@ export class Drivetrain {
   private currentGrip(): number {
     const t = this.tyreSetup.type;
     const aq = this.aquaplane ? aquaplaningFactor(t, this.roadKmh, this.tyreSetup.size.widthMm) : 1;
-    return tyreGrip(t, this.surfaceKind, this.tyreT) * this.gripFactor * compoundFactor(t, this.env.ambientC, this.surfaceKind) * aq
-      * tyreGripFactor(this.tyreDmg, this.tyreBlown, this.tyreClass());
+    return tyreGrip(t, this.surfaceKind, this.treadC()) * this.gripFactor * compoundFactor(t, this.env.ambientC, this.surfaceKind) * aq
+      * tyreGripFactor(this.tyreDamageAll(), this.tyreBlown, this.tyreClass());
+  }
+
+  /** Tread temperature for the grip: the rolling model (tyres.ts) plus the slip heat (issue #149). */
+  private treadC(): number {
+    return this.tyreT + this.slipHeat.treadK;
+  }
+
+  /** Damage for the grip/vibration stages: carcass reversion (#144) or tread worn by slip (#149), whichever is further. */
+  private tyreDamageAll(): number {
+    return Math.max(this.tyreDmg, this.slipHeat.wear);
   }
 
   private refreshTyreState() {
     if (!this.st) return;
     this.st.grip = this.currentGrip();
     this.st.tyreRatingKmh = speedRatingKmh(this.tyreSetup.speedIndex);
-    this.st.tyreTempC = this.tyreT;
+    this.st.tyreTempC = this.treadC();
   }
 
   /** Top-speed governor in km/h; null (or ≤ 0) switches it off ("Aufhebung"). */
@@ -839,8 +860,14 @@ export class Drivetrain {
     this.tyreDmg = 0;
     this.tyreWarnOn = false;
     this.tyreBlown = false;
+    this.tyreT = this.env.ambientC;
+    this.slipHeat = { ...NO_SLIP_HEAT };
+    this.treadHotOn = false;
     if (!this.st) return;
-    Object.assign(this.st, { tyreCarcassC: this.tyreHeatC, tyreWarn: false, tyreDamage: 0, tyreVibration: false, tyreFailed: false });
+    Object.assign(this.st, {
+      tyreCarcassC: this.tyreHeatC, tyreHotC: this.tyreHeatC, tyreWarn: false, tyreDamage: 0, tyreWear: 0, tyreTreadHot: false,
+      tyreVibration: false, tyreFailed: false, tyreTempC: this.treadC(),
+    });
     this.st.grip = this.currentGrip();
   }
 
@@ -853,22 +880,49 @@ export class Drivetrain {
    * design mass (gross mass of trucks/buses); inflation at its nominal value. Damage per realism level: "real" up to
    * the blowout, "lenient" stops just before it (warning and grip loss only), "off" none.
    */
-  private stepTyres(dt: number, vRoad: number) {
+  private stepTyres(dt: number, vRoad: number, frictionW = 0, sliding = false, locked = false) {
     const s = this.st;
     const ref = this.fullKg ?? this.emptyKg;
     const load = ref > 0 ? this.vehicle.massKg / ref : 1;
     const v = Number.isFinite(vRoad) ? Math.abs(vRoad) : 0;
     this.tyreHeatC = stepTyreHeat(this.tyreHeatC, dt, v * 3.6, s.tyreRatingKmh, this.env.ambientC, load);
-    const T = this.tyreHeatC;
+    // slip heat (issue #149): tread surface and carcass of the hottest tyre; the tread wears with the friction energy
+    const wearBefore = this.slipHeat.wear;
+    this.slipHeat = stepTyreSlipHeat(this.slipHeat, dt, frictionW, this.tyreSetup.size.widthMm, this.vehicle.wheelRadiusM, this.treadC(), sliding, locked);
+    if (this.damageLevel === "off" || this.tyreBlown) this.slipHeat.wear = wearBefore;
+    else if (this.damageLevel === "lenient") this.slipHeat.wear = Math.min(0.99, this.slipHeat.wear);
+    const T = this.tyreHeatC + this.slipHeat.carcassK;
+    const hot = this.tyreHeatC + this.slipHeat.treadK;
     this.tyreWarnOn = this.tyreWarnOn ? T >= TYRE_HEAT.warnC - TYRE_HEAT.hystK : T >= TYRE_HEAT.warnC;
+    this.treadHotOn = this.treadHotOn ? hot >= TYRE_SLIP.warnC - TYRE_HEAT.hystK : hot >= TYRE_SLIP.warnC;
     if (this.damageLevel !== "off" && !this.tyreBlown) {
       this.tyreDmg = Math.min(this.damageLevel === "lenient" ? 0.99 : 1, this.tyreDmg + tyreDamageRate(T) * dt);
-      if (this.damageLevel === "real" && this.tyreDmg >= 1) this.tyreBlown = true;
+      if (this.damageLevel === "real" && this.tyreDamageAll() >= 1) this.tyreBlown = true;
     }
+    const dmg = this.tyreDamageAll();
     Object.assign(s, {
-      tyreCarcassC: T, tyreWarn: this.tyreWarnOn || this.tyreBlown, tyreDamage: this.tyreDmg,
-      tyreVibration: this.tyreDmg > TYRE_HEAT.vibrationAt && !this.tyreBlown, tyreFailed: this.tyreBlown,
+      tyreCarcassC: T, tyreHotC: Math.max(T, hot), tyreWarn: this.tyreWarnOn || this.treadHotOn || this.tyreBlown, tyreDamage: this.tyreDmg,
+      tyreWear: this.slipHeat.wear, tyreTreadHot: this.treadHotOn,
+      tyreVibration: dmg > TYRE_HEAT.vibrationAt && !this.tyreBlown, tyreFailed: this.tyreBlown,
     });
+  }
+
+  /**
+   * Friction power at the hottest tyre, W (issue #149, vehicle.md §12): spinning driven wheels F_x·|v_wheel − v| shared by
+   * the driven tyres; locked wheels slide with the road speed, braked: ≈ 0.9·μ·m·g over all tyres (sliding friction).
+   */
+  private slipFrictionW(engine: EngineState, v: number, vRoad: number, brake: number, mu: number): number {
+    if (!Number.isFinite(v) || !Number.isFinite(vRoad)) return 0;
+    const moto = isMotorcycleKind(this.kind);
+    const commercial = isCommercialKind(this.kind);
+    const nAll = moto ? 2 : commercial ? 6 : 4;
+    const nDriven = moto ? 1 : this.vehicle.driveLayout === "awd" ? 4 : commercial ? 4 : 2;
+    const fx = Math.abs(engine.tyreForceN ?? 0);
+    if (engine.wheelsLocked) {
+      const braked = 0.9 * mu * this.vehicle.massKg * 9.81 * Math.min(1, Math.max(0, brake)) / nAll;
+      return Math.abs(vRoad) * Math.max(fx / nDriven, braked);
+    }
+    return (fx / nDriven) * Math.abs(v - vRoad);
   }
 
   /** Body for the simulator: a failed tyre adds its rolling resistance (issue #144, tyre-heat.ts blowoutRollingExtra). */
@@ -1324,12 +1378,12 @@ export class Drivetrain {
     s.wheelie = this.wheelieHold > 0;
 
     // --- tyres (issue #22): tread temperature, μ, wheel-spin indicator
-    const slipMs = engine.wheelsLocked ? vRoad : Math.max(0, v - vRoad);
     this.roadKmh = vRoad * 3.6;
     const mu = this.currentGrip();
-    this.tyreT = stepTyreTemp(this.tyreT, dt, (engine.tyreForceN ?? 0) / Math.max(1, mu * this.vehicle.massKg * 9.81), vRoad, slipMs, this.env.ambientC);
-    s.tyreTempC = this.tyreT;
-    this.stepTyres(dt, vRoad);
+    // rolling part of the tread temperature; the slip part is the friction-power model of issue #149 (stepTyres)
+    this.tyreT = stepTyreTemp(this.tyreT, dt, (engine.tyreForceN ?? 0) / Math.max(1, mu * this.vehicle.massKg * 9.81), vRoad, 0, this.env.ambientC);
+    this.stepTyres(dt, vRoad, this.slipFrictionW(engine, v, vRoad, brake, mu), !!(engine.wheelSpin || engine.wheelsLocked), !!engine.wheelsLocked);
+    s.tyreTempC = this.treadC();
     s.grip = this.currentGrip();
     this.spinHold = engine.wheelSpin ? 0.3 : Math.max(0, this.spinHold - dt);
     s.wheelSpin = this.spinHold > 0;
@@ -1480,12 +1534,12 @@ export class Drivetrain {
     this.lastRpm = engine.rpm;
     this.launchCap = 1;
     // --- tyres (issue #22)
-    const slipMs = engine.wheelsLocked ? vRoad : Math.max(0, v - vRoad);
     this.roadKmh = vRoad * 3.6;
     const mu = this.currentGrip();
-    this.tyreT = stepTyreTemp(this.tyreT, dt, (engine.tyreForceN ?? 0) / Math.max(1, mu * this.vehicle.massKg * 9.81), vRoad, slipMs, this.env.ambientC);
-    s.tyreTempC = this.tyreT;
-    this.stepTyres(dt, vRoad);
+    // rolling part of the tread temperature; the slip part is the friction-power model of issue #149 (stepTyres)
+    this.tyreT = stepTyreTemp(this.tyreT, dt, (engine.tyreForceN ?? 0) / Math.max(1, mu * this.vehicle.massKg * 9.81), vRoad, 0, this.env.ambientC);
+    this.stepTyres(dt, vRoad, this.slipFrictionW(engine, v, vRoad, brake, mu), !!(engine.wheelSpin || engine.wheelsLocked), !!engine.wheelsLocked);
+    s.tyreTempC = this.treadC();
     s.grip = this.currentGrip();
     this.spinHold = engine.wheelSpin ? 0.3 : Math.max(0, this.spinHold - dt);
     s.wheelSpin = this.spinHold > 0;

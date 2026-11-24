@@ -428,7 +428,7 @@ export class GearboxPanel {
    */
   private updateTyres(s: DrivetrainState, over: boolean) {
     const u = prefs().temp;
-    const c = s.tyreCarcassC;
+    const c = s.tyreHotC ?? s.tyreCarcassC;
     const t = c === undefined || !Number.isFinite(c) ? "–" : `${fmt0(toUnit("temp", c, u))} ${u}${s.tyreFailed ? " – geplatzt" : s.tyreVibration ? " – beschädigt" : ""}`;
     if (t !== this.last.tyreT) {
       this.last.tyreT = t;

@@ -149,12 +149,26 @@ export function speedRatingKmh(index: SpeedIndex): number {
   return SPEED_INDEX[index];
 }
 
-/** Tyre grip factor from temperature: cold factor at ≤ 20 °C rising linearly to 1 at warmC; slight fade > 120 °C [S]. */
+/**
+ * Upper end of the grip window, °C: above it the tread overheats (issue #149, docs/research/vehicle.md §12) [S].
+ * Street compounds work best up to ≈ 100–120 °C, semi-slicks ≈ 130 °C, racing slicks ≈ 140 °C (race compounds are
+ * built for 90–110 °C core and higher surface temperatures).
+ */
+export const TYRE_HOT_C: Record<TyreType, number> = {
+  standard: 120, winter: 120, uhp: 120, "semi-slick": 130, slick: 140, offroad: 120, motorcycle: 120, truck: 120,
+};
+
+/**
+ * Tyre grip factor from the tread temperature: cold factor at ≤ 20 °C rising linearly to 1 at warmC; above the window
+ * (TYRE_HOT_C) −0.4 %/K, from 40 K above it a further −0.6 %/K (the overheated surface turns greasy and blisters,
+ * issue #149), floor 0.75 [S: vehicle.md §12].
+ */
 export function tyreTempFactor(type: TyreType, tempC: number): number {
   const t = TYRE_TYPES[type];
+  const hot = TYRE_HOT_C[type];
   let f = 1;
   if (t.warmC > 20 && tempC < t.warmC) f = t.coldFactor + (1 - t.coldFactor) * Math.max(0, (tempC - 20) / (t.warmC - 20));
-  if (tempC > 120) f *= Math.max(0.75, 1 - 0.004 * (tempC - 120));
+  if (tempC > hot) f *= Math.max(0.75, 1 - 0.004 * (tempC - hot) - 0.006 * Math.max(0, tempC - hot - 40));
   return f;
 }
 
