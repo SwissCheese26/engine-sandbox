@@ -4,6 +4,12 @@ Alle sichtbaren Änderungen an der Prüfzelle, neueste zuerst. Aufbau nach [Keep
 
 _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `bun scripts/changelog.ts` ausführen._
 
+## 2026-11-24 – Reifen werden beim Burnout heiß
+
+### Behoben
+
+- Bei einem Burnout und mit blockierten Rädern heizen sich die Reifen jetzt auf. Die Reibung der durchdrehenden oder rutschenden Räder erwärmt die Lauffläche, nach 5 s Burnout eines starken Hecktrieblers sind es etwa 140–160 °C. Das Reifenfeld und das Zusatzinstrument (in jedem Cockpit-Design) zeigen die Temperatur. Ab etwa 130 °C leuchtet die Reifenleuchte, und es erscheint „Lauffläche überhitzt“. Zu heiße Reifen haben weniger Grip, kalte Semi-Slicks und Slicks greifen schlechter. Ein langer Burnout verschleißt das Profil: Nach einigen zehn Sekunden vibriert der Reifen, am Ende versagt er („nachsichtig“: nur Gripverlust, „aus“: kein Verschleiß). Mit heißer Lauffläche raucht es stärker. Das gilt für alle Fahrzeuge, auch E-Autos und Allradler. ([#149](https://github.com/SwissCheese26/engine-sandbox/issues/149), [#152](https://github.com/SwissCheese26/engine-sandbox/issues/152))
+
 ## 2026-11-23 – E-Tuner: Max. Motordrehzahl für mehr Vmax, viel stärkere Motoren mit Axialfluss und Ölkühlung, Reifen überhitzen und platzen über dem Geschwindigkeitsindex
 
 ### Neu
