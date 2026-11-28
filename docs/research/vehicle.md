@@ -185,3 +185,25 @@ Ergebnisse (0–100 mit Launch Control, 3 s scharf): Golf 7 GTI baut im Stand �
 - [R6] Grosch, K. A.; Schallamach, A.: Tyre wear at controlled slip. Wear 4 (1961), S. 356–371. Abrieb proportional zur Reibarbeit.
 - [R7] Mark, J. E.; Erman, B.; Roland, C. M. (Hrsg.): The Science and Technology of Rubber, 4. Aufl., Academic Press 2013. Thermische Eigenschaften von Gummi: c ≈ 1,7–2,0 kJ/(kg·K), λ ≈ 0,2–0,3 W/(m·K), ρ ≈ 1,1–1,2 g/cm³.
 - [R8] Williams, P. T.: Pyrolysis of waste tyres: A review. Waste Management 33 (2013), S. 1714–1728. TGA: Öle/Weichmacher ab ≈ 200 °C, NR/SBR-Abbau ≈ 350–450 °C.
+
+## 13. Antriebstausch: Karosserie und Antrieb (#154, Vertrag #159)
+
+Ein Fahrzeug = Karosserie (Masse mit Fahrer ohne Antrieb, Aerodynamik, Reifen, Art) + Antrieb. Die Karosseriemasse
+der Bibliotheksfahrzeuge ist Werksmasse − Werksantrieb, damit die Werkswerte unverändert bleiben
+(src/data/drive-swap.ts).
+
+Antriebsmasse [S, Richtwerte]:
+- Verbrenner: Trockenmasse (mass.ts) × 1,2 für Kühler, Abgasanlage, Lager, Anlasser und Lichtmaschine; Motorrad
+  (sequenzielles Getriebe im Kurbelgehäuse, Blockbauweise) × 1,1 und kein eigenes Getriebe.
+- Getriebe mit Öl: 8 kg + 0,1 kg je Nm Eingangsmoment (VW MQ250 ≈ 40 kg bei 250 Nm, ZF 8HP70 ≈ 80 kg bei 700 Nm,
+  ZF TraXon ≈ 260 kg bei 2600 Nm; Herstellerangaben, gerundet).
+- Tank: 0,15 kg/l Behälter, Pumpe, Leitungen; die Leermasse nach EU 1230/2012 zählt den Tank zu 90 % gefüllt
+  (Dichte aus fuels.ts).
+- Elektro: Antriebseinheit 0,4 kg/kW (Motor, Wechselrichter, Untersetzung; electric.md §6) + Akku (battery.ts).
+
+Übersetzung nach dem Tausch: Zielgeschwindigkeit v_t = min(leistungsbegrenzte Vmax, Begrenzer der Karosserie,
+Reifenindex). Leistungsbegrenzte Vmax aus P = (½ρ·cW·A·v² + m·g·f_R)·v (§1, ρ = 1,2 kg/m³). Verbrenner: Achsübersetzung
+so, dass die Nenndrehzahl im höchsten Gang bei v_t liegt (klassische Vmax-Auslegung, Getriebe aus dem Spenderfahrzeug,
+sonst das Standardgetriebe der Fahrzeugart). Elektro: alle Untersetzungen mit einem Faktor, sodass die Rotor-
+Höchstdrehzahl bei v_t (Elektro: 1,05 · leistungsbegrenzte Vmax) erreicht wird; eine 2-Gang-Untersetzung behält ihre
+Spreizung. Motoren sitzen auf der angetriebenen Achse der Karosserie (Motorrad, Bus: hinten).
