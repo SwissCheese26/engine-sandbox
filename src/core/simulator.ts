@@ -185,6 +185,14 @@ export class EngineSimulator {
   }
 
   /** Vehicle back to standstill (chassis dyno), engine state untouched. */
+  /**
+   * Crank speed imposed from outside (hybrid P2 / mild with the clutch closed, issue #157): the crank turns with the
+   * gearbox input shaft, whose speed the wheels set (docs/research/hybrid.md §2.1).
+   */
+  syncRpm(rpm: number) {
+    if (Number.isFinite(rpm) && rpm >= 0) this.x.rpm = rpm;
+  }
+
   resetVehicle() {
     Object.assign(this.x, { vSpeed: 0, vWheel: 0, spin: false, locked: false, tyreF: 0, aLong: 0, vBrk: 0, absF: 0, absRelease: false, absT: 9 });
   }

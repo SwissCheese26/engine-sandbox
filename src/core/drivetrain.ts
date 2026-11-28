@@ -40,7 +40,7 @@ import { dynoSweep } from "./dyno.ts";
 import { AUTO_HOLD_MAX_KMH, HOLD_RELEASE_PEDAL, autoHoldEngages } from "./parking-brake.ts";
 import type { ConverterSpec } from "./converter.ts";
 import { evRefRatio } from "./electric.ts";
-import type { ConverterCoupling, EvConfig, EngineConfig, EngineState, EngineSummary, SimInputs, VehicleCoupling, VehicleParams } from "./types.ts";
+import type { ConverterCoupling, EvConfig, EngineConfig, HybridConfig, EngineState, EngineSummary, SimInputs, VehicleCoupling, VehicleParams } from "./types.ts";
 
 export type GearboxType = "manual" | "dsg" | "cvt" | "sequential" | "automatic";
 
@@ -377,6 +377,11 @@ export interface CarSetup {
   speedLimitKmh: number | null;
   /** Electric car (issue #108): motors, battery, reduction. `gearbox`/`gearboxSpec` are then ignored by the drivetrain. */
   ev?: EvConfig;
+  /**
+   * Hybrid (issue #157): with `ev` (motors, battery) and the car's library engine. The drivetrain runs the electric path
+   * (the HybridSimulator couples the engine); `gearbox`/`gearboxSpec`/`tankL` describe the engine side.
+   */
+  hybrid?: HybridConfig;
 }
 
 /**
@@ -389,6 +394,8 @@ export interface DriveSpec {
   /** refWheelRadiusM: the wheel the gearbox ratios were made for (donor car); default the new body's wheel. */
   engine?: { config: EngineConfig; gearbox: GearboxType; gearboxSpec: GearboxSpec; tankL: number; refWheelRadiusM?: number };
   ev?: EvConfig;
+  /** Hybrid (issue #157): `engine` and `ev` both set. */
+  hybrid?: HybridConfig;
   extraKg?: number;
 }
 
@@ -495,6 +502,7 @@ export class Drivetrain {
   private damageLevel: NonNullable<SimInputs["damage"]> = "real";
   /** Electric car loaded (issue #108). */
   private evCfg: EvConfig | null = null;
+  private hyCfg: HybridConfig | null = null;
 
   constructor(
     private cfg: EngineConfig,
@@ -530,6 +538,11 @@ export class Drivetrain {
   /** Electric car configuration (issue #108), null for a combustion car. */
   get ev(): Readonly<EvConfig> | null {
     return this.evCfg;
+  }
+
+  /** Hybrid configuration (issue #157), null otherwise; `ev` holds its motors and battery. */
+  get hybrid(): Readonly<HybridConfig> | null {
+    return this.hyCfg;
   }
 
   /**
@@ -772,6 +785,7 @@ export class Drivetrain {
     this.spec = car.gearboxSpec ? { ...car.gearboxSpec, ratios: [...car.gearboxSpec.ratios] } : GEARBOXES[car.gearbox];
     // electric car (issue #108): one fixed ratio (the reference motor's reduction), see evInputs()
     this.evCfg = car.ev ? structuredClone(car.ev) : null;
+    this.hyCfg = car.ev && car.hybrid ? structuredClone(car.hybrid) : null;
     if (this.evCfg) this.spec = { ratios: [1], finalDrive: evRefRatio(this.evCfg), efficiency: this.evCfg.gearEfficiency, shiftTimeS: 0 };
     Object.assign(this.st, this.fresh(car.gearbox, this.spec.finalDrive, car.speedLimitKmh), { maxSpeedKmh: 0, t0to100S: null });
     this.t100Armed = false;

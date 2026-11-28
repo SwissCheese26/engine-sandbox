@@ -150,6 +150,13 @@ export class EvSimulator {
   private shiftT = 0;
   /** The configuration in the present gear (evInGear). */
   private geared!: EvConfig;
+  /**
+   * Hybrid coupling (issue #157, hybrid.ts), set before every step; neutral for an electric car. `demandN`: motor
+   * force at the wheels the strategy asks for (replaces the pedal map while driving); `refNm`: engine torque on the
+   * reference shaft; `dcKw`: generator power on the DC bus (− charges); `chargeShare`: share of the battery's charge
+   * limit the strategy allows (top of the SoC window). `capN`: motor force capacity of the last step.
+   */
+  readonly link = { demandN: null as number | null, refNm: 0, dcKw: 0, chargeShare: 1, capN: 0 };
 
   constructor(public ev: EvConfig) {
     this.reset();
@@ -167,6 +174,20 @@ export class EvSimulator {
   setSoc(soc: number) {
     this.startSoc = clamp(soc, 0, 1);
     this.bat.soc = this.startSoc;
+  }
+
+  /** Hybrid P2 / mild (issue #157): the gearbox ratio in front of motor 0 changed; its rotor speed follows. */
+  setMotorRatio(ratio: number) {
+    const old = this.geared.motors[0]!.ratio;
+    if (!(ratio > 0) || ratio === old) return;
+    const oldRef = evRefRatio(this.geared);
+    this.geared = { ...this.geared, motors: this.geared.motors.map((m, i) => (i === 0 ? { ...m, ratio } : m)) };
+    this.x.rpm *= evRefRatio(this.geared) / oldRef;
+  }
+
+  /** Reference-shaft speed (1/min) and its ratio to the wheels (hybrid coupling, issue #157). */
+  get shaft(): { rpm: number; ratio: number } {
+    return { rpm: this.x.rpm, ratio: evRefRatio(this.geared) };
   }
 
   resetVehicle() {
@@ -194,6 +215,11 @@ export class EvSimulator {
 
   get state(): EngineState {
     return this.s;
+  }
+
+  /** The state a subclass (hybrid.ts) built on top of this step's state. */
+  protected replace(s: EngineState): EngineState {
+    return (this.s = s);
   }
 
   /** Torque envelope of each motor now (voltage, temperature, drive mode). */
@@ -232,8 +258,9 @@ export class EvSimulator {
     // battery limits and voltage once per frame (they change slowly against 1 ms)
     const bl = batteryLimits(b, this.bat.soc, this.bat.tempC);
     const vr = clamp(this.bat.v / nominalV(b), 0.5, 1.3);
-    const pDisMax = Math.max(0, bl.maxDischargeKw * mode.powerShare - aux);
-    const pChgMax = Math.max(0, bl.maxChargeKw + aux);
+    const L = this.link;
+    const pDisMax = Math.max(0, bl.maxDischargeKw * mode.powerShare - aux - Math.min(0, L.dcKw));
+    const pChgMax = Math.max(0, bl.maxChargeKw * clamp(L.chargeShare, 0, 1) + aux + Math.max(0, L.dcKw));
     const nSub = Math.max(1, Math.round(dt / H));
     const h = dt / nSub;
     let sumT = 0;
@@ -248,7 +275,7 @@ export class EvSimulator {
       const alloc = ready ? this.allocate(c, pedal, mode.pedalExp, rpms, tMax, pDisMax, pChgMax, eta, x) : { torques: motors.map(() => 0), limit: "none" as EvLimit, frontNm: 0, rearNm: 0, friction: c?.brake ?? 0 };
       if (shiftCut < 1) alloc.torques.forEach((t, i) => onShiftAxle(ev, ev.motors[i]!) && (alloc.torques[i] = t * shiftCut));
       last = alloc;
-      const tRef = alloc.torques.reduce((a, t, i) => a + (t * motors[i]!.ratio) / ref, 0);
+      const tRef = alloc.torques.reduce((a, t, i) => a + (t * motors[i]!.ratio) / ref, 0) + (ready ? L.refNm : 0);
       if (c) {
         stepVehicle(x, { ...c, totalRatio: ref, brake: alloc.friction, clutch: 1, clutchCapacityNm: 1e7 }, tRef, Jref, h);
       } else {
@@ -268,7 +295,7 @@ export class EvSimulator {
       x.crank = (x.crank + x.rpm * 6 * h) % 720;
       // electric power of every motor at its speed and torque (motoring +, generating −)
       let pm = 0;
-      let pdc = aux;
+      let pdc = aux + (ready ? L.dcKw : 0);
       motors.forEach((m, i) => {
         const t = alloc.torques[i]!;
         const mech = (t * rpms[i]! * RAD_PER_RPM) / 1000;
@@ -343,18 +370,20 @@ export class EvSimulator {
     const capF = fCap.reduce((a, f, i) => a + (front(i) ? f : 0), 0);
     const capR = fCap.reduce((a, f, i) => a + (front(i) ? 0 : f), 0);
     let limit: EvLimit = "none";
+    this.link.capN = capF + capR;
     // parking brake at standstill: the motors hold nothing (the brake does)
     if (c?.parkingBrake && v < 0.05) return { torques: motors.map(() => 0), limit, frontNm: 0, rearNm: 0, friction: brakePedal };
     const fade = c ? clamp((v - REGEN_FADE_LO) / (REGEN_FADE_HI - REGEN_FADE_LO), 0, 1) : clamp(rpms[0]! / 300, 0, 1);
     let fReq: number;
     let friction = brakePedal;
     if (pedal > PEDAL_ZERO && brakePedal < 0.05) {
-      fReq = Math.pow((pedal - PEDAL_ZERO) / (1 - PEDAL_ZERO), exp) * (capF + capR);
+      const dem = this.link.demandN;
+      fReq = dem !== null ? clamp(dem, -(capF + capR), capF + capR) : Math.pow((pedal - PEDAL_ZERO) / (1 - PEDAL_ZERO), exp) * (capF + capR);
       // a torque cut of the ASR (Drivetrain TractionControl) acts on the request
       if (c?.torqueCut) fReq *= 1 - clamp(c.torqueCut, 0, 0.9);
       // rotor speed limit of the fastest-turning motor caps the car (the VCU fades the drive torque over the last 2 %),
       // also when the motors of the other axle could still push (different ratios, electric.md §4.1)
-      fReq *= motors.reduce((k, mo, i) => Math.min(k, clamp((mo.maxRpm - rpms[i]!) / (0.02 * mo.maxRpm), 0, 1)), 1);
+      if (fReq > 0) fReq *= motors.reduce((k, mo, i) => Math.min(k, clamp((mo.maxRpm - rpms[i]!) / (0.02 * mo.maxRpm), 0, 1)), 1);
     } else {
       // lift-off regen and blended braking; none while ABS regulates (the hydraulics need the full control)
       const absOn = x.absT < 0.3;
