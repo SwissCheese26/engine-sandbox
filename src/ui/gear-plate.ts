@@ -56,6 +56,10 @@ export class GearPlate {
   private verdictEl: HTMLElement;
   private sweep: DynoPoint[] = [];
   private traction: TractionResult | null = null;
+  /** Vmax of the present gearing (#154: Werkbank summary); null without a full-load sweep. */
+  get vmax(): TractionResult["vmax"] | null {
+    return this.traction?.vmax ?? null;
+  }
   private locked = false;
   private lockEl!: HTMLElement;
   /** Slot at the top of the section for the gearbox type, final drive and oil cooler (filled by the Getriebe-Pult). */

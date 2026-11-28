@@ -20,7 +20,8 @@ export async function evChecks({ browser, base, outDir, failures, errors, label,
   page.on("pageerror", (e) => errors.push(`${label}: pageerror (Elektro): ${e.message}`));
   await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
   await page.goto(base, { waitUntil: "load" });
-  await page.evaluate(() => localStorage.clear());
+  // P N D follows the shift-pad setting like ▲ gear ▼ (#154: "Automatisch" = touch only): "Immer" for the PC here
+  await page.evaluate(() => { localStorage.clear(); localStorage.setItem("pruefzelle.settings", JSON.stringify({ shiftPad: "on" })); });
   await page.reload({ waitUntil: "load" });
 
   // guided start: the Plaid is in the Auto list with its ⚡ badge, battery instead of a tank
@@ -42,9 +43,9 @@ export async function evChecks({ browser, base, outDir, failures, errors, label,
 
   // Prüfzelle: Ready instead of key and starter, no cutaway engine, EV instruments
   const pz = await page.evaluate(() => ({
-    ready: !!document.querySelector(".readybtn")?.getClientRects().length,
-    key: !!document.querySelector(".ignkey")?.getClientRects().length,
-    starter: !!document.querySelector(".starter")?.getClientRects().length,
+    ready: !!document.querySelector(".readybtn")?.checkVisibility({ visibilityProperty: true }),
+    key: !!document.querySelector(".ignkey")?.checkVisibility({ visibilityProperty: true }),
+    starter: !!document.querySelector(".starter")?.checkVisibility({ visibilityProperty: true }),
     cutaway: !!document.querySelector(".stage__engine")?.getClientRects().length,
     evGauges: !!document.querySelector('[data-gauge="ev-power"]')?.getClientRects().length,
     iceRpm: !!document.querySelector('[data-gauge="rpm"]')?.getClientRects().length,
@@ -181,7 +182,7 @@ export async function evChecks({ browser, base, outDir, failures, errors, label,
     note: document.querySelector('.vehicle [data-out="car-note"]')?.textContent, kmh: window.__pruefzelle?.gearbox.drivetrain.state.speedKmh,
     sel: document.querySelector('.vehicle [data-control="car"]')?.value, ready: window.__pruefzelle?.inputs.ignition,
     drive: document.querySelector(".cell")?.dataset.drive,
-    key: !!document.querySelector(".ignkey")?.getClientRects().length,
+    key: !!document.querySelector(".ignkey")?.checkVisibility({ visibilityProperty: true }),
     rpm: !!document.querySelector('[data-gauge="rpm"]')?.getClientRects().length,
   }));
   if (ice.drive !== "ice" || !ice.key || !ice.rpm) fail(`zurück zum Verbrenner klappt nicht (${JSON.stringify(ice)})`);
@@ -197,7 +198,7 @@ export async function evChecks({ browser, base, outDir, failures, errors, label,
     fuel: !!document.querySelector("#werkbank .fuel-switch")?.getClientRects().length,
     plates: [...document.querySelectorAll("#werkbank .evb .plate__title")].map((h) => h.textContent),
   }));
-  if (benchOk.ice || benchOk.fuel || benchOk.plates.length !== 5) fail(`Werkbank zeigt nicht die Elektroantrieb-Platten (${JSON.stringify(benchOk)})`);
+  if (benchOk.ice || benchOk.fuel || benchOk.plates.join() !== "Elektromotoren,Wechselrichter,Akku,Getriebe und Vmax,Kühlung,Reifen und Fahrwerk,Zusammenfassung") fail(`Werkbank zeigt nicht die Elektroantrieb-Platten (${JSON.stringify(benchOk)})`);
   const set = async (k, v) => {
     const row = `.evb [data-tune="${k}"]`;
     const kind = await page.evaluate((s) => document.querySelector(s).className, row);
@@ -258,8 +259,8 @@ export async function evChecks({ browser, base, outDir, failures, errors, label,
   });
   if (geo.wide.length || geo.small.length || geo.stray || geo.overflow > 0) fail(`Werkbank Elektroantrieb: Überlauf/Touch-Ziele (${JSON.stringify(geo)})`);
   await page.screenshot({ path: join(outDir, `smoke-${label}-ev-werkbank.png`) });
-  await page.locator(".evb__summary").scrollIntoViewIfNeeded();
-  await page.locator(".evb__summary").screenshot({ path: join(outDir, `smoke-${label}-ev-summary.png`) });
+  await page.locator(".evb .evb__summary").scrollIntoViewIfNeeded();
+  await page.locator(".evb .evb__summary").screenshot({ path: join(outDir, `smoke-${label}-ev-summary.png`) });
   await page.waitForTimeout(500); // changes apply on their own (no "Anwenden")
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("pruefzelle.evTuning") ?? "{}")["ev-tesla-model-s-plaid"]);
   if (!stored || stored.frontMotors !== 2 || !stored.highVoltage || stored.gears !== 2 || stored.vmaxKmh !== null) fail(`E-Tuner speichert nicht je Fahrzeug (${JSON.stringify(stored)}; ${await page.textContent(".evb [data-o=note]")}; ${await page.evaluate(() => window.__pruefzelle?.gearbox.drivetrain.state.speedKmh)})`);

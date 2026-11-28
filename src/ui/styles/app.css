@@ -2395,7 +2395,7 @@ kbd {
   display: grid;
   grid-template-rows: auto auto auto;
   justify-items: center;
-  gap: 2px;
+  gap: 4px;
   align-self: flex-end;
 }
 .shiftpad[hidden],
@@ -2436,6 +2436,10 @@ kbd {
   line-height: 1.1;
   min-width: 2ch;
   text-align: center;
+  /* 44 px like the P N D buttons: both pads have the same height (#154) */
+  min-height: 44px;
+  display: grid;
+  place-items: center;
 }
 
 /* settings: example picture of the control bar with shift buttons */

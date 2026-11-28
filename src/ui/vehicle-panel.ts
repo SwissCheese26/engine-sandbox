@@ -5,9 +5,9 @@
 // and gets its changes back when it is loaded again; "Auf Werkszustand zurücksetzen" forgets them.
 import { DEFAULT_SPEED_LIMIT_KMH, SPEED_INDEX, TYRE_TYPES, VEHICLES, frontAxleShare, isCommercialKind, isMotorcycleKind, speedRatingKmh } from "../core/index.ts";
 import type { CarSetup, Drivetrain, DriveLayout, SpeedIndex, TyreSetup, TyreType, VehicleKind, VehicleParams } from "../core/index.ts";
-import { captureCustom, clearCustom, loadVehicle, saveCustom, setupSig, vehicleKey } from "./vehicle-custom.ts";
+import { captureCustom, forgetDriveParts, loadVehicle, saveCustom, setupSig, vehicleKey } from "./vehicle-custom.ts";
+import { carWithDrive, driveOptionsHtml, forgetVehicle, loadDriveChoice, saveDriveChoice } from "./drive-choice.ts";
 import { VEHICLE_LIBRARY, type LibraryCar } from "../data/vehicle-library.ts";
-import { clearEvTuning } from "./ev-tuning-store.ts";
 import { prefs } from "./settings.ts";
 import { TyreSizePicker, tyreClassOf } from "./tyre-size-picker.ts";
 import { toUnit } from "./units.ts";
@@ -49,6 +49,10 @@ export class VehiclePanel {
   private customOut: HTMLElement;
   /** Library id of the loaded vehicle, "" for an own one (tank and own changes are saved per vehicle). */
   private loadedId = "";
+  /** Drive swap (#154): the drive of the loaded library vehicle ("" = factory) and the vehicle as it drives with it. */
+  private driveId = "";
+  private driven: LibraryCar | null = null;
+  private driveSel: HTMLSelectElement;
   /** Puts the factory state of the loaded vehicle on the drivetrain; own vehicles carry the signature of their setup. */
   private factory: () => void = () => this.presetFactory("car");
   private sig: string | undefined = "preset:car";
@@ -56,6 +60,15 @@ export class VehiclePanel {
   private custom = false;
   get carId(): string {
     return this.loadedId;
+  }
+  /** The loaded library vehicle with its drive (swapped setup, engine, own id for the E-Tuner store); null for own ones. */
+  get currentCar(): LibraryCar | null {
+    return this.driven;
+  }
+  /** The drive was swapped between electric and combustion (the car's own cockpit look no longer fits). */
+  get driveTypeChanged(): boolean {
+    const car = VEHICLE_LIBRARY.find((c) => c.id === this.loadedId);
+    return !!car && !!this.driven && !!car.setup.ev !== !!this.driven.setup.ev;
   }
   /** Storage key of the loaded vehicle's own changes. */
   get vehicleKey(): string {
@@ -106,7 +119,10 @@ export class VehiclePanel {
         </label>
         <button type="button" class="btn btn--small" data-control="load-car">Laden</button>
       </div>
-      <p class="vehicle__note" data-out="car-note"></p>
+      <label class="gearbox__field vehicle__drive"><span>Antrieb</span>
+        <select data-control="drive" aria-describedby="drive-note"></select>
+      </label>
+      <p class="vehicle__note" data-out="car-note" id="drive-note"></p>
       <div class="vehicle__custom">
         <span class="vehicle__hint" data-out="custom-state" role="status"></span>
         <button type="button" class="btn btn--small" data-control="factory-reset" title="Eigene Änderungen an diesem Fahrzeug verwerfen">Auf Werkszustand zurücksetzen</button>
@@ -122,7 +138,7 @@ export class VehiclePanel {
             <input type="number" inputmode="decimal" data-field="${f.key}" min="${f.min}" max="${f.max}" step="${f.step}" />
             <small>${f.unit}</small>
           </label>`).join("")}
-        <label class="vehicle__num vehicle__num--wide"><span>Antrieb</span>
+        <label class="vehicle__num vehicle__num--wide"><span>Angetriebene Achse</span>
           <select data-control="drive-layout">${(Object.keys(LAYOUT_LABEL) as DriveLayout[])
             .map((k) => `<option value="${k}">${LAYOUT_LABEL[k]}</option>`).join("")}</select>
         </label>
@@ -143,6 +159,11 @@ export class VehiclePanel {
     this.el = el;
     const q = <T extends Element>(s: string) => el.querySelector<T>(s)!;
     this.carSel = q("[data-control=car]");
+    this.driveSel = q("[data-control=drive]");
+    this.fillDrives();
+    // own engines may have been added in the Engine Builder, an E-Tuner setup since the last look
+    this.driveSel.addEventListener("focus", () => this.fillDrives());
+    this.driveSel.addEventListener("change", () => this.swapDrive(this.driveSel.value));
     this.loadBtn = q("[data-control=load-car]");
     this.layoutSel = q("[data-control=drive-layout]");
     this.kindSel = q("[data-control=vehicle]");
@@ -209,6 +230,8 @@ export class VehiclePanel {
   /** Fahrzeugtyp: the preset of that kind ("eigenes Fahrzeug"), with its own changes of the last visit. */
   selectKind(kind: VehicleKind) {
     if (this.moving) return this.sync();
+    this.driveId = "";
+    this.driven = null;
     this.load(() => this.presetFactory(kind), "", kind, `preset:${kind}`);
     this.carNote.textContent = "";
     this.sync();
@@ -226,9 +249,16 @@ export class VehiclePanel {
   /** "Auf Werkszustand zurücksetzen": forgets the own changes of the loaded vehicle and loads it as delivered. */
   resetFactory() {
     if (this.moving) return;
-    clearCustom(this.vehicleKey);
-    // the E-Tuner setup of an electric car (#108) belongs to its own changes too
-    clearEvTuning(this.loadedId);
+    const car = VEHICLE_LIBRARY.find((c) => c.id === this.loadedId);
+    // own changes, the drive choice (#154) and every E-Tuner setup of this vehicle (#108) are forgotten
+    const tunings = [this.loadedId, this.driven?.id ?? ""];
+    // a swapped drive goes back too: the factory engine onto the bench first
+    if (car && this.driveId) {
+      if (!this.onLoadCar(car)) return;
+      forgetVehicle(this.vehicleKey, tunings);
+      return this.applyCar(car, "");
+    }
+    forgetVehicle(this.vehicleKey, tunings);
     this.load(this.factory, this.loadedId, this.drivetrain.kind, this.sig);
     this.sync();
     this.onChange();
@@ -238,18 +268,45 @@ export class VehiclePanel {
     const car = VEHICLE_LIBRARY.find((c) => c.id === this.loadedId);
     const who = car ? car.name : "Eigenes Fahrzeug";
     this.customOut.textContent = this.failedNote || (this.custom ? `${who}: eigene Änderungen (nur für dieses Fahrzeug gespeichert).` : `${who}: Werkszustand.`);
-    this.resetBtn.disabled = this.moving || !this.custom;
+    this.resetBtn.disabled = this.moving || !(this.custom || this.driveId);
   }
 
   private loadSelected() {
     const id = this.carSel.value;
     const car = VEHICLE_LIBRARY.find((c) => c.id === id);
     if (!car || this.moving) return;
-    if (!this.onLoadCar(car)) {
+    if (!this.onLoadCar(carWithDrive(car, loadDriveChoice(car.id)))) {
       this.carNote.textContent = "Erst den Motor abstellen, dann lässt sich ein fertiges Fahrzeug laden.";
       return;
     }
     this.applyCar(car);
+  }
+
+  /** Options of the Antrieb select (own engines and E-Tuner setups change while the page is open). */
+  private fillDrives() {
+    this.driveSel.innerHTML = driveOptionsHtml();
+    this.driveSel.value = this.driveId;
+    if (this.driveSel.value !== this.driveId) this.driveSel.value = "";
+  }
+
+  /**
+   * Antrieb (#154): puts another drive into the loaded library vehicle at standstill; mass and transmission follow,
+   * the parts of the old drive are dropped from the own changes, the choice is stored per vehicle.
+   */
+  swapDrive(id: string): boolean {
+    const car = VEHICLE_LIBRARY.find((c) => c.id === this.loadedId);
+    if (!car || this.moving || id === this.driveId) return this.sync(), false;
+    const next = carWithDrive(car, id);
+    if (id && next === car) return this.sync(), false;
+    if (!this.onLoadCar(next)) {
+      this.carNote.textContent = "Erst den Motor abstellen, dann lässt sich der Antrieb tauschen.";
+      this.sync();
+      return false;
+    }
+    saveDriveChoice(this.vehicleKey, id);
+    forgetDriveParts(this.vehicleKey);
+    this.applyCar(car, id);
+    return true;
   }
 
   /**
@@ -259,14 +316,23 @@ export class VehiclePanel {
   selectCarForEngine(engineId: string): LibraryCar | null {
     const car = VEHICLE_LIBRARY.find((c) => c.engineId === engineId);
     if (!car || this.moving) return null;
-    this.applyCar(car);
+    // the engine picked on the bench is this car's factory engine: the car comes with its factory drive
+    if (loadDriveChoice(car.id)) {
+      saveDriveChoice(car.id, "");
+      forgetDriveParts(car.id);
+    }
+    this.applyCar(car, "");
     return car;
   }
 
-  /** Guided start (#93): loads a library vehicle by id (its engine is loaded by the app). */
-  selectCar(id: string): LibraryCar | null {
+  /** Guided start (#93): loads a library vehicle by id (its engine is loaded by the app), optionally with a drive (#154). */
+  selectCar(id: string, driveId?: string): LibraryCar | null {
     const car = VEHICLE_LIBRARY.find((c) => c.id === id);
     if (!car || this.moving) return null;
+    if (driveId !== undefined && driveId !== loadDriveChoice(car.id)) {
+      saveDriveChoice(car.id, driveId);
+      forgetDriveParts(car.id);
+    }
     this.applyCar(car);
     return car;
   }
@@ -274,6 +340,12 @@ export class VehiclePanel {
   /** Guided start (#93): an own vehicle built in the wizard ("eigenes Fahrzeug", like any own edit). */
   applyOwn(setup: CarSetup): boolean {
     if (this.moving || !VehiclePanel.withinLimits(setup)) return false;
+    this.driveId = "";
+    // an own vehicle with an electric drive: tuned in the E-Tuner and stored under its own key (never under "")
+    this.driven = setup.ev ? {
+      id: `${vehicleKey("", setup.kind ?? "car")}@${setupSig(setup)}`, name: "Eigenes Fahrzeug", maker: "", years: "", engineId: "", source: "",
+      setup: structuredClone(setup), factory: { kerbKg: setup.vehicle.massKg, kerbNorm: "EU", t0to100S: null, vmaxKmh: 0, vmaxGoverned: false },
+    } : null;
     // own changes come back only on the same own vehicle (a newly built one starts as built)
     this.load(() => this.drivetrain.applyCar(structuredClone(setup)), "", setup.kind ?? "car", setupSig(setup));
     this.carNote.textContent = "";
@@ -292,12 +364,21 @@ export class VehiclePanel {
     });
   }
 
-  private applyCar(car: LibraryCar) {
-    this.load(() => this.drivetrain.applyCar(structuredClone(car.setup)), car.id, car.setup.kind ?? "car");
+  private applyCar(car: LibraryCar, driveId = loadDriveChoice(car.id)) {
+    const driven = carWithDrive(car, driveId);
+    this.driveId = driven === car ? "" : driveId;
+    this.driven = driven;
+    this.load(() => this.drivetrain.applyCar(structuredClone(driven.setup)), car.id, car.setup.kind ?? "car");
     const f = car.factory;
     this.carNote.textContent = f.t0to100S === null
       ? `${car.name}: Vmax ${spd(f.vmaxKmh)}${f.vmaxGoverned ? " (abgeregelt)" : ""}, leer ${fmt(f.kerbKg, 0)} kg${f.grossKg ? `, zulässig ${fmt(f.grossKg, 0)} kg` : ""}.`
       : `${car.name}: Werk ${fmt(f.t0to100S, 1)} s ${prefs().speed === "mph" ? "von 0 auf 62 mph (100 km/h, Werksangabe)" : "von 0 auf 100 km/h"}, Vmax ${spd(f.vmaxKmh)}${f.vmaxGoverned ? " (abgeregelt)" : ""}, ${f.kerbKg} kg (${f.kerbNorm === "wet" ? "fahrbereit, ohne Fahrer" : f.kerbNorm}).`;
+    if (this.driveId) {
+      this.fillDrives();
+      const name = this.driveSel.selectedOptions[0]?.textContent ?? this.driveId;
+      const sp = driven.setup.ev ? `Untersetzung ${fmt(driven.setup.ev.motors[0]!.ratio, 1)}:1` : `Achsübersetzung ${fmt(driven.setup.gearboxSpec?.finalDrive ?? 0, 2)}`;
+      this.carNote.textContent = `${car.name} mit Antrieb ${name}: ${fmt(driven.setup.vehicle.massKg, 0)} kg mit Fahrer (Werk ${fmt(car.setup.vehicle.massKg, 0)} kg), ${sp}.`;
+    }
     this.sync();
     this.onChange();
   }
@@ -372,6 +453,7 @@ export class VehiclePanel {
     // motorcycles drive the rear wheel; the layout is fixed there
     const bike = isMotorcycleKind(this.drivetrain.kind);
     this.kindSel.value = this.drivetrain.kind;
+    this.driveSel.value = this.driveId;
     this.layoutSel.value = v.driveLayout ?? "fwd";
     this.layoutSel.dataset.fixed = bike ? "1" : "";
     this.tyreSel.value = t.type;
@@ -399,7 +481,7 @@ export class VehiclePanel {
     for (const c of this.el.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>("input, select, button")) {
       // the Vmax governor (slot) can be recoded while driving (issue #32); the Getriebe-Pult locks what it owns
       if (this.setupSlot.contains(c)) continue;
-      c.disabled = moving || (c === this.layoutSel && bike) || (c === this.resetBtn && !this.custom);
+      c.disabled = moving || (c === this.layoutSel && bike) || (c === this.resetBtn && !(this.custom || this.driveId)) || (c === this.driveSel && !this.loadedId);
     }
   }
 

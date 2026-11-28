@@ -91,7 +91,7 @@ export class SettingsScreen {
             <label><input type="radio" name="throttle" value="hold" /> <span><b>Bleibt stehen</b> (Handgas): der Hebel hält seine Stellung, auch nach dem Loslassen.</span></label>
           </fieldset>
           <fieldset class="office__choice office__choice--shift">
-            <legend>Schaltknöpfe in der Bedienleiste</legend>
+            <legend>Schaltknöpfe in der Bedienleiste (Elektro: P N D, auch mit Q und E)</legend>
             <figure class="office__example" aria-hidden="true">
               <svg viewBox="0 0 220 90">
                 <rect x="1" y="1" width="218" height="88" rx="6" fill="#3c4a44" stroke="#56655e"/>

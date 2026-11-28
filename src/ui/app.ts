@@ -7,7 +7,11 @@ import { EvBench } from "./ev-bench.ts";
 import { EvStatus } from "./ev-panel.ts";
 import { loadEvTuning, saveEvTuning } from "./ev-tuning-store.ts";
 import { tuneEv, type TunedEv } from "../data/ev-tuning.ts";
-import { nextDriveMode } from "./layouts/ev-logic.ts";
+import { nextDriveMode, rangeText } from "./layouts/ev-logic.ts";
+import { put, summaryPlate } from "./bench-summary.ts";
+import { PS_PER_KW } from "../data/ev-tuning.ts";
+import { prefs } from "./settings.ts";
+import { toUnit } from "./units.ts";
 import { customSetup, loadOwnVehicle, saveOwnVehicle, setOwnVehicleActive, takePendingSetup, type PendingSetup } from "./sandbox-setup.ts";
 import { ShiftPad } from "./shift-pad.ts";
 import { isMyEngineId } from "./my-engines.ts";
@@ -149,6 +153,32 @@ export class App {
     });
   }
 
+  private iceSum = summaryPlate("ice");
+  private iceSumS = 0;
+
+  /** Werkbank summary of a combustion drive (#154), twice a second: the same rows as the E-Tuner's. */
+  private iceSummary(dt: number, rangeKm: number) {
+    this.iceSumS += dt;
+    if (this.evSim || this.iceSumS < 0.5) return;
+    this.iceSumS = 0;
+    const o = this.iceSum.out;
+    const sm = this.summary;
+    const d = this.gearbox.drivetrain;
+    const vehicle = this.inputs.dynoMode === "vehicle";
+    const spd = (kmh: number) => `${Math.round(toUnit("speed", kmh)).toLocaleString("de-DE")} ${prefs().speed}`;
+    put(o, "power", `${fmt(sm.peakPowerKw * PS_PER_KW)} PS · ${fmt(sm.peakPowerKw)} kW`);
+    put(o, "torque", `${fmt(sm.peakTorqueNm)} Nm bei ${fmt(sm.peakTorqueRpm)} 1/min`);
+    const vm = this.gearbox.gears.vmax;
+    const gov = d.state.speedLimitKmh;
+    put(o, "vmax", !vehicle || !vm ? "auf dem Rollenprüfstand" : gov !== null && gov < vm.kmh ? `${spd(gov)}, begrenzt durch Begrenzer`
+      : `${spd(vm.kmh)}, begrenzt durch ${vm.limitedBy === "limiter" ? "Motordrehzahl" : "Luftwiderstand"}`);
+    const t100 = d.state.t0to100S;
+    put(o, "t100", !vehicle ? "auf dem Rollenprüfstand" : t100 === null ? "noch nicht gemessen" : `${fmt(t100, 1)} s (gemessen)`);
+    put(o, "range", Number.isFinite(rangeKm) ? rangeText(rangeKm, prefs()) : "–");
+    put(o, "mass", vehicle ? `${fmt(d.vehicle.massKg)} kg` : `${fmt(sm.massKg)} kg (Motor trocken)`);
+    put(o, "limit", this.cfg.ecuTorqueLimitNm ? `Steuergerät (${fmt(this.cfg.ecuTorqueLimitNm)} Nm)` : `Drehzahlbegrenzer (${fmt(this.cfg.revLimitRpm)} 1/min)`);
+  }
+
   /** The simulator that drives: the electric one when an EV is loaded (#108), else the engine. */
   private get psim(): EngineSimulator | EvSimulator {
     return this.evSim ?? this.sim;
@@ -165,7 +195,9 @@ export class App {
     let sameCar = this.evTuning && !!ev && !!this.evSim;
     this.evTuning = false;
     // a newly loaded electric car comes with its stored E-Tuner setup (per vehicle)
-    const car = ev ? VEHICLE_LIBRARY.find((c) => c.id === this.gearbox.vehiclePanel.carId && c.setup.ev) ?? null : null;
+    // the vehicle as it drives (#154: a swapped-in electric drive is tuned like a factory one, stored per vehicle and drive)
+    const cur = this.gearbox.vehiclePanel.currentCar;
+    const car = ev && cur?.setup.ev ? cur : null;
     const stored = car && !sameCar ? loadEvTuning(car) : null;
     if (car && stored) {
       const t = tuneEv(car.setup.ev!, stored, car.setup.vehicle.wheelRadiusM);
@@ -250,7 +282,9 @@ export class App {
         let carKey: string | null = null;
         let carPick: CockpitDesignId | undefined;
         c.preferredDesign = () => {
-          const id = this.gearbox.vehiclePanel.carId;
+          const p = this.gearbox.vehiclePanel;
+          // a drive swapped between electric and combustion (#154): the drive picks the cluster, not the car
+          const id = p.driveTypeChanged ? "" : p.carId;
           if (id !== carKey) {
             carKey = id;
             carPick = carDesign(id, VEHICLE_LIBRARY.find((v) => v.id === id)?.cockpitDesign);
@@ -287,6 +321,7 @@ export class App {
   private layout() {
     const cell = document.createElement("div");
     cell.className = "cell";
+    cell.dataset.drive = "ice";
 
     const top = document.createElement("header");
     top.className = "cell__top";
@@ -339,6 +374,24 @@ export class App {
     this.gearbox.el.querySelector(".gearbox__drive")!.append(this.evPanel.modeEl);
     this.gearbox.el.querySelector(".gearbox__tank")!.before(...this.evPanel.rows);
     this.bench.el.append(this.evBench.el);
+    // combustion summary (#154): the same plate as the E-Tuner's, after the engine plates
+    this.iceSum.el.classList.add("ice-summary");
+    this.bench.el.append(this.iceSum.el);
+    this.iceSum.el.querySelector("[data-control=tune-max]")!.addEventListener("click", () => {
+      if (this.bench.isLocked) return put(this.iceSum.out, "note", "Erst den Motor abstellen, dann lässt er sich umbauen.");
+      this.bench.setStage(3);
+      put(this.iceSum.out, "note", "Stage 3: das Maximum, das der Motor ohne Schaden verträgt.");
+    });
+    this.iceSum.el.querySelector("[data-control=tune-reset]")!.addEventListener("click", () => {
+      if (this.bench.isLocked || this.gearbox.drivetrain.state.speedKmh > 0.5) return put(this.iceSum.out, "note", "Erst anhalten und den Motor abstellen, dann lässt sich das Fahrzeug zurücksetzen.");
+      // like the E-Tuner's button: the whole vehicle as delivered, with its factory engine
+      const panel = this.gearbox.vehiclePanel;
+      const car = VEHICLE_LIBRARY.find((c) => c.id === panel.carId);
+      panel.resetFactory();
+      if (car && !car.setup.ev) this.bench.loadLibrary(car.engineId);
+      else this.bench.setStage(0);
+      put(this.iceSum.out, "note", "Werkszustand.");
+    });
     this.stage = stage;
 
     const deck = document.createElement("footer");
@@ -347,6 +400,12 @@ export class App {
     // ▲ gear ▼ next to brake and gas (setting "Schaltknöpfe in der Bedienleiste")
     this.shiftPad = new ShiftPad(() => this.gearbox.drivetrain);
     this.console.pedalsEl.prepend(this.shiftPad.el);
+    // P N D with the shift keys (#154 review): on the PC the selector is hidden under "Automatisch"
+    this.gearbox.onShiftKey = (dir) => {
+      if (!this.shiftPad.step(dir)) return false;
+      this.announce(`Fahrstufe ${this.shiftPad.selector}.`);
+      return true;
+    };
     this.console.setPedalSide(getSettings().pedalSide);
 
     this.header = top;
@@ -388,7 +447,8 @@ export class App {
         return false;
       }
       // stored per vehicle: the E-Tuner record, mass and tyre with the vehicle's own changes
-      saveEvTuning(this.gearbox.vehiclePanel.carId, t.tuning);
+      const tuned = this.gearbox.vehiclePanel.currentCar;
+      if (tuned) saveEvTuning(tuned.id, t.tuning);
       this.gearbox.vehiclePanel.remember();
       this.syncDrive();
       this.announce(`Umgebaut: ${Math.round(t.systemPs)} PS, ${Math.round(massKg)} kg.`);
@@ -699,6 +759,7 @@ export class App {
         if (this.inputs.dynoMode === "vehicle") rangeKm = s.ev.rangeKm;
       } else if (this.inputs.dynoMode === "vehicle" && !this.evSim) rangeKm = this.stepFuelRange(dt, s);
       this.gearbox.showRange(rangeKm);
+      this.iceSummary(dt, rangeKm);
       this.evPanel.update(s, this.gearbox.drivetrain.state.speedKmh);
       // the bench edits the combustion engine: an electric car (#108) does not lock it
       this.bench.setLocked(App.turning(this.evSim ? this.sim.state : s));
@@ -875,7 +936,7 @@ export class App {
         saveOwnVehicle(p.custom, true);
       }
     } else if (p.vehicleId) {
-      name = panel.selectCar(p.vehicleId)?.name ?? "";
+      name = panel.selectCar(p.vehicleId, p.driveId)?.name ?? "";
       if (name) setOwnVehicleActive(false);
     }
     // the route after the vehicle: loading a vehicle puts it back to the start of the route
@@ -891,7 +952,8 @@ export class App {
   restoreOwnVehicle() {
     const own = loadOwnVehicle();
     if (!own?.active) return;
-    this.loadEngine(own.custom.engineId);
+    // an electric drive (#154, "ev:…") has no engine for the bench
+    if (!own.custom.engineId.startsWith("ev:")) this.loadEngine(own.custom.engineId);
     if (!this.gearbox.vehiclePanel.applyOwn(customSetup(own.custom))) return;
     this.gearbox.restoreTank();
     this.setMode("vehicle");

@@ -11,7 +11,8 @@ import {
 } from "./sandbox-setup.ts";
 import { getSettings, setSettings } from "./settings.ts";
 import { TyreSizePicker } from "./tyre-size-picker.ts";
-import { findMyEngine, loadMyEngines } from "./my-engines.ts";
+import { findMyEngine } from "./my-engines.ts";
+import { driveOptionsHtml } from "./drive-choice.ts";
 
 /** "+ Neues erstellen" in a library list: the own-vehicle form starts with the matching base type. */
 const BASE_OF_KIND: Partial<Record<SetupKind, CustomBase>> = { car: "car", commercial: "truck", bike: "bike" };
@@ -148,7 +149,7 @@ export class SandboxWizard {
             <label class="wizard__field wizard__field--wide"><span>Fahrzeugtyp</span>
               <select data-c="base">${(Object.keys(CUSTOM_BASE_LABEL) as CustomBase[]).map((b) => `<option value="${b}">${CUSTOM_BASE_LABEL[b]}</option>`).join("")}</select>
             </label>
-            <label class="wizard__field wizard__field--wide"><span>Motor aus der Bibliothek</span>
+            <label class="wizard__field wizard__field--wide"><span>Antrieb</span>
               <select data-c="engineId" aria-describedby="wiz-err-engineId"></select>
               <small class="wizard__err" id="wiz-err-engineId"></small>
             </label>
@@ -411,22 +412,19 @@ export class SandboxWizard {
     sel("drive").disabled = drives.length < 2;
     sel("gearbox").innerHTML = gearboxesFor(c.base).map((g: GearboxType) => `<option value="${g}">${c.base === "truck" && g === "dsg" ? "Automatisiert (AMT), 12 Gänge" : GEARBOX_SHORT[g]}</option>`).join("");
     sel("gearbox").value = c.gearbox;
-    // own engines (#72) first, then the library engines that fit the vehicle type
+    // Antrieb (#154): own engines (#72), electric drives and every library engine fit every vehicle type
     const engines = sel("engineId");
-    engines.replaceChildren();
-    const mine = loadMyEngines();
-    if (mine.length) {
-      const g = document.createElement("optgroup");
-      g.label = "Eigene Motoren";
-      g.append(...mine.map((m) => Object.assign(document.createElement("option"), { value: m.id, textContent: m.name })));
-      engines.append(g);
-    }
-    const lib = document.createElement("optgroup");
-    lib.label = "Bibliothek";
-    lib.append(...enginesFor(c.base).map((e) => Object.assign(document.createElement("option"), { value: e.config.id, textContent: `${e.config.name} · ${fmtDe(e.expected.peakPowerKw * PS_PER_KW)} PS` })));
-    engines.append(lib);
+    engines.innerHTML = driveOptionsHtml(null);
     engines.value = this.engineId ?? c.engineId;
-    if (!engines.value) engines.selectedIndex = mine.length;
+    if (!engines.value) engines.value = c.engineId;
+    // an electric drive brings its reduction and battery: gearbox and tank do not apply
+    const evOnly = () => {
+      const ev = engines.value.startsWith("ev:");
+      sel("gearbox").disabled = ev;
+      this.q<HTMLInputElement>("[data-c=tankL]").disabled = ev;
+    };
+    engines.onchange = evOnly;
+    evOnly();
     for (const k of ["massKg", "cw", "areaM2", "tankL", "tyre", "drive", "gearbox", "engineId"] as CustomField[]) this.markError(k, "");
   }
 

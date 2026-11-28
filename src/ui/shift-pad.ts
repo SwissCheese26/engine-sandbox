@@ -26,7 +26,7 @@ export class ShiftPad {
       <output class="shiftpad__gear num" aria-live="off">N</output>
       <button type="button" class="shiftpad__btn" data-shift="-1" aria-label="Runterschalten" title="Runterschalten (Q)">▼</button>
       <div class="shiftpad__ev" role="radiogroup" aria-label="Fahrstufe" hidden>${(["P", "N", "D"] as const)
-        .map((p) => `<button type="button" class="shiftpad__sel num" role="radio" aria-checked="${p === "D"}" data-sel="${p}">${p}</button>`)
+        .map((p) => `<button type="button" class="shiftpad__sel num" role="radio" aria-checked="${p === "D"}" data-sel="${p}" title="Fahrstufe ${p} (Q / E)">${p}</button>`)
         .join("")}</div>`;
     this.el = el;
     this.gearOut = el.querySelector("output")!;
@@ -69,6 +69,14 @@ export class ShiftPad {
     this.last = "";
   }
 
+  /** Q / E (#154 review: the shift keys of the combustion car): one step towards P or D; false for a combustion car. */
+  step(dir: 1 | -1): boolean {
+    if (!this.electric) return false;
+    const order: EvSelector[] = ["P", "N", "D"];
+    this.select(order[Math.max(0, Math.min(2, order.indexOf(this.selector) + dir))]!);
+    return true;
+  }
+
   /** P applies the parking brake; leaving P releases it. */
   select(p: EvSelector) {
     if (!this.electric) return;
@@ -93,7 +101,7 @@ export class ShiftPad {
     const d = this.dt();
     const s = d.state;
     const mode = getSettings().shiftPad;
-    // an electric car has no other drive selector: shown on every device unless switched off
+    // the same rule for ▲ gear ▼ and P N D (#154: same slot): "auto" = touch screens, "on" = always, "off" = never
     const show = onVehicle && mode !== "off" && (this.electric || s.type !== "cvt");
     // the parking brake released elsewhere (Halten) while in P: the selector follows to N
     if (this.electric && this.selector === "P" && !s.parkingBrake) {
@@ -105,7 +113,7 @@ export class ShiftPad {
     if (key === this.last) return;
     this.last = key;
     this.el.hidden = !show;
-    this.el.classList.toggle("is-auto", mode === "auto" && !this.electric);
+    this.el.classList.toggle("is-auto", mode === "auto");
     this.gearOut.textContent = gear;
   }
 }

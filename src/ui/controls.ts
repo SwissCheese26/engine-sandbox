@@ -96,7 +96,7 @@ export class ControlPanel {
           <span class="starter__text">Starter <kbd>A</kbd><span class="kbd-hint"> halten</span></span>
           <span class="sr-only" id="starter-state"></span>
         </button>
-        <button type="button" class="readybtn" data-control="ready" aria-pressed="false" aria-keyshortcuts="I" hidden>
+        <button type="button" class="readybtn" data-control="ready" aria-pressed="false" aria-keyshortcuts="I">
           <span class="readybtn__cap" aria-hidden="true"><b>READY</b></span>
           <span class="readybtn__text">Fahrbereit <kbd>I</kbd></span>
         </button>
@@ -476,10 +476,8 @@ export class ControlPanel {
   setElectric(on: boolean) {
     if (this.electric === on) return;
     this.electric = on;
+    // Ready and key + starter share one slot (#154): the CSS shows one of them, the slot keeps its size
     this.el.classList.toggle("is-ev", on);
-    this.ignition.hidden = on;
-    this.starter.hidden = on;
-    this.q<HTMLButtonElement>("ready").hidden = !on;
     this.lastStatus = "";
   }
 

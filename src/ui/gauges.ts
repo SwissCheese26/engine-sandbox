@@ -413,26 +413,28 @@ export class InstrumentPanel {
       const E = (s: EngineState) => s.ev;
       const maxRpm = Math.max(...ev.motors.map((m) => m.maxRpm));
       const sys = evSystemPowerKw(ev);
+      // same order as the combustion dials (#154): speed, torque, power
       const round = [
         new RoundGauge({ id: "ev-rpm", label: "Motordrehzahl", unit: "1/min", decimals: 0, scaleLabel: "× 1000 1/min", scaleDiv: 1000, scaleStep: maxRpm > 12000 ? 2000 : 1000, value: (s) => s.rpm, warns: [] }, true),
-        new RoundGauge({ id: "ev-power", label: "Akkuleistung", unit: "kW", decimals: 0, value: (s) => E(s)?.powerKw ?? 0, warns: ["battery-hot"], units: UNITS.power }),
         new RoundGauge({ id: "ev-torque", label: "Drehmoment", unit: "Nm", decimals: 0, value: (s) => s.torqueNm, warns: ["motor-hot"], units: UNITS.torque }),
+        new RoundGauge({ id: "ev-power", label: "Akkuleistung", unit: "kW", decimals: 0, value: (s) => E(s)?.powerKw ?? 0, warns: ["battery-hot"], units: UNITS.power }),
       ];
       round[0]!.setScale(0, Math.ceil(maxRpm / 1000) * 1000, maxRpm * 0.98);
-      round[1]!.setScale(-Math.max(50, niceCeil(sys * 0.3)), niceCeil(sys * 1.1), Infinity);
       const tq = ev.motors.reduce((a, m) => a + m.peakTorqueNm * (m.ratio / (ev.motors.find((x) => x.axle === "rear") ?? ev.motors[0]!).ratio), 0);
-      round[2]!.setScale(-niceCeil(tq * 0.5), niceCeil(tq * 1.1), Infinity);
+      round[1]!.setScale(-niceCeil(tq * 0.5), niceCeil(tq * 1.1), Infinity);
+      round[2]!.setScale(-Math.max(50, niceCeil(sys * 0.3)), niceCeil(sys * 1.1), Infinity);
       const temp = (id: string, label: string, max: number, limit: number, value: (s: EngineState) => number, warns: WarningCode[]): MeterDef => ({
         id, label, unit: "°C", decimals: 0, min: 0, max: () => max, limit: () => limit, value, warns, thermal: true, units: UNITS.temp,
       });
+      // same rows as the combustion list (#154): temperatures, load, pressure ↔ voltage, consumption, energy last
       const meters = [
-        new Meter({ id: "ev-soc", label: "Ladezustand", unit: "%", decimals: 1, min: 0, max: () => 100, limit: () => 10, lowLimit: true, value: (s) => (E(s)?.soc ?? Number.NaN) * 100, warns: ["battery-low"] }),
-        new Meter({ id: "ev-volt", label: "Akkuspannung", unit: "V", decimals: 0, min: 0, max: () => niceCeil(ev.battery.seriesCells * 4.25), limit: () => ev.battery.seriesCells * 3.1, lowLimit: true, value: (s) => E(s)?.packV ?? Number.NaN, warns: [] }),
-        new Meter({ id: "ev-amp", label: "Akkustrom", unit: "A", decimals: 0, min: 0, max: () => niceCeil(ev.battery.maxDischargeC * ev.battery.cellAh * ev.battery.parallelCells), limit: () => Infinity, value: (s) => Math.abs(E(s)?.packA ?? Number.NaN), warns: [] }),
-        new Meter(temp("ev-batt", "Akku", 70, 55, (s) => E(s)?.batteryC ?? Number.NaN, ["battery-hot"])),
         new Meter(temp("ev-motor", "E-Motor", 180, 150, (s) => E(s)?.motorC ?? Number.NaN, ["motor-hot"])),
+        new Meter(temp("ev-batt", "Akku", 70, 55, (s) => E(s)?.batteryC ?? Number.NaN, ["battery-hot"])),
+        new Meter({ id: "ev-amp", label: "Akkustrom", unit: "A", decimals: 0, min: 0, max: () => niceCeil(ev.battery.maxDischargeC * ev.battery.cellAh * ev.battery.parallelCells), limit: () => Infinity, value: (s) => Math.abs(E(s)?.packA ?? Number.NaN), warns: [] }),
         new Meter({ id: "ev-regen", label: "Rekuperation", unit: "kW", decimals: 0, min: 0, max: () => niceCeil(Math.max(50, sys * 0.4)), limit: () => Infinity, value: (s) => E(s)?.regenKw ?? 0, warns: [] }),
+        new Meter({ id: "ev-volt", label: "Akkuspannung", unit: "V", decimals: 0, min: 0, max: () => niceCeil(ev.battery.seriesCells * 4.25), limit: () => ev.battery.seriesCells * 3.1, lowLimit: true, value: (s) => E(s)?.packV ?? Number.NaN, warns: [] }),
         new Meter({ id: "ev-cons", label: "Ø Verbrauch", unit: "kWh/100 km", decimals: 1, min: 0, max: () => 60, limit: () => Infinity, value: (s) => { const e = E(s); return e ? evConsumption(e) : Number.NaN; }, warns: [] }),
+        new Meter({ id: "ev-soc", label: "Ladezustand", unit: "%", decimals: 1, min: 0, max: () => 100, limit: () => 10, lowLimit: true, value: (s) => (E(s)?.soc ?? Number.NaN) * 100, warns: ["battery-low"] }),
       ];
       const cfgStub = {} as EngineConfig;
       for (const m of meters) m.configure(cfgStub);

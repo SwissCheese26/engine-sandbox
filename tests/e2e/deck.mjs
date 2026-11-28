@@ -16,7 +16,8 @@ export async function deckOverlaps(page) {
     const boxes = [];
     for (const sel of sels) {
       for (const e of deck.querySelectorAll(sel)) {
-        if (!e.checkVisibility()) continue;
+        // visibilityProperty: Ready and key + starter share one slot, the inactive ones are only invisible (#154)
+        if (!e.checkVisibility({ visibilityProperty: true })) continue;
         const r = e.getBoundingClientRect();
         if (r.width < 1 || r.height < 1) continue;
         boxes.push({ k: `${sel}${e.dataset.shift ?? e.dataset.sel ?? ""}`, r, el: e });

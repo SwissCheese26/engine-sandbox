@@ -5,13 +5,16 @@ import { TYRE_TYPES } from "../core/index.ts";
 import type { EvChemistry, TyreType } from "../core/index.ts";
 import { CELLS, COOLING, MAX_MOTORS, MOTOR_COOLING, MOTOR_TYPES, TUNING_LIMITS, type EvMotorCooling, type EvMotorType, validTuning, type EvCooling, type MotorAxleKey, type EvTuning } from "../data/ev-tuning.ts";
 
-export type EvGroupId = "motors" | "drive" | "battery" | "chassis";
+export type EvGroupId = "motors" | "inverter" | "battery" | "drive" | "cooling" | "chassis";
 
+// the same plate order as the combustion bench (#154): drive → charging/inverter → energy → gearbox → cooling → tyres
 export const EV_GROUPS: { id: EvGroupId; title: string; effect: string }[] = [
   { id: "motors", title: "Elektromotoren", effect: "Mehr und größere Motoren bringen Leistung und Allrad-Traktion, aber auch Gewicht." },
-  { id: "drive", title: "Getriebe und Vmax", effect: "Kurz übersetzt zieht stärker an, lang übersetzt dreht der Motor später in seine Drehzahlgrenze." },
+  { id: "inverter", title: "Wechselrichter", effect: "Mehr Strom bringt mehr Drehmoment, bis Akku oder Motor die Grenze setzen." },
   { id: "battery", title: "Akku", effect: "Energie bestimmt die Reichweite, Zelltyp, Entladerate und Spannung die Spitzenleistung." },
-  { id: "chassis", title: "Kühlung und Reifen", effect: "Kühlung hält die Leistung bei Dauervolllast, Reifen bringen sie auf die Straße." },
+  { id: "drive", title: "Getriebe und Vmax", effect: "Kurz übersetzt zieht stärker an, lang übersetzt dreht der Motor später in seine Drehzahlgrenze." },
+  { id: "cooling", title: "Kühlung", effect: "Kühlung hält die Leistung bei Dauervolllast." },
+  { id: "chassis", title: "Reifen und Fahrwerk", effect: "Reifen bringen die Leistung auf die Straße." },
 ];
 
 const TYRES: TyreType[] = ["standard", "uhp", "semi-slick", "slick", "winter"];
@@ -54,8 +57,8 @@ export const EV_FIELDS: EvField[] = [
   { key: "rearMotors", group: "motors", kind: "choice", label: "Motoren hinten", options: count, effect: "Hinten zieht beim Beschleunigen am besten, die Last wandert dorthin." },
   { key: "motorScale", group: "motors", kind: "number", label: "Motorgröße", unit: "%", min: L.motorScale.min, max: L.motorScale.max, step: 0.1, scale: 100, decimals: 0, effect: "+ Größe (mehr Kupfer und Eisen) → mehr Drehmoment und Leistung je Motor, aber schwerer, mehr Verlustwärme und mehr Strom." },
   { key: "motorType", group: "motors", kind: "select", label: "Motorbauart", options: (Object.keys(MOTOR_TYPES) as EvMotorType[]).map((v) => ({ value: v, label: MOTOR_TYPES[v].label })), effect: "Axialfluss wie YASA: ≈ 17 statt 7 kW/kg und mehr Moment, aber teurer und höchstens 10 000 1/min." },
-  { key: "motorCooling", group: "motors", kind: "select", label: "Motorkühlung", options: (Object.keys(MOTOR_COOLING) as EvMotorCooling[]).map((v) => ({ value: v, label: MOTOR_COOLING[v].label })), effect: "Öl direkt an Stator oder Wicklung führt mehr Wärme ab: mehr Dauerleistung, Abregeln erst später (+3 / +5 kg je Motor)." },
-  { key: "currentScale", group: "motors", kind: "number", label: "Wechselrichterstrom", unit: "%", min: L.currentScale.min, max: L.currentScale.max, step: 0.05, scale: 100, decimals: 0, effect: "+ Strom → mehr Moment, über dem Nennstrom sättigt das Eisen (höchstens 2500 A)." },
+  { key: "motorCooling", group: "cooling", kind: "select", label: "Motorkühlung", options: (Object.keys(MOTOR_COOLING) as EvMotorCooling[]).map((v) => ({ value: v, label: MOTOR_COOLING[v].label })), effect: "Öl direkt an Stator oder Wicklung führt mehr Wärme ab: mehr Dauerleistung, Abregeln erst später (+3 / +5 kg je Motor)." },
+  { key: "currentScale", group: "inverter", kind: "number", label: "Wechselrichterstrom", unit: "%", min: L.currentScale.min, max: L.currentScale.max, step: 0.05, scale: 100, decimals: 0, effect: "+ Strom → mehr Moment, über dem Nennstrom sättigt das Eisen (höchstens 2500 A)." },
   { key: "gears", group: "drive", kind: "choice", label: "Gänge", options: [{ value: "1", label: "1-Gang" }, { value: "2", label: "2-Gang" }], effect: "2 Gänge wie bei Porsche Taycan und Audi e-tron GT (Hinterachse): kurzer 1. Gang zum Anfahren, langer 2. für Vmax." },
   { key: "firstRatio", group: "drive", kind: "number", label: "Untersetzung (1. Gang)", unit: ": 1", min: L.firstRatio.min, max: L.firstRatio.max, step: 0.05, scale: 1, decimals: 2, effect: "+ Untersetzung → mehr Zugkraft, aber die Motordrehzahl begrenzt früher. Taycan 1. Gang ≈ 15 : 1." },
   { key: "secondRatio", group: "drive", kind: "number", label: "2. Gang", unit: ": 1", min: L.secondRatio.min, max: L.secondRatio.max, step: 0.05, scale: 1, decimals: 2, visible: (t) => t.gears === 2, effect: "Taycan ≈ 8 : 1. Lang für Vmax; mindestens 1 kürzer als der 1. Gang." },
@@ -66,7 +69,7 @@ export const EV_FIELDS: EvField[] = [
   { key: "chemistry", group: "battery", kind: "select", label: "Zelltyp", options: (Object.keys(CELLS) as EvChemistry[]).map((c) => ({ value: c, label: CELLS[c].label })), effect: "NMC speichert viel, NCA gibt viel Strom ab, LFP ist schwer und robust." },
   { key: "cRate", group: "battery", kind: "number", label: "Entladerate", unit: "C", min: L.cRate.min, max: L.cRate.max, step: 0.5, scale: 1, decimals: 1, effect: "Höchststrom als Vielfaches der Kapazität; der Zelltyp setzt die Grenze." },
   { key: "highVoltage", group: "battery", kind: "choice", label: "Spannung", options: [{ value: "0", label: "400 V" }, { value: "1", label: "800 V" }], effect: "Über ≈ 1 MW hilft nur 800 V: Schütze und Stromschienen tragen ≈ 3000 A." },
-  { key: "cooling", group: "chassis", kind: "select", label: "Kühlung", options: (Object.keys(COOLING) as EvCooling[]).map((c) => ({ value: c, label: COOLING[c].label })), effect: "Größere Kühlung hält Akku und Motoren länger unter der Abregelgrenze." },
+  { key: "cooling", group: "cooling", kind: "select", label: "Kühlung", options: (Object.keys(COOLING) as EvCooling[]).map((c) => ({ value: c, label: COOLING[c].label })), effect: "Größere Kühlung hält Akku und Motoren länger unter der Abregelgrenze." },
   { key: "tyre", group: "chassis", kind: "select", label: "Reifen", options: TYRES.map((t) => ({ value: t, label: TYRE_TYPES[t].label })), effect: "Mehr Haftung (μ) → weniger Schlupf beim Anfahren." },
 ];
 
