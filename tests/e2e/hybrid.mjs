@@ -85,7 +85,7 @@ export async function hybridChecks({ browser, base, outDir, failures, errors, la
     if (JSON.stringify(pos.ev[v][s]) !== JSON.stringify(pos.hy[v][s])) fail(`${v}: ${s} springt zwischen Elektro ${JSON.stringify(pos.ev[v][s])} und Hybrid ${JSON.stringify(pos.hy[v][s])}`);
   }
   const modes = await page.$$eval(".evmode [data-mode]", (b) => b.map((x) => x.textContent).join(","));
-  if (modes !== "Hybrid,EV,Sport,Laden") fail(`Betriebsarten ${modes}`);
+  if (modes !== "Hybrid,EV,Sport,Laden,Nur Verbrenner") fail(`Betriebsarten ${modes}`);
   const bench = await page.evaluate(() => ({ id: window.__pruefzelle.bench.config.id, evb: !document.querySelector(".evb")?.hidden }));
   if (bench.id !== "lib-toyota-2zr-fxe" || !bench.evb) fail(`Werkbank zeigt nicht Motor und E-Teile (${JSON.stringify(bench)})`);
 
@@ -132,6 +132,30 @@ export async function hybridChecks({ browser, base, outDir, failures, errors, la
   await page.waitForTimeout(200);
   const sport = await hy(page);
   if (sport.mode !== "sport") fail(`Betriebsart Sport nicht übernommen (${sport.mode})`);
+  // the cockpit's drive-mode slot shows and steps the operating mode in every design (not the EV's "Plaid")
+  const ckMode = () => page.evaluate(() => {
+    const vis = (e) => !!e && e.checkVisibility({ visibilityProperty: true });
+    const b = document.querySelector('.ck [data-ck="ev-mode"]');
+    const it = document.querySelector('.ck [data-ck="mode"]');
+    return { btn: vis(b) ? b.textContent : null, dt: b?.closest("div")?.querySelector("dt")?.textContent, italian: vis(it) ? it.textContent : null };
+  });
+  for (const d of DESIGNS) {
+    await view(page, d);
+    const m = await ckMode();
+    for (const t of [m.btn, m.italian]) if (t !== null && t !== "Sport") fail(`${d}: Cockpit zeigt Betriebsart „${t}“ statt „Sport“`);
+    if (m.btn !== null && m.dt !== "Betriebsart") fail(`${d}: Cockpit-Beschriftung „${m.dt}“ statt „Betriebsart“`);
+  }
+  await view(page, "classic");
+  await page.focus('.ck [data-ck="ev-mode"]');
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(200);
+  const kb = { ...(await ckMode()), sim: (await hy(page)).mode };
+  if (kb.btn !== "Laden" || kb.sim !== "charge") fail(`Cockpit-Betriebsart per Tastatur: ${kb.btn} / ${kb.sim} statt Laden / charge`);
+  if (touch) await page.tap('.ck [data-ck="ev-mode"]');
+  else await page.click('.ck [data-ck="ev-mode"]');
+  await page.waitForTimeout(200);
+  const tap = { ...(await ckMode()), sim: (await hy(page)).mode };
+  if (tap.btn !== "Nur Verbrenner" || tap.sim !== "ice") fail(`Cockpit-Betriebsart per ${touch ? "Tippen" : "Klick"}: ${tap.btn} / ${tap.sim} statt Nur Verbrenner / ice`);
   await page.keyboard.down("s");
   await page.waitForFunction(() => window.__pruefzelle.gearbox.drivetrain.state.speedKmh < 0.5, null, { timeout: 30000 }).catch(() => fail("bremst nicht bis zum Stand"));
   await page.keyboard.up("s");
