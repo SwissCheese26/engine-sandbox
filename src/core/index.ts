@@ -104,3 +104,5 @@ export {
 export type { SystemsInput, SystemsOutput } from "./vehicle-systems.ts";
 export { BRAKE_MAX_G } from "./vehicle.ts";
 export { DIESEL_FUELS, PETROL_FUELS } from "./fuels.ts";
+// issue #157: hybrid drives (P2, mild, power-split, series)
+export { HybridSimulator, HYBRID_MODES, HYBRID_MODE_IDS, ENGINE_MIN_ON_S, hybridModes } from "./hybrid.ts";

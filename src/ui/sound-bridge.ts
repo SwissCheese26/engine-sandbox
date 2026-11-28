@@ -52,7 +52,11 @@ class DriveSound implements SoundOutput {
     this.engine.setConfig(cfg, summary);
   }
   update(state: EngineState, pedal: number) {
-    if (state.ev) {
+    if (state.hybrid) {
+      // hybrid (#157): both voices – the engine with its own state (start, idle, load), the motor whine
+      this.ev.update(state);
+      this.engine.update({ ...state.hybrid.engine, vehicleSpeedMs: state.vehicleSpeedMs }, state.hybrid.engineOn ? pedal : 0);
+    } else if (state.ev) {
       this.engine.update({ ...state, running: false, rpm: 0, starterEngaged: false, afterfire: 0, load: 0, torqueNm: 0, powerKw: 0 }, 0);
       this.ev.update(state);
     } else {

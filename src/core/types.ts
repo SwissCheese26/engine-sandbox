@@ -255,6 +255,8 @@ export interface SimInputs {
   fuelEmpty?: boolean;
   /** Electric cars (issue #108, EvSimulator only): drive mode (power limit and pedal map), default "sport". */
   evDriveMode?: EvDriveMode;
+  /** Hybrid drives (issue #157, HybridSimulator only): operating mode of the strategy, default "hybrid". */
+  hybridMode?: HybridMode;
 }
 
 /** Vehicle physics parameters (fixed base vehicle for now, see DEFAULT_VEHICLE). */
@@ -487,6 +489,8 @@ export interface EngineState {
   roadGrip?: number;
   /** Electric cars (issue #108): battery, motor and energy state. Unset for combustion engines. */
   ev?: EvState;
+  /** Hybrid drives (issue #157): engine, power flow and strategy. Unset for pure combustion and pure electric drives. */
+  hybrid?: HybridState;
   /** Catalyst substrate temperature, °C (issue #135). Only with `exhaust.catalyst`. */
   catalystC?: number;
   /**
@@ -659,4 +663,63 @@ export interface EvState {
   /** Two-speed reduction only: present gear (1, 2) and whether a shift (torque gap) is running. */
   gear?: number;
   shifting?: boolean;
+}
+
+/**
+ * Hybrid drive (issue #157, docs/research/hybrid.md): a combustion engine (the library engine of the car) plus the
+ * motors and battery of `CarSetup.ev`. Topologies (§1):
+ *  - "p2": motor 0 between engine clutch (K0) and gearbox (BMW 330e, VW GTE, Porsche 918, Ferrari SF90); further
+ *    motors are fixed-ratio e-axles;
+ *  - "mild": 48 V belt starter-generator on the crank (motor 0, `beltRatio`), no electric driving;
+ *  - "power-split": planetary eCVT (Toyota THS): engine speed free, `ringShare` of its torque reaches the ring gear;
+ *  - "series": the engine only drives a generator (BMW i3 REx), `generatorKw`.
+ */
+export type HybridTopology = "p2" | "mild" | "power-split" | "series";
+export type HybridMode = "hybrid" | "ev" | "sport" | "charge";
+
+export interface HybridConfig {
+  topology: HybridTopology;
+  /** Highest speed for electric driving, km/h (mode "ev" and a plug-in with charge; a full hybrid uses 85 % of it). */
+  evMaxKmh: number;
+  /** State-of-charge window the strategy keeps (charge-sustaining band), 0 … 1. */
+  socMin: number;
+  socMax: number;
+  /** Plug-in hybrid: charge-depleting down to socMin, chargeable from the grid ("Laden auf …"). */
+  plugIn?: boolean;
+  /** p2 / mild: gearbox ratios (engine side) and final drive. */
+  ratios?: number[];
+  finalDrive?: number;
+  /** mild: motor speed / crank speed of the belt drive. */
+  beltRatio?: number;
+  /** power-split: share of the engine torque at the ring gear, ρ/(1+ρ) (THS: 78/(78+30) ≈ 0.72), and ring → wheel ratio. */
+  ringShare?: number;
+  ringRatio?: number;
+  /** series: electric power of the generator at the engine's operating point, kW. */
+  generatorKw?: number;
+}
+
+/** For a hybrid, `EngineState.ev.soc` is the usable SoC (0 … 1 of [socMin, socMax]), as the car's display shows it. */
+export interface HybridState {
+  mode: HybridMode;
+  topology: HybridTopology;
+  /** Engine fires / is being started (start delay) / is coupled to the wheels. */
+  engineOn: boolean;
+  engineStarting: boolean;
+  engineCoupled: boolean;
+  /** Pure electric driving right now (EV lamp). */
+  evDrive: boolean;
+  engineRpm: number;
+  /** Engine shaft power (≥ 0 firing), kW; the part that reaches the wheels, kW. */
+  engineKw: number;
+  engineToWheelKw: number;
+  /** Battery power, kW (+ discharge, − charge); motor mechanical power, kW (+ drive, − generate). */
+  batteryKw: number;
+  motorKw: number;
+  /** Power at the wheels, kW (− braking by regeneration). */
+  wheelKw: number;
+  fuelLh: number;
+  /** p2 / mild: gear of the engine-side gearbox (1 …). */
+  gear: number;
+  /** The combustion engine's own state (sound, temperatures, warnings). */
+  engine: EngineState;
 }

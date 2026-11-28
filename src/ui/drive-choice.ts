@@ -1,8 +1,10 @@
 // "Antrieb" choice (issue #154): any library engine, any own engine (Engine Builder) or any electric drive (library EV
 // drives as delivered or as set in the E-Tuner) into any vehicle. The choice is a string id, stored per vehicle:
-//   "" = factory drive · an engine id (library or "my-…") · "ev:<car id>" · "evt:<car id>" (that car's E-Tuner setup).
+//   "" = factory drive · an engine id (library or "my-…") · "ev:<car id>" · "evt:<car id>" (that car's E-Tuner setup)
+//   · "hy:<car id>" (a library hybrid drive, #157) · "mild" / "rex" (the vehicle's own engine with the 48 V kit or as
+//   range extender, #157).
 import type { DriveSpec, VehicleKind } from "../core/index.ts";
-import { driveMassKg, engineDrive, factoryDrive, withDrive } from "../data/drive-swap.ts";
+import { driveMassKg, engineDrive, factoryDrive, mildHybridDrive, rangeExtenderDrive, withDrive } from "../data/drive-swap.ts";
 import { ENGINE_LIBRARY, type LibraryEngine } from "../data/engine-library.ts";
 import { tuneEv } from "../data/ev-tuning.ts";
 import { VEHICLE_LIBRARY, type LibraryCar } from "../data/vehicle-library.ts";
@@ -12,11 +14,17 @@ import { loadMyEngines, resolveEngine } from "./my-engines.ts";
 
 export const DRIVE_KEY = "pruefzelle.drive";
 
-const EV_CARS = () => VEHICLE_LIBRARY.filter((c) => c.setup.ev);
+const EV_CARS = () => VEHICLE_LIBRARY.filter((c) => c.setup.ev && !c.setup.hybrid);
+const HY_CARS = () => VEHICLE_LIBRARY.filter((c) => c.setup.hybrid);
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
 /** The drive behind an id; null when it does not exist (any more). `engineId`: the engine to put on the bench. */
 export function resolveDrive(id: string, kind: VehicleKind = "car"): { spec: DriveSpec; engineId: string | null } | null {
+  const hy = /^hy:(.+)$/.exec(id);
+  if (hy) {
+    const donor = HY_CARS().find((c) => c.id === hy[1]);
+    return donor ? { spec: factoryDrive(donor), engineId: donor.engineId } : null;
+  }
   const m = /^(evt?):(.+)$/.exec(id);
   if (m) {
     const donor = EV_CARS().find((c) => c.id === m[2]);
@@ -39,7 +47,10 @@ export function resolveDrive(id: string, kind: VehicleKind = "car"): { spec: Dri
  * swapped setup, the drive's engine and an own id (the E-Tuner stores its setup per vehicle and drive).
  */
 export function carWithDrive(car: LibraryCar, id: string): LibraryCar {
-  const d = id ? resolveDrive(id, car.setup.kind ?? "car") : null;
+  // the vehicle's own combustion engine as 48 V mild hybrid or range extender (#157)
+  const kit = id === "mild" ? mildHybridDrive : id === "rex" ? rangeExtenderDrive : null;
+  const own = kit && !car.setup.ev ? kit(factoryDrive(car)) : null;
+  const d = own ? { spec: own, engineId: car.engineId } : id && !kit ? resolveDrive(id, car.setup.kind ?? "car") : null;
   if (!d) return car;
   return { ...car, id: `${car.id}@${id}`, engineId: d.engineId ?? "", setup: withDrive(car, d.spec) };
 }
@@ -53,6 +64,8 @@ export function driveOptionsHtml(factoryLabel: string | null = "Werksantrieb"): 
   return [
     factoryLabel === null ? "" : opt("", factoryLabel),
     group("Eigene Motoren", loadMyEngines().map((e) => opt(e.id, e.name))),
+    // shortcut: own vehicles (wizard, factoryLabel null) get no hybrid drive yet – their setup has no hybrid path
+    factoryLabel === null ? "" : group("Hybrid", [opt("mild", "48-V-Mildhybrid mit dem eigenen Motor"), opt("rex", "Range Extender: eigener Motor lädt, E-Antrieb (i3-Klasse)"), ...HY_CARS().map((c) => opt(`hy:${c.id}`, `Hybrid: ${c.name}`))]),
     group("Elektro ⚡", EV_CARS().flatMap((c) => [opt(`ev:${c.id}`, `⚡ ${c.name}`), ...(loadEvTuning(c) ? [opt(`evt:${c.id}`, `⚡ ${c.name} (E-Tuner)`)] : [])])),
     group("Diesel", lib((e) => cat(e) === "car" && e.config.fuel === "diesel")),
     group("Benziner", lib((e) => cat(e) === "car" && e.config.fuel === "petrol")),

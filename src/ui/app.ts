@@ -1,8 +1,8 @@
 // Prüfzelle: wires workbench, schematic, nameplate, instruments, recorder and console to the
 // simulator and runs the main loop.
-import { BRAKE_MAX_G, EngineSimulator, EvSimulator, TERRAIN_LABELS, VehicleSystems, defaultInputs, evPackKwh, evRpmVmaxKmh, summarize } from "../core/index.ts";
+import { BRAKE_MAX_G, EngineSimulator, EvSimulator, HYBRID_MODES, HybridSimulator, TERRAIN_LABELS, hybridModes, VehicleSystems, defaultInputs, evPackKwh, evRpmVmaxKmh, summarize } from "../core/index.ts";
 import { RangeEstimator, packKwhLeft, ratedLPer100 } from "./range-estimator.ts";
-import type { EvConfig, EvDriveMode } from "../core/index.ts";
+import type { EvConfig, EvDriveMode, HybridConfig, HybridMode } from "../core/index.ts";
 import { EvBench } from "./ev-bench.ts";
 import { EvStatus } from "./ev-panel.ts";
 import { loadEvTuning, saveEvTuning } from "./ev-tuning-store.ts";
@@ -66,6 +66,9 @@ export class App {
   private fuelRangeKey = "";
   private evCfg: Readonly<EvConfig> | null = null;
   private evMode: EvDriveMode = "sport";
+  /** Hybrid drive (#157): its config (the motors and battery are evCfg) and operating mode. */
+  private hyCfg: Readonly<HybridConfig> | null = null;
+  private hyMode: HybridMode = "hybrid";
   private evPanel = new EvStatus();
   /** Werkbank, Elektroantrieb (#108): the E-Tuner plates. */
   private evBench = new EvBench();
@@ -191,7 +194,8 @@ export class App {
    */
   private syncDrive() {
     const ev = this.gearbox.drivetrain.ev;
-    if (ev === this.evCfg) return;
+    const hy = this.gearbox.drivetrain.hybrid;
+    if (ev === this.evCfg && hy === this.hyCfg) return;
     let sameCar = this.evTuning && !!ev && !!this.evSim;
     this.evTuning = false;
     // a newly loaded electric car comes with its stored E-Tuner setup (per vehicle)
@@ -205,16 +209,26 @@ export class App {
       sameCar = false;
     }
     const evNow = this.gearbox.drivetrain.ev;
+    // hybrid (#157): the HybridSimulator drives the bench's engine simulator plus the motors and battery
+    const hyNow = evNow ? this.gearbox.drivetrain.hybrid : null;
+    if (hyNow !== this.hyCfg) sameCar = false;
     this.evCfg = evNow;
+    this.hyCfg = hyNow;
     if (!sameCar) this.console.switchOff();
     if (evNow) {
       if (sameCar) this.evSim!.setConfig(structuredClone(evNow) as EvConfig, true);
-      else this.evSim = new EvSimulator(structuredClone(evNow) as EvConfig);
+      else this.evSim = hyNow ? new HybridSimulator(structuredClone(evNow) as EvConfig, structuredClone(hyNow) as HybridConfig, this.sim) : new EvSimulator(structuredClone(evNow) as EvConfig);
     } else this.evSim = null;
+    if (hyNow && !hybridModes(hyNow).includes(this.hyMode)) this.hyMode = "hybrid";
+    this.inputs.hybridMode = this.hyMode;
+    this.evPanel.setHybrid(hyNow);
+    this.evPanel.setMode(hyNow ? this.hyMode : this.evMode, false);
     if (!sameCar) this.evRange = evNow ? new RangeEstimator(evNow.ratedKwhPer100 ?? 18, "electric") : null;
     if (!sameCar) this.evBench.setCar(car, stored ?? undefined);
     this.evPanel.setShown(!!evNow);
-    this.bench.setElectric(!!evNow);
+    // a hybrid keeps the engine plates and adds the E-Tuner's (#157)
+    this.bench.setElectric(!!evNow && !hyNow);
+    this.bench.el.classList.toggle("bench--hybrid", !!hyNow);
     this.shiftPad?.setElectric(!!evNow);
     const on = !!evNow;
     this.cell.dataset.drive = on ? "ev" : "ice";
@@ -223,7 +237,8 @@ export class App {
     this.gauges.setElectric(ev as EvConfig | null);
     this.gearbox.el.dataset.drive = on ? "ev" : "ice";
     this.info.setElectricVmax(ev ? evRpmVmaxKmh(ev as EvConfig, this.gearbox.drivetrain.vehicle.wheelRadiusM) : null);
-    for (const v of this.views.values()) if (v instanceof CockpitView) v.setElectric(ev as EvConfig | null);
+    for (const v of this.views.values()) if (v instanceof CockpitView) v.setElectric(ev as EvConfig | null, hyNow);
+    this.gauges.setHybrid(!!hyNow);
     this.toasts.clear();
   }
 
@@ -237,6 +252,20 @@ export class App {
     if (d.tyre.type !== t.tuning.tyre) d.setTyre({ ...d.tyre, type: t.tuning.tyre });
     this.gearbox.vehiclePanel.sync();
     return true;
+  }
+
+  /** Hybrid operating mode (#157), same slot as the EV drive modes. */
+  private setHybridMode(m: HybridMode) {
+    this.hyMode = m;
+    this.evPanel.setMode(m, false);
+    this.inputs.hybridMode = m;
+    this.announce(`Betriebsart ${HYBRID_MODES[m].label}.`);
+  }
+
+  private nextMode() {
+    if (!this.hyCfg) return this.setEvMode(nextDriveMode(this.evMode));
+    const ids = hybridModes(this.hyCfg);
+    this.setHybridMode(ids[(ids.indexOf(this.hyMode) + 1) % ids.length]!);
   }
 
   private setEvMode(m: EvDriveMode) {
@@ -277,7 +306,7 @@ export class App {
           sel.dispatchEvent(new Event("change", { bubbles: true }));
           this.announce("Rollenprüfstand mit Getriebe gewählt.");
         };
-        c.onEvMode = () => this.setEvMode(nextDriveMode(this.evMode));
+        c.onEvMode = () => this.nextMode();
         // "Automatisch": the loaded library car's own cluster, if it brings one (looked up once per car)
         let carKey: string | null = null;
         let carPick: CockpitDesignId | undefined;
@@ -291,7 +320,7 @@ export class App {
           }
           return carPick;
         };
-        c.setElectric(this.evCfg as EvConfig | null);
+        c.setElectric(this.evCfg as EvConfig | null, this.hyCfg);
         // tap on the road line in the cockpit: to the Umwelt panel, route select focused
         c.onWantEnvironment = () => {
           const panel = this.gearbox.environmentPanel.el;
@@ -388,7 +417,7 @@ export class App {
       const panel = this.gearbox.vehiclePanel;
       const car = VEHICLE_LIBRARY.find((c) => c.id === panel.carId);
       panel.resetFactory();
-      if (car && !car.setup.ev) this.bench.loadLibrary(car.engineId);
+      if (car && (!car.setup.ev || car.setup.hybrid)) this.bench.loadLibrary(car.engineId);
       else this.bench.setStage(0);
       put(this.iceSum.out, "note", "Werkszustand.");
     });
@@ -425,9 +454,11 @@ export class App {
       this.fuelRangeKey = "";
     };
     // Elektro-Platte (#108)
-    this.evPanel.onMode = (m) => this.setEvMode(m);
+    this.evPanel.onMode = (m) => (this.hyCfg ? this.setHybridMode(m as HybridMode) : this.setEvMode(m as EvDriveMode));
     this.evPanel.onCharge = (soc) => {
-      this.evSim?.setSoc(soc);
+      // hybrid (#157): the buttons mean the usable charge; setSoc keeps it inside the window
+      const hy = this.hyCfg;
+      this.evSim?.setSoc(hy ? hy.socMin + soc * (hy.socMax - hy.socMin) : soc);
       this.announce(`Akku auf ${Math.round(soc * 100)} % geladen.`);
     };
     this.evBench.onFactory = () => {
@@ -457,7 +488,7 @@ export class App {
     // ready-made car (issue #22): engine from the library, the rest is set on the drivetrain by the plate
     this.gearbox.vehiclePanel.onLoadCar = (car) => {
       // electric car (#108): no engine to load; a running engine is switched off first
-      if (car.setup.ev) {
+      if (car.setup.ev && !car.setup.hybrid) {
         if (App.turning(this.sim.state) && !this.evSim) {
           this.announce("Erst den Motor abstellen, dann lässt sich ein fertiges Auto laden.");
           return false;
@@ -472,7 +503,7 @@ export class App {
       }
       this.bench.loadLibrary(car.engineId);
       setOwnVehicleActive(false);
-      this.announce(`${car.name} geladen.`);
+      this.announce(car.setup.hybrid ? `${car.name} geladen. Ready drücken zum Losfahren.` : `${car.name} geladen.`);
       return true;
     };
     // a production engine picked on the bench brings its car along (gearbox, body, tyres), if the library has it
@@ -738,7 +769,8 @@ export class App {
           // tank: an empty tank starves the engine (no injection), it stalls and does not restart
           s = sim.step(dt, { ...this.inputs, ...d.simInputs(), vehicle, pedal: d.effectivePedal(this.inputs.pedal * gate) * sx.pedalCap, fuelEmpty: d.tank.empty });
           // an electric car (#108) draws no fuel
-          if (s.running && !this.evSim) d.tank.step(dt, s.fuelFlowLh);
+          // a hybrid (#157) burns what its engine burns
+          if (s.fuelFlowLh > 0 && (!this.evSim || s.hybrid)) d.tank.step(dt, s.fuelFlowLh);
           // at the pump AdBlue is topped up too (the tank level jumps up)
           if (d.tank.levelL > this.lastTankL + 0.5) this.systems.adblue.refill();
           this.lastTankL = d.tank.levelL;
@@ -755,8 +787,10 @@ export class App {
       let rangeKm = Number.NaN;
       if (s.ev && this.evRange && this.evCfg) {
         this.evRange.step(dt, s.ev.powerKw, this.gearbox.drivetrain.state.speedKmh);
-        s.ev.rangeKm = this.evRange.rangeKm(packKwhLeft(s.ev.soc, evPackKwh(this.evCfg as EvConfig)));
-        if (this.inputs.dynoMode === "vehicle") rangeKm = s.ev.rangeKm;
+        // a hybrid's SoC is the usable share of its window (#157)
+        const win = this.hyCfg ? this.hyCfg.socMax - this.hyCfg.socMin : 1;
+        s.ev.rangeKm = this.evRange.rangeKm(packKwhLeft(s.ev.soc, evPackKwh(this.evCfg as EvConfig) * win));
+        if (this.inputs.dynoMode === "vehicle") rangeKm = s.ev.rangeKm + (s.hybrid ? this.stepFuelRange(dt, s) : 0);
       } else if (this.inputs.dynoMode === "vehicle" && !this.evSim) rangeKm = this.stepFuelRange(dt, s);
       this.gearbox.showRange(rangeKm);
       this.iceSummary(dt, rangeKm);

@@ -4,10 +4,11 @@ Alle sichtbaren Änderungen an der Prüfzelle, neueste zuerst. Aufbau nach [Keep
 
 _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `bun scripts/changelog.ts` ausführen._
 
-## 2026-11-28 – Jeder Antrieb in jedes Fahrzeug, gleicher Aufbau für Verbrenner und E-Auto, Fahrzeugwahl aus dem Hauptmenü greift wieder
+## 2026-11-28 – Hybridantrieb, jeder Antrieb in jedes Fahrzeug, gleicher Aufbau für Verbrenner und E-Auto, Fahrzeugwahl aus dem Hauptmenü greift wieder
 
 ### Neu
 
+- Hybridautos: Toyota Prius (4. Gen. und 5. Gen. Plug-in), Yaris Hybrid, BMW 330e, VW Golf GTE, Porsche 918 Spyder und Ferrari SF90 Stradale. Sie fahren elektrisch an, der Motor springt bei Bedarf mit kurzer Verzögerung an, gibt mit dem E-Motor zusammen Boost, lädt den Akku nebenbei und geht im Stand aus. Beim Bremsen lädt zuerst der E-Motor, die Bremse nimmt nur den Rest. In der Bedienleiste wählst du an der Stelle der Fahrmodi Hybrid, EV, Sport oder Laden. Jedes Cockpit-Design und die Prüfzelle zeigen den Energiefluss (Motor → Räder, Akku ↔ E-Motor), Tank, Akku und die EV-Leuchte. Plug-ins lädst du mit „Laden auf …“. Unter „Antrieb“ gibt es die Hybridantriebe für jedes Fahrzeug, dazu einen 48-V-Mildhybrid und einen Range Extender mit dem eigenen Motor. ([#157](https://github.com/SwissCheese26/engine-sandbox/issues/157), [#163](https://github.com/SwissCheese26/engine-sandbox/issues/163))
 - Antriebstausch: In der Fahrzeug-Platte wählst du unter „Antrieb“ jeden Motor aus der Bibliothek, deine eigenen Motoren aus dem Engine Builder oder einen Elektroantrieb (ab Werk oder wie im E-Tuner eingestellt), auch im Assistenten unter „Neues erstellen“. So fährt der Citaro mit dem Tesla-Antrieb, das Model S mit dem V8 der Corvette oder ein Motorrad elektrisch. Die Masse wird neu berechnet (Motor, Getriebe und Tank oder Motoren und Akku), die Übersetzung passt sich an die neue Drehzahl und den Reifen an, und das Cockpit schaltet selbst um (Drehzahl oder kW, Tank oder Akku, Zündung oder Ready). Die Wahl bleibt je Fahrzeug gespeichert, „Auf Werkszustand“ bringt den Werksantrieb zurück. ([#154](https://github.com/SwissCheese26/engine-sandbox/issues/154), [#160](https://github.com/SwissCheese26/engine-sandbox/issues/160))
 
 ### Geändert

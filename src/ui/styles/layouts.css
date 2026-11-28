@@ -738,3 +738,81 @@
   background: transparent;
   padding: 0;
 }
+
+/* ── Hybrid (#157): Energiefluss in the lamp row of every cockpit design and in the Prüfzelle ── */
+.hyflow {
+  flex: 1 0 100%;
+  max-width: 26rem;
+  margin: var(--space-1) auto 0;
+  min-width: 0;
+  font-size: 0.75rem;
+}
+.hyflow[hidden] {
+  display: none;
+}
+.hyflow__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.hyflow__node {
+  fill: currentColor;
+  font-size: 11px;
+  opacity: 0.8;
+}
+.hyflow__svg path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3;
+  stroke-linecap: round;
+  opacity: 0.18;
+  stroke-dasharray: 6 6;
+}
+.hyflow__svg path:is([data-state="on"], [data-state="fwd"], [data-state="rev"]) {
+  opacity: 1;
+  stroke: var(--ck-green, #5fd068);
+  animation: hyflow-run 0.6s linear infinite;
+}
+.hyflow__svg path[data-state="rev"] {
+  stroke: #4fb4ff;
+  animation-direction: reverse;
+}
+.hyflow__svg path[data-a="eng-wheel"][data-state="on"],
+.hyflow__svg path[data-a="eng-bat"][data-state="on"] {
+  stroke: #ffb347;
+}
+@keyframes hyflow-run {
+  to {
+    stroke-dashoffset: -12;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hyflow__svg path {
+    animation: none !important;
+  }
+}
+.hyflow__row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px var(--space-2);
+  margin: 0;
+}
+.hyflow__ev {
+  padding: 0 4px;
+  border: 1px solid currentColor;
+  border-radius: 3px;
+  font-weight: 700;
+  opacity: 0.3;
+}
+.hyflow__ev[data-state="on"] {
+  opacity: 1;
+  color: var(--ck-green, #5fd068);
+}
+.instruments__meters--hy {
+  min-width: 0;
+}
+.instruments__meters--hy .hyflow {
+  max-width: none;
+  color: var(--text, inherit);
+}

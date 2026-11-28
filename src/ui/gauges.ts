@@ -7,6 +7,7 @@ import { setText } from "./dom.ts";
 import { evConsumption } from "./ev-fields.ts";
 import { clamp, fmt, mixHex, niceCeil, tickStep } from "./format.ts";
 import { ICON2 } from "./layouts/icons.ts";
+import { HybridFlow } from "./layouts/hybrid-flow.ts";
 import { UNITS, makeSwitchable, saveUnit, savedUnit, type UnitOpt } from "./units.ts";
 import { FALLBACK_LIMITS as L, egtLimitC, lambdaLimit } from "./limits-fallback.ts";
 
@@ -449,10 +450,36 @@ export class InstrumentPanel {
     }
     for (const e of this.iceEls) e.hidden = this.evOn;
     for (const e of this.ev?.els ?? []) e.hidden = !this.evOn;
+    if (this.hy && !this.evOn) this.hy.el.hidden = true;
     this.redraw();
   }
 
+  /** Hybrid (#157): engine meters and the power flow next to the electric instruments. */
+  private hy: { flow: HybridFlow; meters: Meter[]; el: HTMLElement } | null = null;
+  setHybrid(on: boolean) {
+    if (on && !this.hy) {
+      const H = (s: EngineState) => s.hybrid;
+      const meters = [
+        new Meter({ id: "hy-rpm", label: "Verbrenner", unit: "1/min", decimals: 0, min: 0, max: () => niceCeil((this.cfgNow?.revLimitRpm ?? 7000) * 1.1), limit: () => this.cfgNow?.revLimitRpm ?? Infinity, value: (s) => H(s)?.engineRpm ?? Number.NaN, warns: ["over-rev"] }),
+        new Meter({ id: "hy-kw", label: "Verbrennerleistung", unit: "kW", decimals: 0, min: 0, max: () => niceCeil(Math.max(50, this.peakKw * 1.1)), limit: () => Infinity, value: (s) => H(s)?.engineKw ?? Number.NaN, warns: [] }),
+        new Meter({ id: "hy-fuel", label: "Kraftstoff", unit: "l/h", decimals: 1, min: 0, max: () => niceCeil(Math.max(10, this.peakKw * 0.3)), limit: () => Infinity, value: (s) => H(s)?.fuelLh ?? Number.NaN, warns: [] }),
+      ];
+      const stub = {} as EngineConfig;
+      for (const m of meters) m.configure(stub);
+      const el = document.createElement("div");
+      el.className = "instruments__meters instruments__meters--hy";
+      const flow = new HybridFlow();
+      flow.setShown(true);
+      el.append(flow.el, ...meters.map((m) => m.el));
+      this.el.append(el);
+      this.hy = { flow, meters, el };
+    }
+    if (this.hy) this.hy.el.hidden = !on;
+  }
+  private peakKw = 100;
+
   configure(cfg: EngineConfig, sum: EngineSummary) {
+    this.peakKw = sum.peakPowerKw;
     const rpmMax = Math.ceil((cfg.revLimitRpm * 1.1) / 1000) * 1000;
     this.rpm.setScale(0, rpmMax, Math.min(cfg.revLimitRpm, sum.safeMaxRpm));
     const [, tq, pw, bo] = this.round;
@@ -477,6 +504,10 @@ export class InstrumentPanel {
     if (this.evOn && this.ev) {
       for (const g of this.ev.round) g.update(s, dt, active);
       for (const m of this.ev.meters) m.update(s, dt, active);
+      if (this.hy && !this.hy.el.hidden && s.hybrid) {
+        for (const m of this.hy.meters) m.update(s, dt, active);
+        this.hy.flow.update(s.hybrid, s.ev?.soc ?? 0, Number.NaN);
+      }
       return;
     }
     for (const g of this.round) g.update(s, dt, active);

@@ -371,6 +371,122 @@ const COMMERCIAL: LibraryEngine[] = [
   },
 ];
 
+
+// Hybrid engines (issue #157, docs/research/hybrid.md §5): the combustion engines of the hybrid library cars.
+// Atkinson engines (Toyota): long intake closing → mild cam profile, high geometric compression, cooled EGR [S: cam,
+// runner, conrod]. Turbo engines: ECU torque plateau as on the other TSI/B48 entries, inducer and boost fitted [S].
+const PETROL_EXHAUST = { manifold: "cast-log", egr: false, catalyst: true, particulateFilter: true, scr: false } as const;
+const HYBRID: LibraryEngine[] = [
+  {
+    maker: "Toyota", cars: "Toyota Prius 4 (XW50), C-HR Hybrid 1.8", years: "2016–2022",
+    config: {
+      id: "lib-toyota-2zr-fxe", name: "Toyota 2ZR-FXE (1.8 Atkinson, 72 kW)", fuel: "petrol",
+      block: blk("inline", 4, 80.5, 88.3, 142, 13.0, "aluminium", { crankshaft: "cast", conrods: "cast-steel" }),
+      head: { valvetrain: "dohc", valvesPerCylinder: 4, camProfile: 0.15, variableTiming: "intake-cam" },
+      induction: { ...NA, intakeRunnerLengthMm: 420 },
+      fuelSystem: { kind: "petrol", mixture: "port-injection", fuel: "ron95", fullLoadLambda: 0.95, ignitionAdvanceOffsetDeg: 0 },
+      exhaust: { ...PETROL_EXHAUST, egr: true, particulateFilter: false },
+      cooling: { radiatorCapacityKw: 70, thermostatOpenC: 88, oilCooler: false }, revLimitRpm: 5200, idleRpm: 1000,
+      // Atkinson: the late intake closing pushes ≈ 25 % of the charge back – not in the airpath model, so the ECU cap
+      // stands in for it (hybrid.md §5) [S]
+      ecuTorqueLimitNm: 142,
+    },
+    expected: { peakTorqueNm: 142, peakTorqueRpm: 3600, peakPowerKw: 72, peakPowerRpm: 5200 },
+    source: "Toyota Pressemappe Prius 2016 (2ZR-FXE: 1798 cm³, 80,5 × 88,3 mm, ε 13,0, 72 kW @ 5200, 142 Nm @ 3600, Atkinson, gekühlte AGR); Pleuel, Nocken, Saugrohr geschätzt [S]",
+  },
+  {
+    maker: "Toyota", cars: "Toyota Prius 5 Plug-in (XW60), Corolla 2.0 Hybrid", years: "seit 2023",
+    config: {
+      id: "lib-toyota-m20a-fxs", name: "Toyota M20A-FXS (2.0 Atkinson, 111 kW)", fuel: "petrol",
+      block: blk("inline", 4, 80.5, 97.6, 150, 14.0, "aluminium", { crankshaft: "cast", conrods: "cast-steel" }),
+      head: { valvetrain: "dohc", valvesPerCylinder: 4, camProfile: 0.45, variableTiming: "dual-cam" },
+      induction: { ...NA, intakeRunnerLengthMm: 340 },
+      fuelSystem: { kind: "petrol", mixture: "dual-injection", fuel: "ron95", fullLoadLambda: 0.95, ignitionAdvanceOffsetDeg: 0 },
+      exhaust: { ...PETROL_EXHAUST, egr: true },
+      cooling: { radiatorCapacityKw: 100, thermostatOpenC: 88, oilCooler: false }, revLimitRpm: 6300, idleRpm: 1000,
+      // Atkinson charge push-back not in the airpath model: the ECU cap stands in for it (hybrid.md §5.1) [S]
+      ecuTorqueLimitNm: 188,
+    },
+    expected: { peakTorqueNm: 188, peakTorqueRpm: 4800, peakPowerKw: 111, peakPowerRpm: 6000 },
+    source: "Toyota Pressemappe Prius Plug-in Hybrid 2023 (M20A-FXS: 1987 cm³, 80,5 × 97,6 mm, ε 14,0, 111 kW @ 6000, 188 Nm @ 4400–5200, D-4S); Pleuel, Nocken geschätzt [S]",
+  },
+  {
+    maker: "Toyota", cars: "Toyota Yaris Hybrid (XP210), Yaris Cross", years: "seit 2020",
+    config: {
+      id: "lib-toyota-m15a-fxe", name: "Toyota M15A-FXE (1.5 R3 Atkinson, 68 kW)", fuel: "petrol",
+      block: blk("inline", 3, 80.5, 97.6, 150, 14.0, "aluminium", { crankshaft: "cast", conrods: "cast-steel" }),
+      head: { valvetrain: "dohc", valvesPerCylinder: 4, camProfile: 0.2, variableTiming: "dual-cam" },
+      induction: { ...NA, intakeRunnerLengthMm: 420 },
+      fuelSystem: { kind: "petrol", mixture: "port-injection", fuel: "ron95", fullLoadLambda: 0.95, ignitionAdvanceOffsetDeg: 0 },
+      exhaust: { ...PETROL_EXHAUST, egr: true, particulateFilter: false },
+      cooling: { radiatorCapacityKw: 65, thermostatOpenC: 88, oilCooler: false }, revLimitRpm: 5800, idleRpm: 1000,
+      // Atkinson charge push-back not in the airpath model: the ECU cap stands in for it (hybrid.md §5.1) [S]
+      ecuTorqueLimitNm: 120,
+    },
+    expected: { peakTorqueNm: 120, peakTorqueRpm: 4200, peakPowerKw: 68, peakPowerRpm: 5500 },
+    source: "Toyota Pressemappe Yaris 2020 (M15A-FXE: 1490 cm³, 80,5 × 97,6 mm, ε 14,0, 68 kW @ 5500, 120 Nm @ 3600–4800); Pleuel, Nocken geschätzt [S]",
+  },
+  {
+    maker: "BMW", cars: "BMW 330e G20, X1 xDrive25e", years: "seit 2019",
+    config: {
+      id: "lib-bmw-b48b20-330e", name: "BMW B48B20 (2.0 Turbo, 135 kW)", fuel: "petrol",
+      block: blk("inline", 4, 82, 94.6, 144.4, 10.2, "aluminium", { crankshaft: "forged" }),
+      head: { valvetrain: "dohc", valvesPerCylinder: 4, camProfile: 0.3, variableTiming: "dual-cam" },
+      induction: { aspiration: "turbo", compressorInducerMm: 35, turbineAR: 0.5, variableGeometry: false, boostTargetBar: 0.9, intercooler: "air-to-water", intakeRunnerLengthMm: 300, individualThrottleBodies: false },
+      fuelSystem: { kind: "petrol", mixture: "direct-injection", fuel: "ron95", fullLoadLambda: 0.9, ignitionAdvanceOffsetDeg: 0 },
+      exhaust: PETROL_EXHAUST,
+      cooling: { radiatorCapacityKw: 140, thermostatOpenC: 95, oilCooler: true }, revLimitRpm: 6500, idleRpm: 750,
+      ecuTorqueLimitNm: 300,
+    },
+    expected: { peakTorqueNm: 300, peakTorqueRpm: 2700, peakPowerKw: 135, peakPowerRpm: 5500 },
+    source: "BMW Pressemappe 330e Limousine (G20, 2019): B48 1998 cm³, 82 × 94,6 mm, ε 10,2, 135 kW @ 5000–6500, 300 Nm @ 1350–4000; Turbo, Ladedruck, Nocken geschätzt [S]",
+  },
+  {
+    maker: "VW", cars: "VW Golf 8 GTE, Passat GTE, Audi A3 40 TFSI e", years: "seit 2020",
+    config: {
+      id: "lib-vw-ea211-14tsi-gte", name: "VW EA211 1.4 TSI (DGE, 110 kW)", fuel: "petrol",
+      block: blk("inline", 4, 74.5, 80, 140, 10.0, "aluminium", { crankshaft: "cast" }),
+      head: { valvetrain: "dohc", valvesPerCylinder: 4, camProfile: 0.3, variableTiming: "dual-cam" },
+      induction: { aspiration: "turbo", compressorInducerMm: 31, turbineAR: 0.45, variableGeometry: false, boostTargetBar: 1.0, intercooler: "air-to-water", intakeRunnerLengthMm: 280, individualThrottleBodies: false },
+      fuelSystem: { kind: "petrol", mixture: "direct-injection", fuel: "ron95", fullLoadLambda: 0.9, ignitionAdvanceOffsetDeg: 0 },
+      exhaust: PETROL_EXHAUST,
+      cooling: { radiatorCapacityKw: 110, thermostatOpenC: 95, oilCooler: false }, revLimitRpm: 6500, idleRpm: 750,
+      ecuTorqueLimitNm: 250,
+    },
+    expected: { peakTorqueNm: 250, peakTorqueRpm: 2500, peakPowerKw: 110, peakPowerRpm: 5500 },
+    source: "VW Pressemappe Golf GTE 2020 (EA211 1.4 TSI 1395 cm³, 74,5 × 80 mm, ε 10,0, 110 kW @ 5000–6000, 250 Nm @ 1550–3500); Turbo, Ladedruck geschätzt [S]",
+  },
+  {
+    maker: "Porsche", cars: "Porsche 918 Spyder", years: "2013–2015",
+    config: {
+      id: "lib-porsche-918-v8", name: "Porsche 918 V8 (4.6, 447 kW)", fuel: "petrol",
+      block: blk("v", 8, 95, 81, 140, 13.5, "aluminium", { v8Crank: "flatplane", pistons: "forged-aluminium", conrods: "titanium" }),
+      head: { valvetrain: "dohc", valvesPerCylinder: 4, camProfile: 1, variableTiming: "dual-cam" },
+      induction: { ...NA, intakeRunnerLengthMm: 200, individualThrottleBodies: true },
+      fuelSystem: { kind: "petrol", mixture: "direct-injection", fuel: "ron98", fullLoadLambda: 0.88, ignitionAdvanceOffsetDeg: 0 },
+      exhaust: { manifold: "tubular-long", egr: false, catalyst: true, particulateFilter: false, scr: false },
+      cooling: { radiatorCapacityKw: 400, thermostatOpenC: 90, oilCooler: true }, revLimitRpm: 9150, idleRpm: 1000,
+    },
+    expected: { peakTorqueNm: 528, peakTorqueRpm: 6700, peakPowerKw: 447, peakPowerRpm: 8700 },
+    source: "Porsche Pressemappe 918 Spyder (2013): V8 4593 cm³, 95 × 81 mm, 447 kW (608 PS) @ 8700, 528 Nm @ 6700, Drehzahlgrenze 9150; ε, Pleuel, Nocken geschätzt [S]",
+  },
+  {
+    maker: "Ferrari", cars: "Ferrari SF90 Stradale, 296-Basis F154", years: "seit 2019",
+    config: {
+      id: "lib-ferrari-f154fa", name: "Ferrari F154FA (4.0 V8 Biturbo, 574 kW)", fuel: "petrol",
+      block: blk("v", 8, 88, 82, 140, 9.5, "aluminium", { v8Crank: "flatplane", pistons: "forged-aluminium", conrods: "titanium" }),
+      head: { valvetrain: "dohc", valvesPerCylinder: 4, camProfile: 0.7, variableTiming: "dual-cam" },
+      induction: { aspiration: "twin-turbo-parallel", compressorInducerMm: 72, turbineAR: 0.9, variableGeometry: false, boostTargetBar: 1.3, intercooler: "air-to-air", intakeRunnerLengthMm: 240, individualThrottleBodies: false },
+      fuelSystem: { kind: "petrol", mixture: "direct-injection", fuel: "ron98", fullLoadLambda: 0.86, ignitionAdvanceOffsetDeg: 0 },
+      exhaust: { manifold: "tubular-long", egr: false, catalyst: true, particulateFilter: true, scr: false },
+      cooling: { radiatorCapacityKw: 520, thermostatOpenC: 90, oilCooler: true }, revLimitRpm: 8000, idleRpm: 1000,
+      ecuTorqueLimitNm: 800,
+    },
+    expected: { peakTorqueNm: 800, peakTorqueRpm: 6000, peakPowerKw: 574, peakPowerRpm: 7500 },
+    source: "Ferrari Pressemappe SF90 Stradale (2019): F154FA 3990 cm³, 88 × 82 mm, ε 9,5, 574 kW (780 PS) @ 7500, 800 Nm @ 6000; Turbo, Ladedruck, Nocken geschätzt [S]",
+  },
+];
+
 const META: Record<string, { maker: string; cars: string; years: string }> = {
   "ref-vw-19-tdi-pd-96kw": { maker: "VW", cars: "Golf 4 GTI TDI, Passat B5, Audi A4", years: "2000–2006" },
   "ref-bmw-n57d30o1": { maker: "BMW", cars: "530d F10, X5 xDrive30d", years: "2008–2015" },
@@ -398,7 +514,7 @@ const EMISSIONS: Record<string, EmissionsStandard> = {
   "lib-vw-ea888-evo4-dnf": "euro6", "lib-vw-ea111-14tfsi-caxc": "euro5", "lib-bmw-n13b16": "euro5",
   "lib-honda-cbr1000rr-sc59": "euro3", "lib-yamaha-r1-cp4": "euro3", "lib-ducati-1199-superquadro": "euro3", "lib-harley-m8-107": "euro4",
   "lib-bmw-r1250-boxer": "euro5", "lib-ktm-690-lc4": "euro4", "lib-triumph-765-triple": "euro4",
-  "lib-mercedes-om471": "euro6", "lib-scania-dc16": "euro6", "lib-mercedes-om936": "euro6",
+  "lib-mercedes-om471": "euro6", "lib-toyota-2zr-fxe": "euro6", "lib-toyota-m20a-fxs": "euro6", "lib-toyota-m15a-fxe": "euro6", "lib-bmw-b48b20-330e": "euro6", "lib-vw-ea211-14tsi-gte": "euro6", "lib-porsche-918-v8": "euro6", "lib-ferrari-f154fa": "euro6", "lib-scania-dc16": "euro6", "lib-mercedes-om936": "euro6",
 };
 
 const withEmissions = <T extends ReferenceEngine>(e: T): T =>
@@ -409,6 +525,7 @@ export const ENGINE_LIBRARY: LibraryEngine[] = [
   ...EXTRA,
   ...COMMERCIAL,
   ...MOTO,
+  ...HYBRID,
 ].map(withEmissions).sort((a, b) => (a.config.fuel === b.config.fuel ? a.config.name.localeCompare(b.config.name, "de") : a.config.fuel === "diesel" ? -1 : 1));
 
 /** Deep copy of a library engine's config, ready to edit on the bench. */

@@ -41,9 +41,12 @@ export function driveMassKg(d: DriveSpec): number {
 /** The drive a library vehicle leaves the factory with. */
 export function factoryDrive(car: LibraryCar): DriveSpec {
   const s = car.setup;
-  if (s.ev) return { ev: s.ev };
+  if (s.ev && !s.hybrid) return { ev: s.ev };
   const kind = s.kind ?? "car";
-  return { engine: { config: libraryConfig(car.engineId), gearbox: s.gearbox, gearboxSpec: s.gearboxSpec ?? GEARBOXES[s.gearbox], tankL: s.tankL ?? DEFAULT_TANK_L[kind] } };
+  const engine = { config: libraryConfig(car.engineId), gearbox: s.gearbox, gearboxSpec: s.gearboxSpec ?? GEARBOXES[s.gearbox], tankL: s.tankL ?? DEFAULT_TANK_L[kind] };
+  // hybrid (issue #157): engine + motors + battery, geared for this car's wheel
+  if (s.ev && s.hybrid) return { engine: { ...engine, refWheelRadiusM: s.vehicle.wheelRadiusM }, ev: s.ev, hybrid: s.hybrid };
+  return { engine };
 }
 
 /** Body mass of a library vehicle (incl. driver, without drive), kg: factory mass minus the factory drive. */
@@ -58,6 +61,42 @@ export function engineDrive(config: EngineConfig, bodyKind: CarSetup["kind"] = "
   const p = VEHICLES[bodyKind ?? "car"];
   const gearbox = p.gearboxes[0]!;
   return { engine: { config, gearbox, gearboxSpec: { ...(p.gearboxSpec ?? GEARBOXES[gearbox]), finalDrive: p.finalDrive }, tankL: DEFAULT_TANK_L[bodyKind ?? "car"], refWheelRadiusM: p.params.wheelRadiusM } };
+}
+
+/**
+ * 48 V mild-hybrid kit (issue #157, docs/research/hybrid.md §4.3) for a combustion drive: belt starter-generator
+ * 15 kW / 50 Nm at 2.8 × crank speed (Bosch BRM / Continental 48 V eco drive class [S]) and a 0.9 kWh, 48 V Li-ion
+ * pack (13 s × 20 Ah, 9 kg [S]). The engine keeps its gearbox; the BSG boosts, recuperates and restarts (start-stop).
+ */
+export function mildHybridDrive(d: DriveSpec): DriveSpec | null {
+  const e = d.engine;
+  if (!e) return null;
+  const ev: EvConfig = {
+    motors: [{ kind: "pmsm", axle: "front", peakPowerKw: 15, peakTorqueNm: 50, maxRpm: Math.max(18000, e.config.revLimitRpm * 2.9), ratio: e.gearboxSpec.ratios[0]! * e.gearboxSpec.finalDrive * 2.8, inverterA: 350 }],
+    battery: { chemistry: "nmc", seriesCells: 13, parallelCells: 1, cellAh: 20, cellResistanceMOhm: 1.5, maxDischargeC: 15, maxChargeC: 12, massKg: 9 },
+    gearEfficiency: e.gearboxSpec.efficiency, liftOffRegenG: 0.04, ratedKwhPer100: 16, auxKw: 0.3,
+  };
+  return { engine: e, ev, hybrid: { topology: "mild", evMaxKmh: 0, socMin: 0.3, socMax: 0.8, ratios: [...e.gearboxSpec.ratios], finalDrive: e.gearboxSpec.finalDrive, beltRatio: 2.8 } };
+}
+
+/**
+ * Range-extender kit (issue #157, hybrid.md §4.4), BMW i3 REx style: the electric drive of the i3 94 Ah (125 kW /
+ * 250 Nm, 11 400 1/min, 9.665:1; 33 kWh, 352 V [S: cell split]) and the combustion engine only as a generator
+ * (at most 80 % of its peak power, i3 REx: 28 kW from 0.65 l), 9 l tank; it starts at the bottom of the SoC window.
+ */
+export function rangeExtenderDrive(d: DriveSpec): DriveSpec | null {
+  const e = d.engine;
+  if (!e) return null;
+  const peak = summarize(e.config).peakPowerKw;
+  const ev: EvConfig = {
+    motors: [{ kind: "pmsm", axle: "rear", peakPowerKw: 125, peakTorqueNm: 250, maxRpm: 11400, ratio: 9.665, inverterA: 400 }],
+    battery: { chemistry: "nmc", seriesCells: 96, parallelCells: 1, cellAh: 94, cellResistanceMOhm: 0.8, maxDischargeC: 4, maxChargeC: 1.5, massKg: 256 },
+    gearEfficiency: 0.97, liftOffRegenG: 0.15, ratedKwhPer100: 14, auxKw: 0.4,
+  };
+  return {
+    engine: { ...e, tankL: 9, refWheelRadiusM: 0.35 }, ev,
+    hybrid: { topology: "series", evMaxKmh: 150, socMin: 0.07, socMax: 0.95, plugIn: true, generatorKw: Math.min(0.8 * peak, 100) },
+  };
 }
 
 /**
@@ -99,8 +138,21 @@ export function setupWithDrive(base: CarSetup, bodyKg: number, drive: DriveSpec)
   const massKg = bodyKg + driveMassKg(drive);
   const vehicle: VehicleParams = { ...v, massKg };
   const caps = [base.speedLimitKmh ?? Infinity, base.tyre.speedIndex === "(Y)" ? Infinity : speedRatingKmh(base.tyre.speedIndex)];
-  const out: CarSetup = { ...structuredClone(base), vehicle, ev: undefined };
+  const out: CarSetup = { ...structuredClone(base), vehicle, ev: undefined, hybrid: undefined };
   if (base.fullMassKg !== undefined) out.fullMassKg = base.fullMassKg + massKg - v.massKg;
+  if (drive.hybrid && drive.ev && drive.engine) {
+    // hybrid (issue #157): every ratio (gearbox final drive, motors, ring gear) scaled to the new wheel, so the road
+    // speed per engine and rotor speed stays the donor's (vehicle.md §13)
+    const k = v.wheelRadiusM / (drive.engine.refWheelRadiusM ?? v.wheelRadiusM);
+    const ev = structuredClone(drive.ev);
+    ev.motors = onAxles(ev, v.driveLayout).map((m) => ({ ...m, ratio: m.ratio * k }));
+    const hy = structuredClone(drive.hybrid);
+    if (hy.finalDrive) hy.finalDrive *= k;
+    if (hy.ringRatio) hy.ringRatio *= k;
+    const spec = structuredClone(drive.engine.gearboxSpec);
+    spec.finalDrive *= k;
+    return { ...out, ev, hybrid: hy, gearbox: drive.engine.gearbox, gearboxSpec: spec, tankL: drive.engine.tankL };
+  }
   if (drive.ev) {
     const ev = structuredClone(drive.ev);
     const ref = evSystemPowerKw(ev) * ev.gearEfficiency;
