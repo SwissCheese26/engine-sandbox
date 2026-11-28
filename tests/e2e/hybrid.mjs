@@ -116,6 +116,17 @@ export async function hybridChecks({ browser, base, outDir, failures, errors, la
   if (!full.on || full.engWheel !== "on" || full.lamp !== "off" || !(full.kmh > evStart.kmh + 15)) fail(`Vollgas startet den Motor nicht / Energiefluss steht (${JSON.stringify(full)})`);
   if (!/%/.test(full.soc) || !/l/.test(full.tank)) fail(`Tank / Akku fehlen (${full.tank}, ${full.soc})`);
   await page.screenshot({ path: join(outDir, `smoke-${label}-hybrid-full.png`) });
+  // consumption of a hybrid is fuel (l/100 km), never kWh (#164): cockpit average, dial unit, Prüfzelle readout
+  const cons = await page.evaluate(() => ({
+    avg: document.querySelector('.ck [data-ck="avg"]')?.textContent ?? "",
+    dial: [...document.querySelectorAll(".ck__mini")].map((e) => e.textContent).join(" "),
+  }));
+  if (!/l\/100 km/.test(cons.avg) || /kWh/.test(cons.avg)) fail(`Ø Verbrauch im Cockpit nicht in l/100 km (${cons.avg})`);
+  if (/kWh\/100/.test(cons.dial)) fail(`Verbrauchsanzeige im Cockpit in kWh (${cons.dial})`);
+  await view(page, "pruefzelle");
+  const pz = await page.evaluate(() => document.querySelector('[data-o="cons"]')?.textContent ?? "");
+  if (!/l\/100 km/.test(pz) || /kWh/.test(pz)) fail(`Ø Verbrauch in der Prüfzelle nicht in l/100 km (${pz})`);
+  await view(page, "classic");
   // operating mode in the drive-mode slot
   await page.click('.evmode [data-mode="sport"]');
   await page.waitForTimeout(200);

@@ -5,7 +5,6 @@
 // strip and cruise line stay), "hud" took over Kompakt's big rpm and power values.
 import type { EngineConfig, EngineSummary, VehicleSystems } from "../../core/index.ts";
 import { fmt } from "../format.ts";
-import { evConsumption } from "../ev-fields.ts";
 import { RESERVE_SHARE, RETARDER_STAGES, TERRAIN_LABELS } from "../../core/index.ts";
 import { reducedMotion } from "../canvas.ts";
 import { GAS_RAMPS, getSettings, prefs, setSettings } from "../settings.ts";
@@ -22,7 +21,7 @@ import { RaceView } from "./race.ts";
 import type { DriveInfo, Frame, LayoutView } from "./view.ts";
 import type { EvConfig, HybridConfig } from "../../core/index.ts";
 import { HybridFlow } from "./hybrid-flow.ts";
-import { consumptionText, driveModeLabel, evField, evLamps, powerMeterScale, powerMeterValue, rangeText, socText } from "./ev-logic.ts";
+import { type HybridCons, consumptionLine, consumptionText, driveConsumption, driveModeLabel, fuelConsumptionText, evField, evLamps, powerMeterScale, powerMeterValue, rangeText, socText } from "./ev-logic.ts";
 
 type LampKey = keyof LampSet;
 const LAMPS: { k: LampKey; color: "red" | "amber" | "ice" | "green"; icon: string; on: string; text?: string }[] = [
@@ -113,6 +112,7 @@ export class CockpitView implements LayoutView {
   private race: RaceView | null = null;
   /** Electric car (#108): the power meter replaces the rev counter, SoC the tank, Ready lamp; null = combustion. */
   private ev: EvConfig | null = null;
+  private hyCfg: Readonly<HybridConfig> | null = null;
   private evScale = { min: -100, max: 500, major: 100, minor: 50 };
   private readyEl!: HTMLElement;
   /** Hybrid (#157): power flow with tank, SoC and EV lamp in the lamp row, so every design shows it. */
@@ -192,6 +192,7 @@ export class CockpitView implements LayoutView {
             <div class="ck__ev-soc"><dt>Akku</dt><dd data-ck="ev-soc">–</dd></div>
             <div class="ck__ev-range"><dt>Reichweite</dt><dd data-ck="ev-range">–</dd></div>
             <div class="ck__ev-cons"><dt>Ø Verbrauch</dt><dd><span data-ck="ev-cons">–</span> <small data-ck="ev-cons-unit">kWh/100 km</small></dd></div>
+            <div class="ck__ev-cons2" hidden><dt>Ø Strom</dt><dd><span data-ck="ev-cons2">–</span> <small data-ck="ev-cons2-unit">kWh/100 km</small></dd></div>
             <div class="ck__ev-batt"><dt>Akkutemp.</dt><dd data-ck="ev-batt">–</dd></div>
             <div class="ck__ev-mode"><dt>Fahrmodus</dt><dd><button type="button" class="ck__btn" data-ck="ev-mode" title="Fahrmodus wechseln">Sport</button></dd></div>
           </dl>
@@ -409,6 +410,7 @@ export class CockpitView implements LayoutView {
    */
   setElectric(ev: EvConfig | null, hybrid: Readonly<HybridConfig> | null = null) {
     this.ev = ev;
+    this.hyCfg = ev ? hybrid : null;
     this.flow.setShown(!!ev && !!hybrid);
     this.el.dataset.hybrid = ev && hybrid ? hybrid.topology : "";
     this.el.dataset.drive = ev ? "ev" : "ice";
@@ -465,6 +467,11 @@ export class CockpitView implements LayoutView {
     this.lastLamps = "";
   }
 
+  /** Hybrid: trip average fuel for the consumption readouts (null for an EV). */
+  private hybridCons(f: Frame): HybridCons | null {
+    return this.hyCfg ? { tripL100: avgL100(f.trip.tripA.km, f.trip.tripA.fuelL), plugIn: !!this.hyCfg.plugIn } : null;
+  }
+
   /** Small instruments of an electric car (#108): battery and motor temperature, consumption (kWh), state of charge. */
   private syncUnitsEv() {
     const u = prefs();
@@ -478,8 +485,9 @@ export class CockpitView implements LayoutView {
     this.setMini("oilT", "E-Motor", u.temp, tScale(20, 180, 150));
     this.minis.oilP.wrap.hidden = true;
     this.minis.boost.wrap.hidden = true;
-    const c = consumptionText(0, u);
-    this.setMini("fuel", "Verbrauch", c.unit, { min: 0, max: 40, major: 10, minor: 5, caption: c.unit });
+    // a hybrid shows fuel like a combustion car (l/100 km, km/l or mpg), an EV kWh/100 km
+    const fs = this.hyCfg ? fuelScale(u.fuel, true) : { unit: consumptionText(0, u).unit, max: 40, major: 10 };
+    this.setMini("fuel", "Verbrauch", fs.unit, { min: 0, max: fs.max, major: fs.major, minor: fs.major / 2, caption: fs.unit });
     this.setMini("tank", "Akku", "%", { min: 0, max: 100, major: 50, minor: 25, zone: { from: 0, to: 10 }, caption: "0 · 100 %" });
     this.out["speed-unit"]!.textContent = this.out["speed-unit2"]!.textContent = u.speed;
     this.out["hud-power-unit"]!.textContent = u.power;
@@ -693,23 +701,37 @@ export class CockpitView implements LayoutView {
     this.mini("coolant", T(ev.batteryC), fmt(T(ev.batteryC)), dt);
     this.mini("oilT", T(ev.motorC), fmt(T(ev.motorC)), dt);
     // the trip average (never negative): the momentary value goes below zero while regenerating
-    const cons = consumptionText(evConsumption(ev), u);
-    const cv = Number.parseFloat(cons.value.replace(/\./g, "").replace(",", "."));
-    this.mini("fuel", Number.isFinite(cv) ? Math.max(0, Math.min(40, cv)) : 0, cons.value, dt);
+    const hy = this.hybridCons(f);
+    const cons = driveConsumption(ev, hy, u);
+    if (s.hybrid) {
+      // hybrid: the dial shows the momentary fuel consumption in the chosen unit, like a combustion car
+      const kmh = f.drivetrain.state.speedKmh;
+      const l100 = kmh > 5 ? (s.hybrid.fuelLh / kmh) * 100 : Number.NaN;
+      const v = toUnit("fuel", l100, u.fuel);
+      this.mini("fuel", Number.isFinite(v) ? v : 0, fuelConsumptionText(l100, u).value, dt);
+    } else {
+      const cv = Number.parseFloat(cons.value.replace(/\./g, "").replace(",", "."));
+      this.mini("fuel", Number.isFinite(cv) ? Math.max(0, Math.min(40, cv)) : 0, cons.value, dt);
+    }
     this.minis.tank.wrap.hidden = false;
     this.mini("tank", ev.soc * 100, fmt(Math.round(ev.soc * 100)), dt);
     this.put("ev-soc", socText(ev.soc));
     this.put("ev-range", rangeText(ev.rangeKm, u));
     this.put("ev-cons", cons.value);
     this.put("ev-cons-unit", cons.unit);
+    const row2 = this.el.querySelector<HTMLElement>(".ck__ev-cons2")!;
+    if (row2.hidden === !!cons.extra) row2.hidden = !cons.extra;
+    if (cons.extra) {
+      this.put("ev-cons2", cons.extra.value);
+      this.put("ev-cons2-unit", cons.extra.unit);
+    }
     this.put("ev-batt", `${fmt(T(ev.batteryC))} ${u.temp}`);
     this.put("ev-mode", driveModeLabel(ev.driveMode));
     this.out["ev-soc"]!.parentElement!.classList.toggle("is-limit", ev.soc < 0.1);
     this.out["ev-batt"]!.parentElement!.classList.toggle("is-limit", ev.batteryC > 55);
     this.out["ev-mode"]!.dataset.mode = ev.driveMode;
-    // average consumption of trip A in kWh instead of litres
-    const trip = consumptionText(ev.tripKwhPer100, u);
-    this.put("avg", `${trip.value} ${trip.unit}`);
+    // average consumption of trip A: kWh for an EV, fuel (plus kWh for a plug-in) for a hybrid
+    this.put("avg", consumptionLine(hy ? cons : consumptionText(ev.tripKwhPer100, u)));
     this.updateLamps(f);
     this.updateRev(f);
     this.extras.update(f);
@@ -738,7 +760,7 @@ export class CockpitView implements LayoutView {
     const u = prefs();
     if (this.fieldCtx.vehicle !== (f.mode === "vehicle")) this.fieldCtx = { ...this.fieldCtx, vehicle: f.mode === "vehicle" };
     stored.forEach((storedId: FieldId, i) => {
-      const t = evField(storedId, f.s, u) ?? formatField(shownField(storedId, this.fieldCtx), this.fieldInputs(f), u, this.summary.limits);
+      const t = evField(storedId, f.s, u, this.hybridCons(f)) ?? formatField(shownField(storedId, this.fieldCtx), this.fieldInputs(f), u, this.summary.limits);
       const key = `${t.label}|${t.value}|${t.unit}|${t.warn}`;
       if (this.last[`field${i}`] === key) return;
       this.last[`field${i}`] = key;

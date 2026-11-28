@@ -3,11 +3,10 @@
 // "Volltanken". Tuning lives on the Werkbank (ev-bench.ts).
 import { DRIVE_MODES, DRIVE_MODE_IDS, HYBRID_MODES, hybridModes } from "../core/index.ts";
 import type { EngineState, EvDriveMode, HybridConfig, HybridMode } from "../core/index.ts";
-import { evConsumption } from "./ev-fields.ts";
 import { fmt } from "./format.ts";
 import { prefs } from "./settings.ts";
 import { toUnit } from "./units.ts";
-import { consumptionText, rangeText, socText } from "./layouts/ev-logic.ts";
+import { consumptionLine, driveConsumption, rangeText, socText } from "./layouts/ev-logic.ts";
 
 const LIVE_LIMIT: Record<string, string> = {
   none: "–", torque: "Motormoment", power: "Motorleistung", battery: "Akku", thermal: "Temperatur", traction: "Haftung", speed: "Motordrehzahl",
@@ -112,7 +111,8 @@ export class EvStatus {
     this.out[k]!.textContent = v;
   }
 
-  update(s: EngineState, speedKmh: number) {
+  /** `tripL100`: trip average fuel of a hybrid, l/100 km (the trip computer, NaN while too short). */
+  update(s: EngineState, speedKmh: number, tripL100 = Number.NaN) {
     const ev = s.ev;
     if (!ev || !this.shown) return;
     const u = prefs();
@@ -121,8 +121,8 @@ export class EvStatus {
     this.put("range", rangeText(ev.rangeKm, u));
     this.put("power", ev.powerKw < -0.5 ? `−${pw(-ev.powerKw)}` : pw(Math.max(0, ev.powerKw)));
     this.put("regen", `${fmt(ev.regenKwh, 2)} kWh`);
-    const c = consumptionText(evConsumption(ev), u);
-    this.put("cons", `${c.value} ${c.unit}`);
+    const hyCons = this.hybrid ? { tripL100, plugIn: !!this.hybrid.plugIn } : null;
+    this.put("cons", consumptionLine(driveConsumption(ev, hyCons, u)));
     this.put("pack", `${fmt(ev.packV)} V · ${fmt(ev.packA)} A`);
     this.put("batt", `${fmt(toUnit("temp", ev.batteryC, u.temp))} ${u.temp}`);
     this.put("motor", `${fmt(toUnit("temp", ev.motorC, u.temp))} ${u.temp}`);
