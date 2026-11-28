@@ -198,7 +198,7 @@ export async function evChecks({ browser, base, outDir, failures, errors, label,
     fuel: !!document.querySelector("#werkbank .fuel-switch")?.getClientRects().length,
     plates: [...document.querySelectorAll("#werkbank .evb .plate__title")].map((h) => h.textContent),
   }));
-  if (benchOk.ice || benchOk.fuel || benchOk.plates.length !== 5) fail(`Werkbank zeigt nicht die Elektroantrieb-Platten (${JSON.stringify(benchOk)})`);
+  if (benchOk.ice || benchOk.fuel || benchOk.plates.join() !== "Elektromotoren,Wechselrichter,Akku,Getriebe und Vmax,Kühlung,Reifen und Fahrwerk,Zusammenfassung") fail(`Werkbank zeigt nicht die Elektroantrieb-Platten (${JSON.stringify(benchOk)})`);
   const set = async (k, v) => {
     const row = `.evb [data-tune="${k}"]`;
     const kind = await page.evaluate((s) => document.querySelector(s).className, row);
@@ -259,8 +259,8 @@ export async function evChecks({ browser, base, outDir, failures, errors, label,
   });
   if (geo.wide.length || geo.small.length || geo.stray || geo.overflow > 0) fail(`Werkbank Elektroantrieb: Überlauf/Touch-Ziele (${JSON.stringify(geo)})`);
   await page.screenshot({ path: join(outDir, `smoke-${label}-ev-werkbank.png`) });
-  await page.locator(".evb__summary").scrollIntoViewIfNeeded();
-  await page.locator(".evb__summary").screenshot({ path: join(outDir, `smoke-${label}-ev-summary.png`) });
+  await page.locator(".evb .evb__summary").scrollIntoViewIfNeeded();
+  await page.locator(".evb .evb__summary").screenshot({ path: join(outDir, `smoke-${label}-ev-summary.png`) });
   await page.waitForTimeout(500); // changes apply on their own (no "Anwenden")
   const stored = await page.evaluate(() => JSON.parse(localStorage.getItem("pruefzelle.evTuning") ?? "{}")["ev-tesla-model-s-plaid"]);
   if (!stored || stored.frontMotors !== 2 || !stored.highVoltage || stored.gears !== 2 || stored.vmaxKmh !== null) fail(`E-Tuner speichert nicht je Fahrzeug (${JSON.stringify(stored)}; ${await page.textContent(".evb [data-o=note]")}; ${await page.evaluate(() => window.__pruefzelle?.gearbox.drivetrain.state.speedKmh)})`);
