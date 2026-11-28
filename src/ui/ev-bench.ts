@@ -7,6 +7,7 @@ import { EV_FIELDS, EV_GROUPS, formValue, readForm, type EvField } from "./ev-fi
 import { clamp, fmt, parseNumber, snap } from "./format.ts";
 import { prefs } from "./settings.ts";
 import { rangeText } from "./layouts/ev-logic.ts";
+import { summaryPlate } from "./bench-summary.ts";
 
 const SCREWS = `<span class="screw screw--tl" aria-hidden="true"></span><span class="screw screw--tr" aria-hidden="true"></span><span class="screw screw--bl" aria-hidden="true"></span><span class="screw screw--br" aria-hidden="true"></span>`;
 let uid = 0;
@@ -40,29 +41,10 @@ export class EvBench {
       for (const f of EV_FIELDS.filter((x) => x.group === g.id)) plate.append(this.field(f));
       el.append(plate);
     }
-    const sum = document.createElement("section");
-    sum.className = "plate evb__summary";
-    sum.dataset.group = "ev-summary";
-    sum.setAttribute("aria-labelledby", "plate-ev-summary");
-    sum.innerHTML = `${SCREWS}<h3 class="plate__title" id="plate-ev-summary">Zusammenfassung</h3>
-      <dl class="evb__sum num" aria-live="polite">
-        <div><dt>Systemleistung</dt><dd data-o="power">–</dd></div>
-        <div><dt>Je Motor</dt><dd data-o="motor">–</dd></div>
-        <div><dt>Dauerleistung</dt><dd data-o="continuous">–</dd></div>
-        <div><dt>Wechselrichter</dt><dd data-o="inverter">–</dd></div>
-        <div><dt>Begrenzt durch</dt><dd data-o="limit">–</dd></div>
-        <div><dt>Vmax</dt><dd data-o="vmax">–</dd></div>
-        <div><dt>0–100 km/h</dt><dd data-o="t100">–</dd></div>
-        <div><dt>Reichweite</dt><dd data-o="range">–</dd></div>
-        <div><dt>Masse</dt><dd data-o="mass">–</dd></div>
-      </dl>
-      <p class="evb__note" data-o="note" role="status"></p>
-      <div class="evb__btns">
-        <button type="button" class="btn btn--small" data-control="tune-max">Maximum</button>
-        <button type="button" class="btn btn--small" data-control="tune-reset">Auf Werkszustand</button>
-      </div>`;
+    // the same summary plate as the combustion bench (#154): shared rows first, then the E-Tuner's own
+    const { el: sum, out } = summaryPlate("ev", [["motor", "Je Motor"], ["continuous", "Dauerleistung"], ["inverter", "Wechselrichter"]]);
+    this.out = out;
     el.append(sum);
-    sum.querySelectorAll<HTMLElement>("[data-o]").forEach((n) => (this.out[n.dataset.o!] = n));
     sum.querySelector("[data-control=tune-max]")!.addEventListener("click", () => {
       this.fill(fastestTuning(this.car!.setup));
       this.scheduleApply();
@@ -202,6 +184,7 @@ export class EvBench {
     this.preview = p;
     const u = prefs();
     this.put("power", `${fmt(p.systemPs)} PS · ${fmt(p.systemKw)} kW`);
+    this.put("torque", `${fmt(p.ev.motors.reduce((a, m) => a + m.peakTorqueNm, 0))} Nm (Motorwelle)`);
     this.put("motor", `${p.ev.motors.length} × ${fmt(p.motorKw)} kW · ${fmt(p.motorNm)} Nm`);
     this.put("continuous", `${fmt(p.continuousKw)} kW · ${fmt(p.heatKw)} kW Wärme je Motor`);
     this.put("inverter", `${fmt(p.inverterA)} A`);

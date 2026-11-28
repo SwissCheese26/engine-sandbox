@@ -21,6 +21,7 @@ import { carDesignChecks } from "./car-designs.mjs";
 import { evChecks } from "./ev.mjs";
 import { rangeChecks } from "./range.mjs";
 import { smokeFxChecks } from "./smoke-fx.mjs";
+import { swapChecks } from "./swap.mjs";
 
 const require = createRequire(import.meta.url);
 let playwright;
@@ -1099,6 +1100,8 @@ try {
   for (const [label, viewport] of [["desktop", { width: 1440, height: 900 }], ["small", { width: 360, height: 740 }]]) if (!skipped) await rangeChecks({ browser, base, outDir, failures, errors, label, viewport });
   // car-style cockpit designs (skins) at the smallest phone width and on desktop (tests/e2e/car-designs.mjs)
   for (const [label, viewport] of [["desktop", { width: 1440, height: 900 }], ["small", { width: 360, height: 740 }]]) if (!skipped) await carDesignChecks({ browser, base, outDir, failures, errors, label, viewport });
+  // Antriebstausch (#154): uniform control bar for both drives in every view, Tesla drive in the Citaro, V8 in the Model S
+  for (const [label, viewport] of [["desktop", { width: 1440, height: 900 }], ["mobile", { width: 390, height: 844 }], ["small", { width: 360, height: 740 }]]) if (!skipped) await swapChecks({ browser, base, outDir, failures, errors, label, viewport });
   // Rauch/Dampf: burnout smoke in every cockpit design and the Prüfzelle (tests/e2e/smoke-fx.mjs)
   for (const [label, viewport] of [["desktop", { width: 1440, height: 900 }], ["small", { width: 360, height: 740 }]]) if (!skipped) await smokeFxChecks({ browser, base, outDir, failures, errors, label, viewport });
 } catch (e) {

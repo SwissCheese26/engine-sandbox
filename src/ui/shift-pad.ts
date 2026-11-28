@@ -93,7 +93,7 @@ export class ShiftPad {
     const d = this.dt();
     const s = d.state;
     const mode = getSettings().shiftPad;
-    // an electric car has no other drive selector: shown on every device unless switched off
+    // the same rule for ▲ gear ▼ and P N D (#154: same slot): "auto" = touch screens, "on" = always, "off" = never
     const show = onVehicle && mode !== "off" && (this.electric || s.type !== "cvt");
     // the parking brake released elsewhere (Halten) while in P: the selector follows to N
     if (this.electric && this.selector === "P" && !s.parkingBrake) {
@@ -105,7 +105,7 @@ export class ShiftPad {
     if (key === this.last) return;
     this.last = key;
     this.el.hidden = !show;
-    this.el.classList.toggle("is-auto", mode === "auto" && !this.electric);
+    this.el.classList.toggle("is-auto", mode === "auto");
     this.gearOut.textContent = gear;
   }
 }

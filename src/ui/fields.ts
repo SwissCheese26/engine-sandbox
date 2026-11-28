@@ -7,11 +7,12 @@ import { clamp, snap } from "./format.ts";
 
 export type GroupId = "block" | "head" | "mixture" | "induction" | "exhaust" | "cooling" | "limits" | "ecu";
 
+// plate order like the E-Tuner (#154): engine → charging → fuel (energy) → exhaust → cooling → limits
 export const GROUPS: { id: GroupId; title: string; effect: string }[] = [
   { id: "block", title: "Block", effect: "Bohrung, Hub und Zylinderzahl bestimmen Hubraum und Drehzahlfestigkeit." },
   { id: "head", title: "Zylinderkopf", effect: "Ventiltrieb und Nocke verschieben das Drehmoment nach unten oder oben." },
-  { id: "mixture", title: "Gemischbildung", effect: "Einspritzung und Gemisch entscheiden über Leistung, Verbrauch und Klopfen bzw. Ruß." },
   { id: "induction", title: "Aufladung", effect: "Mehr Ladedruck bringt mehr Luft, aber auch mehr Hitze und Spitzendruck." },
+  { id: "mixture", title: "Gemischbildung", effect: "Einspritzung und Gemisch entscheiden über Leistung, Verbrauch und Klopfen bzw. Ruß." },
   { id: "exhaust", title: "Abgas", effect: "Abgasreinigung kostet Gegendruck, ein langer Krümmer bringt Drehmoment." },
   { id: "cooling", title: "Kühlung", effect: "Der Kühler hält bei Dauervolllast die Temperaturen im Rahmen." },
   { id: "limits", title: "Grenzen", effect: "Begrenzer und Leerlauf legen fest, in welchem Band der Motor arbeitet." },

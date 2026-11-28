@@ -3,7 +3,8 @@
 
 /* ── console: Ready replaces ignition key and starter ─────────────────── */
 .readybtn {
-  display: none;
+  display: inline-flex;
+  visibility: hidden;
   flex-direction: column;
   align-items: center;
   gap: var(--space-1);
@@ -17,11 +18,22 @@
   font-weight: 600;
   cursor: pointer;
 }
+/* one slot for both drives (#154): key + starter keep their size, Ready sits centred on top of them; only the
+   visibility changes, so nothing in the control bar moves when the drive changes */
+.console__group--main {
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: start;
+}
+.console__group--main > .ignkey { grid-area: 1 / 1; }
+.console__group--main > .starter { grid-area: 1 / 2; }
+.console__group--main > .readybtn { grid-area: 1 / 1 / 2 / 3; justify-self: center; }
+.console__group--main > .console__more { grid-column: 1 / -1; justify-self: start; }
 .console.is-ev .readybtn {
-  display: inline-flex;
+  visibility: visible;
 }
 .console.is-ev :is(.ignkey, .starter) {
-  display: none;
+  visibility: hidden;
 }
 .readybtn__cap {
   display: grid;
@@ -55,7 +67,7 @@
 
 /* ── Werkbank: the Elektroantrieb plates replace fuel switch, library, tuning and combustion plates ── */
 .evb[hidden],
-.bench--ev :is(.fuel-switch, .bench__hint, .bench__tools, .bench__library, .bench__libinfo, .bench__lock, .bench__notes, .plate--tuning, .bench__plates:not(.evb)) {
+.bench--ev :is(.ice-summary, .fuel-switch, .bench__hint, .bench__tools, .bench__library, .bench__libinfo, .bench__lock, .bench__notes, .plate--tuning, .bench__plates:not(.evb)) {
   display: none !important;
 }
 .evb__sum {
@@ -142,15 +154,16 @@
 /* ── drive selector P N D (in place of ▲ gear ▼) ── */
 .shiftpad.is-ev {
   grid-template-rows: auto;
+  gap: 0;
 }
 .shiftpad__ev[hidden],
 .shiftpad.is-ev :is(.shiftpad__btn, .shiftpad__gear) {
   display: none;
 }
-/* P across the top, N and D below: as compact as the ▲ gear ▼ pad */
+/* P, N, D in one 44 px column: the same footprint as ▲ gear ▼ (#154: same slot, same size) */
 .shiftpad__ev {
   display: grid;
-  grid-template-columns: repeat(2, 44px);
+  grid-template-columns: 44px;
   gap: 4px;
 }
 .shiftpad__sel {
@@ -322,16 +335,14 @@
   display: none;
 }
 
-/* phones with the P N D selector: a tighter control bar, so Ready, selector, P, brake and gas fit in 360 px */
+/* phones with the shift pad or the P N D selector: the same tighter control bar for both drives (#154), so key and
+   starter (or Ready), pad, P, brake and gas fit in 360 px at the same positions */
 @media (max-width: 700px) {
-  .deck:has(.shiftpad.is-ev:not([hidden])) {
+  .deck:has(.shiftpad:not([hidden])) {
     padding-inline: var(--space-2);
   }
-  .deck:has(.shiftpad.is-ev:not([hidden])) .pedals {
+  .deck:has(.shiftpad:not([hidden])) .pedals {
     gap: var(--space-2);
-  }
-  .deck:has(.shiftpad.is-ev:not([hidden])) .brakepedal__plate {
-    width: 52px;
   }
   .console__more {
     max-width: 100%;
@@ -365,13 +376,4 @@
   }
 }
 
-/* narrow phones (≤ 420 px): P, N, D in one 44 px column so the pedals leave room for Ready and the console button
-   (no overlap; tests/e2e/deck.mjs) */
-@media (max-width: 420px) {
-  .shiftpad__ev {
-    grid-template-columns: 44px;
-  }
-  .shiftpad__ev .shiftpad__sel {
-    grid-column: auto;
-  }
-}
+
