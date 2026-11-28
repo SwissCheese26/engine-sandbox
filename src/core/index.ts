@@ -36,7 +36,7 @@ export { VEHICLES } from "./drivetrain.ts";
 export type { VehicleKind, VehiclePreset } from "./drivetrain.ts";
 // vehicle and tyres (issue #22)
 export { withTyre } from "./drivetrain.ts";
-export type { CarSetup, GearboxSpec } from "./drivetrain.ts";
+export type { CarSetup, DriveSpec, GearboxSpec } from "./drivetrain.ts";
 // issue #14: own gear ratios, converter automatic, traction diagram
 export { GEAR_COUNT_MAX, GEAR_COUNT_MIN, GEAR_RATIO_MAX, GEAR_RATIO_MIN, gradedRatios, isAutomaticType, validateRatios } from "./drivetrain.ts";
 export { converterCapacity, converterK, converterTorqueRatio, converterTorques } from "./converter.ts";
@@ -103,3 +103,4 @@ export {
 } from "./vehicle-systems.ts";
 export type { SystemsInput, SystemsOutput } from "./vehicle-systems.ts";
 export { BRAKE_MAX_G } from "./vehicle.ts";
+export { DIESEL_FUELS, PETROL_FUELS } from "./fuels.ts";

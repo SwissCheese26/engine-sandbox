@@ -379,6 +379,18 @@ export interface CarSetup {
   ev?: EvConfig;
 }
 
+/**
+ * A drive that fits any vehicle body (issue #154): a combustion engine with its gearbox and tank, or electric motors
+ * with battery and inverter. Both may be set later for a hybrid (#157). `extraKg`: parts the configs do not carry
+ * (E-Tuner cooling, axial-flux motors, carbon sleeves; src/data/ev-tuning.ts deltaKg).
+ * The body is a CarSetup whose mass is the mass without drive; src/data/drive-swap.ts puts the two together.
+ */
+export interface DriveSpec {
+  engine?: { config: EngineConfig; gearbox: GearboxType; gearboxSpec: GearboxSpec; tankL: number };
+  ev?: EvConfig;
+  extraKg?: number;
+}
+
 /** Governor presets in km/h, null = off. Default 250 km/h (German manufacturers' voluntary agreement) [S]. */
 export const SPEED_LIMIT_OPTIONS: readonly (number | null)[] = [null, 80, 85, 90, 100, 180, 210, 250, 270, 300];
 export const DEFAULT_SPEED_LIMIT_KMH = 250;
