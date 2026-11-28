@@ -675,7 +675,7 @@ export interface EvState {
  *  - "series": the engine only drives a generator (BMW i3 REx), `generatorKw`.
  */
 export type HybridTopology = "p2" | "mild" | "power-split" | "series";
-export type HybridMode = "hybrid" | "ev" | "sport" | "charge";
+export type HybridMode = "hybrid" | "ev" | "sport" | "charge" | "ice";
 
 export interface HybridConfig {
   topology: HybridTopology;

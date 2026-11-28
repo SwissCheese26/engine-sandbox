@@ -21,7 +21,7 @@ import { RaceView } from "./race.ts";
 import type { DriveInfo, Frame, LayoutView } from "./view.ts";
 import type { EvConfig, HybridConfig } from "../../core/index.ts";
 import { HybridFlow } from "./hybrid-flow.ts";
-import { type HybridCons, consumptionLine, consumptionText, driveConsumption, driveModeLabel, fuelConsumptionText, evField, evLamps, powerMeterScale, powerMeterValue, rangeText, socText } from "./ev-logic.ts";
+import { type HybridCons, consumptionLine, consumptionText, driveConsumption, fuelConsumptionText, modeOf, evField, evLamps, powerMeterScale, powerMeterValue, rangeText, socText } from "./ev-logic.ts";
 
 type LampKey = keyof LampSet;
 const LAMPS: { k: LampKey; color: "red" | "amber" | "ice" | "green"; icon: string; on: string; text?: string }[] = [
@@ -415,6 +415,9 @@ export class CockpitView implements LayoutView {
     this.el.dataset.hybrid = ev && hybrid ? hybrid.topology : "";
     this.el.dataset.drive = ev ? "ev" : "ice";
     (this.el.querySelector(".ck__ev") as HTMLElement).hidden = !ev;
+    // a hybrid steps through its operating modes in the same slot (#157), like the Prüfzelle's selector
+    this.el.querySelector(".ck__ev-mode dt")!.textContent = ev && hybrid ? "Betriebsart" : "Fahrmodus";
+    this.out["ev-mode"]!.title = ev && hybrid ? "Betriebsart wechseln" : "Fahrmodus wechseln";
     if (ev) this.evScale = powerMeterScale(ev);
     this.out["rpm-unit"]!.textContent = ev ? "kW" : "1/min";
     this.out["hud-rpm-label"]!.textContent = ev ? "Akku" : "Drehzahl";
@@ -726,10 +729,11 @@ export class CockpitView implements LayoutView {
       this.put("ev-cons2-unit", cons.extra.unit);
     }
     this.put("ev-batt", `${fmt(T(ev.batteryC))} ${u.temp}`);
-    this.put("ev-mode", driveModeLabel(ev.driveMode));
+    const mode = modeOf(f.s);
+    this.put("ev-mode", mode.label);
     this.out["ev-soc"]!.parentElement!.classList.toggle("is-limit", ev.soc < 0.1);
     this.out["ev-batt"]!.parentElement!.classList.toggle("is-limit", ev.batteryC > 55);
-    this.out["ev-mode"]!.dataset.mode = ev.driveMode;
+    this.out["ev-mode"]!.dataset.mode = mode.id;
     // average consumption of trip A: kWh for an EV, fuel (plus kWh for a plug-in) for a hybrid
     this.put("avg", consumptionLine(hy ? cons : consumptionText(ev.tripKwhPer100, u)));
     this.updateLamps(f);
@@ -742,7 +746,7 @@ export class CockpitView implements LayoutView {
       this.put("hud-rpm", fmt(Math.round(ev.soc * 100)));
       this.put("hud-power", fmt(toUnit("power", ev.powerKw, u.power)));
     }
-    if (design === "italian") this.put("mode", driveModeLabel(ev.driveMode));
+    if (design === "italian") this.put("mode", mode.label);
     if (design === "truck") {
       this.updateTruck(f);
       this.put("eb", ev.regenKw > 1 ? `${fmt(toUnit("power", ev.regenKw, u.power))} ${u.power}` : "–");

@@ -24,6 +24,7 @@ import { resumeSetupChecks } from "./resume-setup.mjs";
 import { smokeFxChecks } from "./smoke-fx.mjs";
 import { swapChecks } from "./swap.mjs";
 import { hybridChecks } from "./hybrid.mjs";
+import { powerReadoutChecks } from "./power-readouts.mjs";
 
 const require = createRequire(import.meta.url);
 let playwright;
@@ -1108,6 +1109,8 @@ try {
   for (const [label, viewport] of [["desktop", { width: 1440, height: 900 }], ["mobile", { width: 390, height: 844 }], ["small", { width: 360, height: 740 }]]) if (!skipped) await swapChecks({ browser, base, outDir, failures, errors, label, viewport });
   // Hybrid (#157): Prius in every view, electric start, engine on full throttle, power flow (tests/e2e/hybrid.mjs)
   for (const [label, viewport] of [["desktop", { width: 1440, height: 900 }], ["small", { width: 360, height: 740 }]]) if (!skipped) await hybridChecks({ browser, base, outDir, failures, errors, label, viewport });
+  // PS und Drehmoment für Verbrenner, Elektro und Hybrid: Prüfzelle, Werkbank, Cockpit (tests/e2e/power-readouts.mjs)
+  for (const [label, viewport] of [["desktop", { width: 1440, height: 900 }], ["mobile", { width: 390, height: 844 }]]) if (!skipped) await powerReadoutChecks({ browser, base, failures, errors, label, viewport });
   // Rauch/Dampf: burnout smoke in every cockpit design and the Prüfzelle (tests/e2e/smoke-fx.mjs)
   for (const [label, viewport] of [["desktop", { width: 1440, height: 900 }], ["small", { width: 360, height: 740 }]]) if (!skipped) await smokeFxChecks({ browser, base, outDir, failures, errors, label, viewport });
 } catch (e) {

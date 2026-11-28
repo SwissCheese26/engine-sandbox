@@ -78,8 +78,13 @@ Aufteilung mit dem kleinsten Kraftstoff + s · Akkuenergie; die Regeln bilden ih
    ladungserhaltend 5 % darüber), Modus Laden bis oben, Sport Mitte + 10 %. Unter dem Fenster kein Antrieb aus dem Akku,
    oben keine Ladung mehr (auch keine Rekuperation).
 
-Modi (Bedienleiste, Platz der E-Fahrmodi): Hybrid, EV, Sport (Motor läuft immer), Laden. Mildhybrid: Hybrid, Sport;
-Range Extender: Hybrid, EV, Laden.
+Modi (Bedienleiste, Platz der E-Fahrmodi): Hybrid, EV, Sport (Motor läuft immer), Laden, Nur Verbrenner. Mildhybrid:
+Hybrid, Sport, Nur Verbrenner; Range Extender: Hybrid, EV, Laden (sein Motor treibt die Räder nie an).
+
+Nur Verbrenner [S]: Motor läuft, solange Ready an ist, und liefert nur die Fahrerleistung (keine Lastpunktverschiebung,
+keine Mindestlast). Kein E-Boost, kein elektrisches Fahren, keine Rekuperation (Ladefreigabe 0, die Reibbremse
+übernimmt). Beim THS darf MG2 nur weitergeben, was MG1 gerade erzeugt (elektrischer Pfad des e-CVT, akkuneutral,
+§2.2), ohne den kein THS fährt.
 
 ## 4 Bausätze
 

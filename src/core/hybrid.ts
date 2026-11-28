@@ -27,11 +27,15 @@ export const HYBRID_MODES: Record<HybridMode, { label: string; hint: string }> =
   ev: { label: "EV", hint: "Elektrisch, solange Akku und Tempo reichen" },
   sport: { label: "Sport", hint: "Motor läuft immer, volle Boost-Leistung" },
   charge: { label: "Laden", hint: "Motor lädt den Akku bis zum oberen Ladefenster" },
+  ice: { label: "Nur Verbrenner", hint: "Nur der Motor treibt an: kein E-Boost, kein elektrisches Fahren, keine Rekuperation" },
 };
 export const HYBRID_MODE_IDS = Object.keys(HYBRID_MODES) as HybridMode[];
-/** Modes the topology offers: a mild hybrid cannot drive electrically, a range extender has no sport boost. */
+/**
+ * Modes the topology offers: a mild hybrid cannot drive electrically, a range extender has no sport boost and its
+ * engine cannot drive the wheels (no "Nur Verbrenner").
+ */
 export function hybridModes(hy: HybridConfig): HybridMode[] {
-  if (hy.topology === "mild") return ["hybrid", "sport"];
+  if (hy.topology === "mild") return ["hybrid", "sport", "ice"];
   if (hy.topology === "series") return ["hybrid", "ev", "charge"];
   return HYBRID_MODE_IDS;
 }
@@ -40,6 +44,8 @@ export function hybridModes(hy: HybridConfig): HybridMode[] {
 export const ENGINE_MIN_ON_S = 3;
 /** Engine → DC efficiency of a generator path (MG1 / REx generator + inverter) [hybrid.md §2.3]. */
 export const GEN_EFFICIENCY = 0.9;
+/** "Nur Verbrenner", power-split: battery power MG2 may bridge at a crawl until the engine takes the load, W [S]. */
+const ICE_LAUNCH_W = 2000;
 /** Lowest engine load the strategy runs the engine at (below: load-point shift or off), share of peak power [§3.3]. */
 const MIN_LOAD_SHARE = 0.18;
 /** Load-point shift: charge power at a SoC 0.1 below target, share of peak power (charge mode 0.4) [§3.3]. */
@@ -199,7 +205,8 @@ export class HybridSimulator extends EvSimulator {
     const pDem = want * vEff;
     // --- SoC target and window [§3.6]
     const mid = (hy.socMin + hy.socMax) / 2;
-    const depleting = !!hy.plugIn && soc > hy.socMin + 0.04 && mode !== "charge" && mode !== "sport";
+    const ice = mode === "ice";
+    const depleting = !!hy.plugIn && soc > hy.socMin + 0.04 && mode !== "charge" && mode !== "sport" && !ice;
     const target = mode === "charge" ? hy.socMax : mode === "sport" ? Math.min(hy.socMax, mid + 0.1) : depleting ? soc : hy.plugIn ? hy.socMin + 0.05 : mid;
     const socLow = soc < hy.socMin;
     // --- engine on / off [§3.1, §3.5]
@@ -215,10 +222,10 @@ export class HybridSimulator extends EvSimulator {
       const over = pDem > evKw * 1000 || kmh > evKmh || kick;
       const need = socLow || mode === "sport" || (mode === "charge" && soc < hy.socMax) || (!hy.plugIn && soc < target - 0.12);
       const stopped = v < 0.3 && !drive;
-      wantOn = need || (mode === "ev" ? kick || kmh > hy.evMaxKmh : over) || (this.on && this.onT < ENGINE_MIN_ON_S && !stopped);
+      wantOn = need || ice || (mode === "ev" ? kick || kmh > hy.evMaxKmh : over) || (this.on && this.onT < ENGINE_MIN_ON_S && !stopped);
       // with the engine running it stays on until the demand falls well below the threshold (hysteresis)
       if (this.on && !wantOn && !stopped && drive && pDem > 0.7 * evKw * 1000) wantOn = true;
-      if (stopped && !(socLow || mode === "charge" || mode === "sport")) wantOn = topo === "power-split" && soc < hy.socMin + 0.02;
+      if (stopped && !(socLow || mode === "charge" || mode === "sport" || ice)) wantOn = topo === "power-split" && soc < hy.socMin + 0.02;
     }
     if (wantOn && !this.on) {
       this.on = true;
@@ -234,13 +241,15 @@ export class HybridSimulator extends EvSimulator {
     let pE = 0;
     if (this.on && firing) {
       // load-point shift: charge towards the target SoC, at least MIN_LOAD_SHARE when the engine runs at all
-      const chg = clamp((target - soc) / 0.1, 0, 1) * (mode === "charge" ? 0.4 : SHIFT_SHARE) * pMaxW;
-      const chgCap = 0.8 * (prev.ev?.maxChargeKw ?? 0) * 1000 * clamp((hy.socMax + 0.03 - soc) / 0.03, 0, 1);
+      // "Nur Verbrenner": no load-point shift and no minimum load, the engine delivers just what the driver asks
+      const chg = ice ? 0 : clamp((target - soc) / 0.1, 0, 1) * (mode === "charge" ? 0.4 : SHIFT_SHARE) * pMaxW;
+      const chgCap = ice ? 0 : 0.8 * (prev.ev?.maxChargeKw ?? 0) * 1000 * clamp((hy.socMax + 0.03 - soc) / 0.03, 0, 1);
       const full = pedal > 0.9;
-      pE = full && drive ? pMaxW : clamp(Math.max(pDem + Math.min(chg, chgCap), soc < hy.socMax ? MIN_LOAD_SHARE * pMaxW : 0), 0, pMaxW);
+      pE = full && drive ? pMaxW : clamp(Math.max(pDem + Math.min(chg, chgCap), soc < hy.socMax && !ice ? MIN_LOAD_SHARE * pMaxW : 0), 0, pMaxW);
       if (!drive && topo !== "series" && topo !== "power-split") pE = 0;
       // power-split: what neither the ring gear nor MG2 can take at this speed has to fit into the battery [§2.2]
-      if (topo === "power-split") pE = Math.min(pE, (want * v) / 0.85 + (full ? 0 : chgCap));
+      // ("Nur Verbrenner" has no charge headroom: from standstill it launches through MG1 → MG2 at the crawl speed)
+      if (topo === "power-split") pE = Math.min(pE, (want * (ice ? vEff : v)) / 0.85 + (full ? 0 : chgCap));
     }
     const cut = 1 - clamp(c.torqueCut ?? 0, 0, 0.9);
     let tTarget = 0;
@@ -302,8 +311,14 @@ export class HybridSimulator extends EvSimulator {
     let dem = drive ? want - fE : 0;
     if (topo === "mild" && !es.running) dem = Math.min(dem, 0);
     if (soc < hy.socMin - 0.03) dem = Math.min(dem, 0);
+    // "Nur Verbrenner": no boost and no electric driving. P2 / mild: the motor idles along. Power-split: MG2 may only
+    // pass on what MG1 generates (the electric path of the e-CVT, battery-neutral) [hybrid.md §2.2, §3]
+    // (MG1's bus power of this step × η of MG2 and its inverter; at a crawl at least ICE_LAUNCH_W, so the launch
+    // does not stall while the engine picks up its load [S])
+    if (ice) dem = topo === "power-split" ? clamp(dem, 0, (Math.max(-dcKw * 1000, Math.min(pE, ICE_LAUNCH_W)) * GEN_EFFICIENCY ** 2) / vEff) : 0;
     L.demandN = drive ? dem : null;
-    L.chargeShare = clamp((hy.socMax + 0.03 - soc) / 0.03, 0, 1);
+    // no regeneration and no charging in "Nur Verbrenner": the friction brake takes what the motors would (electric.ts)
+    L.chargeShare = ice ? 0 : clamp((hy.socMax + 0.03 - soc) / 0.03, 0, 1);
     // the hybrid modes replace the EV drive modes: the motors may use their full envelope
     const s = super.step(dt, { ...input, evDriveMode: "plaid" });
     const out: EngineState = {

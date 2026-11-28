@@ -1,7 +1,7 @@
 // Electric cars in the cockpit (#108): the pure part (no DOM), unit-tested. Every design gets an EV variant: the power
 // meter (kW, regen green) replaces the rev counter, the state of charge the fuel gauge, the range and the Ready lamp
 // join the centre display, and lamps that make no sense (oil pressure, coolant, glow plug, alternator) stay dark.
-import { DRIVE_MODES, evSystemPowerKw } from "../../core/index.ts";
+import { DRIVE_MODES, HYBRID_MODES, evSystemPowerKw } from "../../core/index.ts";
 import type { EngineState, EvConfig, EvDriveMode, EvState } from "../../core/index.ts";
 import { fmt } from "../format.ts";
 import { evConsumption } from "../ev-fields.ts";
@@ -101,6 +101,16 @@ export function socText(soc: number): string {
 
 export function driveModeLabel(m: EvDriveMode): string {
   return DRIVE_MODES[m].label;
+}
+
+/**
+ * Mode word of the cockpit: the operating mode of a hybrid (#157: Hybrid, EV, Sport, Laden), else the EV drive mode.
+ * The HybridSimulator runs its motors in "plaid" (full envelope), so ev.driveMode says nothing about a hybrid.
+ */
+export function modeOf(s: EngineState): { id: string; label: string } {
+  if (s.hybrid) return { id: s.hybrid.mode, label: HYBRID_MODES[s.hybrid.mode].label };
+  const m = s.ev?.driveMode ?? "sport";
+  return { id: m, label: driveModeLabel(m) };
 }
 
 export function nextDriveMode(m: EvDriveMode): EvDriveMode {
