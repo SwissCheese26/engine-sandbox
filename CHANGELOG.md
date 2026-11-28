@@ -4,6 +4,12 @@ Alle sichtbaren Änderungen an der Prüfzelle, neueste zuerst. Aufbau nach [Keep
 
 _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `bun scripts/changelog.ts` ausführen._
 
+## 2026-11-28 – Fahrzeugwahl aus dem Hauptmenü greift wieder
+
+### Behoben
+
+- Wenn du während der Fahrt ins Hauptmenü gehst und dort ein anderes Fahrzeug wählst, wird es jetzt geladen, samt Motor und Strecke. Vorher blieb das alte Auto stehen. ([#156](https://github.com/SwissCheese26/engine-sandbox/issues/156), [#161](https://github.com/SwissCheese26/engine-sandbox/issues/161))
+
 ## 2026-11-24 – Reifen werden beim Burnout heiß
 
 ### Behoben
