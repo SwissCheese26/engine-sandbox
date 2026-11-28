@@ -163,7 +163,8 @@ export class App {
   /** Werkbank summary of a combustion drive (#154), twice a second: the same rows as the E-Tuner's. */
   private iceSummary(dt: number, rangeKm: number) {
     this.iceSumS += dt;
-    if (this.evSim || this.iceSumS < 0.5) return;
+    // a hybrid (#157) also runs on evSim but keeps its engine and this plate: only a pure EV skips it
+    if ((this.evSim && !this.hyCfg) || this.iceSumS < 0.5) return;
     this.iceSumS = 0;
     const o = this.iceSum.out;
     const sm = this.summary;
