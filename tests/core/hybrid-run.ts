@@ -1,6 +1,6 @@
 // Test driver for hybrid cars (issue #157): Ready, operating mode, the car's own traction control on, library engine
 // warm. Measures 0–100, Vmax, fuel and SoC; `cycle` drives a speed profile with a simple speed controller.
-import { Drivetrain, HybridSimulator, defaultInputs, summarize } from "../../src/core/index.ts";
+import { Drivetrain, EvSimulator, HybridSimulator, defaultInputs, summarize } from "../../src/core/index.ts";
 import type { EngineState, HybridMode, SimInputs } from "../../src/core/index.ts";
 import { libraryConfig } from "../../src/data/engine-library.ts";
 import type { LibraryCar } from "../../src/data/vehicle-library.ts";
@@ -11,7 +11,8 @@ export function hybridRig(car: LibraryCar, mode: HybridMode = "hybrid", soc?: nu
   dt.applyCar(car.setup);
   if (gripFactor !== 1) dt.setSurface("dry", gripFactor);
   const sim = new HybridSimulator(car.setup.ev!, car.setup.hybrid!, cfg);
-  if (soc !== undefined) sim.setSoc(soc);
+  // gross SoC, also outside the window (a battery driven empty / overcharged); HybridSimulator.setSoc would clamp
+  if (soc !== undefined) EvSimulator.prototype.setSoc.call(sim, soc);
   const inp: SimInputs = { ...defaultInputs(), ignition: true, startWarm: true, dynoMode: "vehicle", hybridMode: mode };
   const h = 1 / 60;
   let fuelL = 0;

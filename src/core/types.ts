@@ -698,6 +698,7 @@ export interface HybridConfig {
   generatorKw?: number;
 }
 
+/** For a hybrid, `EngineState.ev.soc` is the usable SoC (0 … 1 of [socMin, socMax]), as the car's display shows it. */
 export interface HybridState {
   mode: HybridMode;
   topology: HybridTopology;

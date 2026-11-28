@@ -104,6 +104,22 @@ describe("hybrid strategy", () => {
   });
 });
 
+describe("hybrid SoC window", () => {
+  test("plug-in: charging keeps the SoC inside [socMin, socMax], the car shows the usable share", () => {
+    const car = HYBRID_LIBRARY.find((c) => c.id === "hy-toyota-prius-5-phev")!;
+    const hy = car.setup.hybrid!;
+    const r = hybridRig(car);
+    r.sim.setSoc(1);
+    expect(r.sim.battery.soc).toBeCloseTo(hy.socMax, 6);
+    r.sim.setSoc(0.05);
+    expect(r.sim.battery.soc).toBeCloseTo(hy.socMin, 6);
+    r.sim.setSoc(Number.NaN);
+    expect(r.sim.battery.soc).toBeCloseTo(hy.socMax, 6);
+    r.sim.setSoc((hy.socMin + hy.socMax) / 2);
+    expect(r.step(0, 1).ev!.soc).toBeCloseTo(0.5, 2);
+  });
+});
+
 describe("hybrid kits: 48 V mild hybrid and range extender", () => {
   const golf = libraryCar("car-vw-golf7-gti");
   const kit = (f: typeof mildHybridDrive): LibraryCar => ({ ...golf, setup: withDrive(golf, f(factoryDrive(golf))!) });

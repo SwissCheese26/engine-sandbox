@@ -106,7 +106,13 @@ export async function hybridChecks({ browser, base, outDir, failures, errors, la
   await page.keyboard.down("w");
   await page.waitForTimeout(2500);
   const full = await hy(page);
+  // the same flow in a screen design (Renn-Dash) while the engine still drives
+  await view(page, "race");
+  await page.waitForTimeout(300);
+  const race = await hy(page);
   await page.keyboard.up("w");
+  if (!race.flow || race.engWheel !== "on" || race.lamp !== "off") fail(`Energiefluss im Renn-Dash steht (${JSON.stringify(race)})`);
+  await view(page, "classic");
   if (!full.on || full.engWheel !== "on" || full.lamp !== "off" || !(full.kmh > evStart.kmh + 15)) fail(`Vollgas startet den Motor nicht / Energiefluss steht (${JSON.stringify(full)})`);
   if (!/%/.test(full.soc) || !/l/.test(full.tank)) fail(`Tank / Akku fehlen (${full.tank}, ${full.soc})`);
   await page.screenshot({ path: join(outDir, `smoke-${label}-hybrid-full.png`) });

@@ -383,7 +383,7 @@ export class EvSimulator {
       if (c?.torqueCut) fReq *= 1 - clamp(c.torqueCut, 0, 0.9);
       // rotor speed limit of the fastest-turning motor caps the car (the VCU fades the drive torque over the last 2 %),
       // also when the motors of the other axle could still push (different ratios, electric.md §4.1)
-      if (fReq > 0) fReq *= motors.reduce((k, mo, i) => Math.min(k, clamp((mo.maxRpm - rpms[i]!) / (0.02 * mo.maxRpm), 0, 1)), 1);
+      fReq *= motors.reduce((k, mo, i) => Math.min(k, clamp((mo.maxRpm - rpms[i]!) / (0.02 * mo.maxRpm), 0, 1)), 1);
     } else {
       // lift-off regen and blended braking; none while ABS regulates (the hydraulics need the full control)
       const absOn = x.absT < 0.3;

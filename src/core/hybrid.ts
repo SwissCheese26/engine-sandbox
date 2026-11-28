@@ -85,6 +85,16 @@ export class HybridSimulator extends EvSimulator {
     this.hs = null;
   }
 
+  /** State of charge, kept inside the strategy's window [socMin, socMax] (charging a plug-in, a new car). */
+  override setSoc(soc: number) {
+    super.setSoc(clamp(fin(soc, this.hy.socMax), this.hy.socMin, this.hy.socMax));
+  }
+
+  /** Usable state of charge 0 … 1 of the window, as the car shows it (gross SoC: `battery.soc`). */
+  usableSoc(gross = this.battery.soc): number {
+    return clamp((gross - this.hy.socMin) / Math.max(0.01, this.hy.socMax - this.hy.socMin), 0, 1);
+  }
+
   get hybridState(): HybridState | null {
     return this.hs;
   }
@@ -312,6 +322,7 @@ export class HybridSimulator extends EvSimulator {
       wheelKw, fuelLh: es.fuelFlowLh, gear: geared ? this.eGear : 1, engine: es,
     };
     out.hybrid = this.hs;
+    if (out.ev) out.ev = { ...out.ev, soc: this.usableSoc() };
     return this.replace(out);
   }
 
@@ -331,6 +342,6 @@ export class HybridSimulator extends EvSimulator {
       fuelLh: es.fuelFlowLh, gear: 1, engine: es,
     };
     this.hs = hs;
-    return this.replace({ ...es, ev: s.ev, hybrid: hs });
+    return this.replace({ ...es, ev: s.ev ? { ...s.ev, soc: this.usableSoc() } : undefined, hybrid: hs });
   }
 }

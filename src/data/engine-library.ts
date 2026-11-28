@@ -404,6 +404,7 @@ const HYBRID: LibraryEngine[] = [
       fuelSystem: { kind: "petrol", mixture: "dual-injection", fuel: "ron95", fullLoadLambda: 0.95, ignitionAdvanceOffsetDeg: 0 },
       exhaust: { ...PETROL_EXHAUST, egr: true },
       cooling: { radiatorCapacityKw: 100, thermostatOpenC: 88, oilCooler: false }, revLimitRpm: 6300, idleRpm: 1000,
+      // Atkinson charge push-back not in the airpath model: the ECU cap stands in for it (hybrid.md §5.1) [S]
       ecuTorqueLimitNm: 188,
     },
     expected: { peakTorqueNm: 188, peakTorqueRpm: 4800, peakPowerKw: 111, peakPowerRpm: 6000 },
@@ -419,6 +420,7 @@ const HYBRID: LibraryEngine[] = [
       fuelSystem: { kind: "petrol", mixture: "port-injection", fuel: "ron95", fullLoadLambda: 0.95, ignitionAdvanceOffsetDeg: 0 },
       exhaust: { ...PETROL_EXHAUST, egr: true, particulateFilter: false },
       cooling: { radiatorCapacityKw: 65, thermostatOpenC: 88, oilCooler: false }, revLimitRpm: 5800, idleRpm: 1000,
+      // Atkinson charge push-back not in the airpath model: the ECU cap stands in for it (hybrid.md §5.1) [S]
       ecuTorqueLimitNm: 120,
     },
     expected: { peakTorqueNm: 120, peakTorqueRpm: 4200, peakPowerKw: 68, peakPowerRpm: 5500 },

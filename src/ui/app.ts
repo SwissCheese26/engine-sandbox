@@ -456,7 +456,9 @@ export class App {
     // Elektro-Platte (#108)
     this.evPanel.onMode = (m) => (this.hyCfg ? this.setHybridMode(m as HybridMode) : this.setEvMode(m as EvDriveMode));
     this.evPanel.onCharge = (soc) => {
-      this.evSim?.setSoc(soc);
+      // hybrid (#157): the buttons mean the usable charge; setSoc keeps it inside the window
+      const hy = this.hyCfg;
+      this.evSim?.setSoc(hy ? hy.socMin + soc * (hy.socMax - hy.socMin) : soc);
       this.announce(`Akku auf ${Math.round(soc * 100)} % geladen.`);
     };
     this.evBench.onFactory = () => {
@@ -785,7 +787,9 @@ export class App {
       let rangeKm = Number.NaN;
       if (s.ev && this.evRange && this.evCfg) {
         this.evRange.step(dt, s.ev.powerKw, this.gearbox.drivetrain.state.speedKmh);
-        s.ev.rangeKm = this.evRange.rangeKm(packKwhLeft(s.ev.soc, evPackKwh(this.evCfg as EvConfig)));
+        // a hybrid's SoC is the usable share of its window (#157)
+        const win = this.hyCfg ? this.hyCfg.socMax - this.hyCfg.socMin : 1;
+        s.ev.rangeKm = this.evRange.rangeKm(packKwhLeft(s.ev.soc, evPackKwh(this.evCfg as EvConfig) * win));
         if (this.inputs.dynoMode === "vehicle") rangeKm = s.ev.rangeKm + (s.hybrid ? this.stepFuelRange(dt, s) : 0);
       } else if (this.inputs.dynoMode === "vehicle" && !this.evSim) rangeKm = this.stepFuelRange(dt, s);
       this.gearbox.showRange(rangeKm);
