@@ -1,0 +1,382 @@
+/* Electric cars (#108): Ready button, EV variant of every cockpit design, the E-Tacho design, the Elektro-Platte, and
+   what an electric car hides in the Prüfzelle (cutaway engine, nameplate, curve recorder, Werkbank, gearbox controls). */
+
+/* ── console: Ready replaces ignition key and starter ─────────────────── */
+.readybtn {
+  display: inline-flex;
+  visibility: hidden;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 64px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: var(--fs-12);
+  font-weight: 600;
+  cursor: pointer;
+}
+/* one slot for both drives (#154): key + starter keep their size, Ready sits centred on top of them; only the
+   visibility changes, so nothing in the control bar moves when the drive changes */
+.console__group--main {
+  display: grid;
+  grid-template-columns: auto auto;
+  justify-content: start;
+}
+.console__group--main > .ignkey { grid-area: 1 / 1; }
+.console__group--main > .starter { grid-area: 1 / 2; }
+.console__group--main > .readybtn { grid-area: 1 / 1 / 2 / 3; justify-self: center; }
+.console__group--main > .console__more { grid-column: 1 / -1; justify-self: start; }
+.console.is-ev .readybtn {
+  visibility: visible;
+}
+.console.is-ev :is(.ignkey, .starter) {
+  visibility: hidden;
+}
+.readybtn__cap {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #1a211f;
+  box-shadow: inset 0 0 0 3px #3b4843, 0 2px 0 #111a17;
+  font: 700 11px var(--font);
+  letter-spacing: 0.06em;
+  color: #8a958f;
+  transition: box-shadow 200ms ease, color 200ms ease;
+}
+.readybtn[aria-pressed="true"] .readybtn__cap {
+  color: #5fd068;
+  box-shadow: inset 0 0 0 3px #5fd068, 0 0 12px rgba(95, 208, 104, 0.45);
+}
+.readybtn:focus-visible .readybtn__cap {
+  outline: 2px solid var(--focus, #8ec5ff);
+  outline-offset: 3px;
+}
+
+/* ── Prüfzelle: no engine cutaway, nameplate or ICE curve recorder for an EV ── */
+.cell[data-drive="ev"] :is(.stage__engine, .recorder) {
+  display: none;
+}
+.instruments [hidden] {
+  display: none !important;
+}
+
+/* ── Werkbank: the Elektroantrieb plates replace fuel switch, library, tuning and combustion plates ── */
+.evb[hidden],
+.bench--ev :is(.ice-summary, .fuel-switch, .bench__hint, .bench__tools, .bench__library, .bench__libinfo, .bench__lock, .bench__notes, .plate--tuning, .bench__plates:not(.evb)) {
+  display: none !important;
+}
+.evb__sum {
+  display: grid;
+  gap: 2px;
+  margin: 0 0 var(--space-2);
+  padding: 0 var(--space-2);
+}
+.evb__sum div {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  column-gap: var(--space-3);
+  padding: var(--space-1) 0;
+  border-top: 1px solid rgba(35, 41, 42, 0.14);
+}
+.evb__sum dt {
+  font-size: var(--fs-14);
+  color: #4a5250;
+}
+.evb__sum dd {
+  margin: 0 0 0 auto;
+  font-weight: 700;
+  text-align: right;
+}
+.evb__note {
+  min-height: 1.4em;
+  margin: 0 0 var(--space-2);
+  padding: 0 var(--space-2);
+  font-size: var(--fs-14);
+  color: #4a5250;
+}
+.evb__note:empty {
+  display: none;
+}
+.evb__btns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
+}
+
+/* ── Getriebe-Pult: drive mode, EV readouts and "Laden auf" in the readout list ── */
+.evmode[hidden],
+.gearbox__ev[hidden] {
+  display: none;
+}
+.evmode {
+  display: grid;
+  gap: var(--space-1);
+}
+.evmode__label {
+  font-size: var(--fs-14);
+  color: var(--alu-shade);
+}
+.evmode__opts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.evmode [aria-checked="true"] {
+  background: var(--signal);
+  border-color: var(--signal);
+  color: var(--engrave);
+}
+.gearbox__readouts .gearbox__ev {
+  flex-wrap: wrap;
+}
+.gearbox__ev dd {
+  margin-left: auto;
+  text-align: right;
+}
+.gearbox__charge dd {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  font-size: inherit;
+}
+.gearbox[data-drive="ev"] .gearbox__gear {
+  display: none;
+}
+
+/* ── drive selector P N D (in place of ▲ gear ▼) ── */
+.shiftpad.is-ev {
+  grid-template-rows: auto;
+  gap: 0;
+}
+.shiftpad__ev[hidden],
+.shiftpad.is-ev :is(.shiftpad__btn, .shiftpad__gear) {
+  display: none;
+}
+/* P, N, D in one 44 px column: the same footprint as ▲ gear ▼ (#154: same slot, same size) */
+.shiftpad__ev {
+  display: grid;
+  grid-template-columns: 44px;
+  gap: 4px;
+}
+.shiftpad__sel {
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--signal);
+  border-radius: 6px;
+  background: var(--hammer);
+  color: var(--signal);
+  font-size: var(--fs-20);
+  font-weight: 700;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.shiftpad__sel[data-sel="P"] {
+  grid-column: 1 / -1;
+}
+.shiftpad__sel[aria-checked="true"] {
+  background: var(--signal);
+  color: var(--engrave);
+}
+.shiftpad__sel:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.shiftpad__sel:focus-visible {
+  outline: 2px solid var(--alu);
+  outline-offset: 2px;
+}
+
+/* phones: touch targets of at least 44 px on the Werkbank and in the Getriebe-Pult */
+@media (max-width: 700px) {
+  .bench .field select,
+  .bench .field__num,
+  .bench .seg__opt span,
+  .evb__btns .btn,
+  .evmode .btn,
+  .gearbox__charge .btn {
+    min-height: 44px;
+  }
+  .bench .seg__opt span {
+    min-width: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+/* ── Getriebe-Pult: single-speed reduction, no gearbox, shift buttons, tank ── */
+.gearbox[data-drive="ev"] :is(label:has([data-control="gearbox"]), label:has([data-control="final-drive"]), .gearbox__shift, .gearbox__keys, .gearbox__tank, .gearbox__range, .gearbox__hint, .gearbox__calc, .gears),
+.gearbox[data-drive="ev"] .gearbox__readouts div:has([data-out="gear-oil"]),
+.gearbox[data-drive="ev"] .vehicle__num:has([data-field="tank"]) {
+  display: none;
+}
+
+/* ── cockpit: EV variant of every design ─────────────────────────────── */
+.ck-lamp--green[data-state="on"] {
+  color: var(--ck-green);
+  filter: drop-shadow(0 0 4px rgba(95, 208, 104, 0.55));
+}
+.ck-lamp--ready {
+  display: none;
+}
+.ck[data-drive="ev"] .ck-lamp--ready {
+  display: inline-flex;
+}
+/* oil pressure, coolant, glow plug and alternator lamps do not exist in an EV */
+.ck[data-drive="ev"] :is([data-lamp="oil"], [data-lamp="coolant"], [data-lamp="glow"], [data-lamp="battery"], [data-lamp="gearbox"], [data-lamp="cat"]) {
+  display: none;
+}
+/* the extra gauges and the tuning bar under the cluster are combustion add-ons (boost, oil, λ, EGT) */
+.ck[data-drive="ev"] .ck__console {
+  display: none;
+}
+.ck__ev[hidden] {
+  display: none !important;
+}
+.ck__ev {
+  display: grid;
+  gap: 2px;
+  margin: var(--space-1) 0 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid #26302c;
+  font-size: var(--fs-14);
+}
+.ck__ev div {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+}
+.ck__ev dt {
+  color: var(--ck-dim);
+}
+.ck__ev dd {
+  margin: 0;
+  text-align: right;
+}
+.ck__ev .is-limit dd {
+  color: var(--ck-amber);
+}
+.ck__ev [data-ck="ev-mode"] {
+  min-height: 28px;
+  padding: 0 var(--space-2);
+}
+.ck__ev [data-ck="ev-mode"][data-mode="plaid"] {
+  color: #ff5a4f;
+}
+/* compact in the classic designs: charge, range, drive mode; the E-Tacho shows everything */
+.ck:not([data-design="etacho"]) :is(.ck__ev-cons, .ck__ev-cons2, .ck__ev-batt) {
+  display: none;
+}
+.ck__ev .ck__ev-cons2[hidden] {
+  display: none;
+}
+/* power arc / bar in green while regenerating (digital, head-up, motorcycle) */
+.ck[data-band="regen"] .ck__arc-fill {
+  stroke: var(--ck-green);
+}
+.ck[data-band="regen"] .ck__revbar-fill {
+  background: var(--ck-green);
+}
+
+/* ── E-Tacho design: power/regen meter in the middle, big digital speed, EV data ─ */
+.ck[data-design="etacho"] {
+  --ck-housing: #0b1014;
+  --ck-face: #0d1419;
+  --ck-ring: #24323b;
+  --ck-light: #e6f3f8;
+  --ck-dim: #8fa6b2;
+  --ck-needle: #44d7ff;
+}
+.ck[data-design="etacho"] .ck__dial--speed :is(.ck__tube, .ck__read) {
+  display: none;
+}
+@media (min-width: 701px) {
+  .ck[data-design="etacho"] .ck__speed {
+    font-size: clamp(44px, 6vw, 72px);
+  }
+}
+.ck[data-design="etacho"] .ck__speed {
+  min-width: 0;
+  white-space: nowrap;
+}
+/* phones: no empty speedometer box next to the power meter; the design/scale pickers move below the display */
+@media (max-width: 700px) {
+  .ck[data-design="etacho"] {
+    grid-template-areas: "lamps lamps" "rpm rpm" "minis minis" "mfd mfd" "speed speed" "cruise cruise";
+  }
+  /* #120: the power meter leaves room for speed, minis and the centre display on a phone screen */
+  .ck[data-design="etacho"] .ck__dial--rpm {
+    width: min(100%, 220px, 34svh);
+    justify-self: center;
+  }
+  .ck[data-design="etacho"] .ck__speed {
+    font-size: 32px;
+    justify-self: end;
+  }
+}
+.ck[data-design="etacho"] .ck__ev {
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  column-gap: var(--space-4, 16px);
+  font-size: var(--fs-16, 16px);
+}
+.ck[data-design="etacho"] .ck__ev-soc dd {
+  color: #5fd068;
+  font-weight: 700;
+}
+.ck[data-design="etacho"] :is([data-mini="oil-pressure"], [data-mini="boost"]) {
+  display: none;
+}
+.rd__cell[hidden] {
+  display: none;
+}
+
+/* phones with the shift pad or the P N D selector: the same tighter control bar for both drives (#154), so key and
+   starter (or Ready), pad, P, brake and gas fit in 360 px at the same positions */
+@media (max-width: 700px) {
+  .deck:has(.shiftpad:not([hidden])) {
+    padding-inline: var(--space-2);
+  }
+  .deck:has(.shiftpad:not([hidden])) .pedals {
+    gap: var(--space-2);
+  }
+  .console__more {
+    max-width: 100%;
+    min-height: 44px;
+    white-space: normal;
+    text-align: left;
+  }
+}
+
+/* the Vmax limiter of an electric car is set on the Werkbank (Getriebe und Vmax): no second one on the Fahrzeug-Platte */
+.cell[data-drive="ev"] :is(label:has([data-control="speed-limit"]), [data-out="governor-calc"]) {
+  display: none;
+}
+
+/* phones: readouts that change width every frame must not reflow the cluster, captions wrap instead of leaving the
+   column, and the drive mode button is a 44 px touch target */
+.ck__ev dd {
+  white-space: nowrap;
+}
+@media (max-width: 700px) {
+  .ck-mini {
+    min-width: 0;
+  }
+  .ck-mini figcaption {
+    white-space: normal;
+    text-align: center;
+    overflow-wrap: anywhere;
+  }
+  .ck__ev [data-ck="ev-mode"] {
+    min-height: 44px;
+  }
+}
+
+
