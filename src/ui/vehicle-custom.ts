@@ -180,6 +180,19 @@ export function clearCustom(key: string, st: Store | null = defaultStore()) {
   saveAll(all, st);
 }
 
+/** Drive swap (#154): the parts that came with the old drive (mass, gearbox, ratios, final drive, tank) are forgotten. */
+export function forgetDriveParts(key: string, st: Store | null = defaultStore()) {
+  const all = loadAll(st);
+  const c = all[key];
+  if (!c) return;
+  delete c.gearbox;
+  delete c.ratios;
+  delete c.finalDrive;
+  delete c.tankL;
+  if (c.body) delete c.body.massKg;
+  saveAll(all, st);
+}
+
 /**
  * Old saves: the global own ratios ({ kind, type, ratios }) and the global governor choice are attached to the
  * vehicle that was active last (named by the tank record), when its kind matches; otherwise they are dropped. The

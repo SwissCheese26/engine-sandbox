@@ -1,5 +1,5 @@
 /**
- * Free drive swap (issue #154, docs/research/vehicle.md §13): any drive into any vehicle body. A library vehicle is
+ * Free drive swap (issue #154, docs/research/vehicle.md §13, contract #159): any drive into any vehicle body. A library vehicle is
  * split into its body (the factory mass minus the factory drive mass) and its drive; a new drive brings its own
  * mass, and the transmission is re-geared for the new rpm range, wheel and target speed. The factory setups in the
  * libraries stay untouched: the swap builds a new CarSetup.
@@ -89,9 +89,13 @@ function onAxles(ev: EvConfig, layout: DriveLayout | undefined): EvConfig["motor
  * vehicle.md §13); electric: the rotor speed limit (single-speed, a 2-speed reduction keeps its spread).
  */
 export function withDrive(car: LibraryCar, drive: DriveSpec): CarSetup {
-  const base = car.setup;
+  return setupWithDrive(car.setup, bodyMassKg(car), drive);
+}
+
+/** withDrive for any setup with a known body mass (own vehicles: their entered mass minus the drive's). */
+export function setupWithDrive(base: CarSetup, bodyKg: number, drive: DriveSpec): CarSetup {
   const v = base.vehicle;
-  const massKg = bodyMassKg(car) + driveMassKg(drive);
+  const massKg = bodyKg + driveMassKg(drive);
   const vehicle: VehicleParams = { ...v, massKg };
   const caps = [base.speedLimitKmh ?? Infinity, base.tyre.speedIndex === "(Y)" ? Infinity : speedRatingKmh(base.tyre.speedIndex)];
   const out: CarSetup = { ...structuredClone(base), vehicle, ev: undefined };

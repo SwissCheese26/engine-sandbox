@@ -10,6 +10,7 @@ import { ENGINE_LIBRARY, type LibraryEngine } from "../data/engine-library.ts";
 import { VEHICLE_LIBRARY, type LibraryCar } from "../data/vehicle-library.ts";
 import { isListed, migrateTyreSize } from "./tyre-size-picker.ts";
 import { findMyEngine, isMyEngineId } from "./my-engines.ts";
+import { driveMassKg, factoryDrive, setupWithDrive } from "../data/drive-swap.ts";
 
 /** Library groups of step 1 (Auto, Lkw & Bus, Motorrad). */
 export type VehicleGroup = "car" | "commercial" | "bike";
@@ -225,13 +226,30 @@ export function validateCustom(raw: Partial<Record<keyof CustomVehicle, unknown>
   const engineId = typeof raw.engineId === "string" ? raw.engineId : "";
   // own engines from the Engine Builder (#72) fit every vehicle type
   const own = isMyEngineId(engineId) && !!findMyEngine(engineId);
-  if (!own && !enginesFor(base).some((e) => e.config.id === engineId)) errors.engineId = "Bitte einen Motor aus der Bibliothek oder einen eigenen Motor wählen.";
+  // any library engine or electric drive fits any vehicle type (#154)
+  if (!own && !engineById(engineId) && !evDonor(engineId)) errors.engineId = "Bitte einen Antrieb wählen: Motor aus der Bibliothek, eigener Motor oder Elektroantrieb.";
   if (Object.keys(errors).length) return { ok: false, errors };
   return { ok: true, value: { base, massKg, cw, areaM2, tyre: formatTyreSize(parseTyreSize(tyre)!), drive, gearbox, tankL, engineId } };
 }
 
-/** The CarSetup of a (validated) own vehicle: preset of the base type with the player's values on top. */
+/** Electric drive of an own vehicle (#154): "ev:<library EV id>" → that car. */
+export function evDonor(engineId: string): LibraryCar | undefined {
+  return engineId.startsWith("ev:") ? VEHICLE_LIBRARY.find((c) => c.setup.ev && c.id === engineId.slice(3)) : undefined;
+}
+
+/**
+ * The CarSetup of a (validated) own vehicle: preset of the base type with the player's values on top. An electric
+ * drive (#154) replaces gearbox and tank; the entered mass is the mass as driven, so it stays.
+ */
 export function customSetup(c: CustomVehicle): CarSetup {
+  const ice = iceSetup(c);
+  const donor = evDonor(c.engineId);
+  if (!donor) return ice;
+  const drive = factoryDrive(donor);
+  return setupWithDrive(ice, c.massKg - driveMassKg(drive), drive);
+}
+
+function iceSetup(c: CustomVehicle): CarSetup {
   const kind = BASE_KIND[c.base];
   const p = VEHICLES[kind];
   const tyre = { ...p.tyre, size: parseTyreSize(c.tyre) ?? { ...p.tyre.size } };
@@ -261,6 +279,8 @@ export interface PendingSetup {
   custom?: CustomVehicle;
   /** Library engine to load with the vehicle. */
   engineId?: string;
+  /** Drive swapped into the library vehicle (#154, drive-choice.ts ids); unset = its stored drive. */
+  driveId?: string;
   /** Route on the chassis dyno; null for the engine dyno. */
   route: Terrain | null;
 }
@@ -274,11 +294,12 @@ export function buildSetup(kind: SetupKind, choice: { vehicleId?: string; custom
   if (!choice.route) return null;
   if (kind === "custom") {
     if (!choice.custom) return null;
-    return { kind, custom: choice.custom, engineId: choice.custom.engineId, route: choice.route };
+    return { kind, custom: choice.custom, engineId: evDonor(choice.custom.engineId) ? undefined : choice.custom.engineId, route: choice.route };
   }
   const car = vehiclesOf(kind).find((c) => c.id === choice.vehicleId);
   if (!car) return null;
-  return { kind, vehicleId: car.id, engineId: choice.engineId ?? car.engineId, route: choice.route };
+  // an engine from the Engine Builder goes in as a drive swap (#154): mass and gearing follow
+  return { kind, vehicleId: car.id, engineId: choice.engineId ?? car.engineId, driveId: choice.engineId, route: choice.route };
 }
 
 // --- own vehicle across reloads (#93 review) ------------------------------------------------------------------------

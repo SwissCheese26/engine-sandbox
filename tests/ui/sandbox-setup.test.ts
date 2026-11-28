@@ -78,7 +78,7 @@ describe("own vehicle", () => {
   });
 
   test("bad values get a message per field", () => {
-    const r = validateCustom({ base: "car", massKg: "abc", cw: "2", areaM2: "", tankL: "-5", tyre: "groß", drive: "xwd", gearbox: "sequential", engineId: "lib-mercedes-om471" });
+    const r = validateCustom({ base: "car", massKg: "abc", cw: "2", areaM2: "", tankL: "-5", tyre: "groß", drive: "xwd", gearbox: "sequential", engineId: "lib-gibt-es-nicht" });
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(Object.keys(r.errors).sort()).toEqual(["areaM2", "cw", "drive", "engineId", "gearbox", "massKg", "tankL", "tyre"]);
@@ -218,5 +218,26 @@ describe("review PR #95", () => {
     for (const junk of [null, 1, "x", {}, { custom: null }]) expect(parseOwnVehicle(junk)).toBeNull();
     mem.set(OWN_VEHICLE_KEY, "{broken");
     expect(loadOwnVehicle(st)).toBeNull();
+  });
+});
+
+describe("own vehicle: any drive (#154)", () => {
+  test("a truck engine fits a car, an electric drive fits a truck", () => {
+    expect(validateCustom({ ...defaultCustom("car"), engineId: "lib-mercedes-om471" }).ok).toBe(true);
+    const r = validateCustom({ ...defaultCustom("truck"), engineId: "ev:ev-tesla-model-s-lr" });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const s = customSetup(r.value);
+    // the entered mass is the mass as driven; the motors go on the driven rear axle, no tank, no engine to load
+    expect(s.vehicle.massKg).toBeCloseTo(r.value.massKg, 6);
+    expect(s.ev!.motors.every((m) => m.axle === "rear")).toBe(true);
+    expect(s.tankL).toBeUndefined();
+    expect(buildSetup("custom", { custom: r.value, route: "static" })!.engineId).toBeUndefined();
+  });
+
+  test("an Engine Builder engine in a library vehicle is a drive swap", () => {
+    const p = buildSetup("car", { vehicleId: "car-vw-golf7-gti", route: "static", engineId: "my-x" })!;
+    expect(p.driveId).toBe("my-x");
+    expect(buildSetup("car", { vehicleId: "car-vw-golf7-gti", route: "static" })!.driveId).toBeUndefined();
   });
 });

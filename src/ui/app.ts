@@ -165,7 +165,9 @@ export class App {
     let sameCar = this.evTuning && !!ev && !!this.evSim;
     this.evTuning = false;
     // a newly loaded electric car comes with its stored E-Tuner setup (per vehicle)
-    const car = ev ? VEHICLE_LIBRARY.find((c) => c.id === this.gearbox.vehiclePanel.carId && c.setup.ev) ?? null : null;
+    // the vehicle as it drives (#154: a swapped-in electric drive is tuned like a factory one, stored per vehicle and drive)
+    const cur = this.gearbox.vehiclePanel.currentCar;
+    const car = ev && cur?.setup.ev ? cur : null;
     const stored = car && !sameCar ? loadEvTuning(car) : null;
     if (car && stored) {
       const t = tuneEv(car.setup.ev!, stored, car.setup.vehicle.wheelRadiusM);
@@ -250,7 +252,9 @@ export class App {
         let carKey: string | null = null;
         let carPick: CockpitDesignId | undefined;
         c.preferredDesign = () => {
-          const id = this.gearbox.vehiclePanel.carId;
+          const p = this.gearbox.vehiclePanel;
+          // a drive swapped between electric and combustion (#154): the drive picks the cluster, not the car
+          const id = p.driveTypeChanged ? "" : p.carId;
           if (id !== carKey) {
             carKey = id;
             carPick = carDesign(id, VEHICLE_LIBRARY.find((v) => v.id === id)?.cockpitDesign);
@@ -388,7 +392,7 @@ export class App {
         return false;
       }
       // stored per vehicle: the E-Tuner record, mass and tyre with the vehicle's own changes
-      saveEvTuning(this.gearbox.vehiclePanel.carId, t.tuning);
+      saveEvTuning(this.gearbox.vehiclePanel.currentCar?.id ?? this.gearbox.vehiclePanel.carId, t.tuning);
       this.gearbox.vehiclePanel.remember();
       this.syncDrive();
       this.announce(`Umgebaut: ${Math.round(t.systemPs)} PS, ${Math.round(massKg)} kg.`);
@@ -878,7 +882,7 @@ export class App {
         saveOwnVehicle(p.custom, true);
       }
     } else if (p.vehicleId) {
-      name = panel.selectCar(p.vehicleId)?.name ?? "";
+      name = panel.selectCar(p.vehicleId, p.driveId)?.name ?? "";
       if (name) setOwnVehicleActive(false);
     }
     // the route after the vehicle: loading a vehicle puts it back to the start of the route
@@ -894,7 +898,8 @@ export class App {
   restoreOwnVehicle() {
     const own = loadOwnVehicle();
     if (!own?.active) return;
-    this.loadEngine(own.custom.engineId);
+    // an electric drive (#154, "ev:…") has no engine for the bench
+    if (!own.custom.engineId.startsWith("ev:")) this.loadEngine(own.custom.engineId);
     if (!this.gearbox.vehiclePanel.applyOwn(customSetup(own.custom))) return;
     this.gearbox.restoreTank();
     this.setMode("vehicle");
