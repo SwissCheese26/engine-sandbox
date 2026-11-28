@@ -15,21 +15,21 @@ import { withTyre } from "../core/index.ts";
 import type { CarSetup, EvBatteryConfig, EvConfig, EvMotorConfig, TyreSetup, VehicleParams } from "../core/index.ts";
 import type { LibraryCar } from "./vehicle-library.ts";
 
-const DRIVER_KG = 75;
+export const DRIVER_KG = 75;
 
-function body(m: number, cw: number, area: number, layout: VehicleParams["driveLayout"], front: number, cgH: number, wb: number): VehicleParams {
+export function body(m: number, cw: number, area: number, layout: VehicleParams["driveLayout"], front: number, cgH: number, wb: number): VehicleParams {
   return {
     massKg: m, dragCoefficient: cw, frontalAreaM2: area, rollingResistance: 0.011, wheelRadiusM: 0.33,
     driveLayout: layout, cgHeightM: cgH, cgToRearAxleM: front * wb, wheelbaseM: wb,
   };
 }
-const tyre = (type: TyreSetup["type"], w: number, a: number, rim: number, idx: TyreSetup["speedIndex"]): TyreSetup => ({
+export const tyre = (type: TyreSetup["type"], w: number, a: number, rim: number, idx: TyreSetup["speedIndex"]): TyreSetup => ({
   type, size: { widthMm: w, aspectPct: a, rimInch: rim }, speedIndex: idx,
 });
-const motor = (kind: EvMotorConfig["kind"], axle: EvMotorConfig["axle"], peakPowerKw: number, peakTorqueNm: number, maxRpm: number, ratio: number, inverterA: number): EvMotorConfig => ({
+export const motor = (kind: EvMotorConfig["kind"], axle: EvMotorConfig["axle"], peakPowerKw: number, peakTorqueNm: number, maxRpm: number, ratio: number, inverterA: number): EvMotorConfig => ({
   kind, axle, peakPowerKw, peakTorqueNm, maxRpm, ratio, inverterA,
 });
-const pack = (chemistry: EvBatteryConfig["chemistry"], seriesCells: number, parallelCells: number, cellAh: number, cellResistanceMOhm: number, maxDischargeC: number, maxChargeC: number): EvBatteryConfig => ({
+export const pack = (chemistry: EvBatteryConfig["chemistry"], seriesCells: number, parallelCells: number, cellAh: number, cellResistanceMOhm: number, maxDischargeC: number, maxChargeC: number): EvBatteryConfig => ({
   chemistry, seriesCells, parallelCells, cellAh, cellResistanceMOhm, maxDischargeC, maxChargeC,
 });
 

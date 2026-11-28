@@ -1,6 +1,7 @@
 import { BUS_AUTOMATIC, GEARBOXES, TRUCK_AMT, VEHICLES, withTyre } from "../core/index.ts";
 import type { CarSetup, GearboxSpec, TyreSetup, VehicleParams } from "../core/index.ts";
 import { EV_LIBRARY } from "./ev-library.ts";
+import { HYBRID_LIBRARY } from "./hybrid-library.ts";
 
 /**
  * Ready-made cars (issue #22): engine from the engine library (#15) + gearbox with the car's own ratios + body,
@@ -38,6 +39,8 @@ export interface LibraryCar {
     /** Electric cars (issue #108): system power (kW) and usable/net pack energy (kWh) as published. */
     powerKw?: number;
     packKwh?: number;
+    /** Hybrid cars (issue #157): rated (WLTP, weighted for plug-ins) fuel consumption, l/100 km. */
+    fuelL100?: number;
     /** The published acceleration time is measured with a 1-ft rollout (US drag-strip convention, Tesla/Lucid). */
     rollout?: boolean;
   };
@@ -414,6 +417,8 @@ export const VEHICLE_LIBRARY: LibraryCar[] = [
 
 // electric cars (issue #108): own file, listed with the cars (setup.ev set, no library engine)
 VEHICLE_LIBRARY.push(...EV_LIBRARY);
+// hybrid cars (issue #157): setup.ev + setup.hybrid, with their library engine
+VEHICLE_LIBRARY.push(...HYBRID_LIBRARY);
 
 export function libraryCar(id: string): LibraryCar {
   const c = VEHICLE_LIBRARY.find((x) => x.id === id);
