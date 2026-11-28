@@ -18,6 +18,7 @@ _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `
 ### Behoben
 
 - Wenn du während der Fahrt ins Hauptmenü gehst und dort ein anderes Fahrzeug wählst, wird es jetzt geladen, samt Motor und Strecke. Vorher blieb das alte Auto stehen. ([#156](https://github.com/SwissCheese26/engine-sandbox/issues/156), [#161](https://github.com/SwissCheese26/engine-sandbox/issues/161))
+- Hybridautos zeigen den Verbrauch jetzt in l/100 km (oder km/l bzw. mpg) statt in kWh/100 km, im Durchschnitt und auf der Anzeige, in jedem Cockpit-Design, in der Prüfzelle und bei den Zusatzinstrumenten. Plug-ins zeigen dazu den Stromanteil: „4,5 l/100 km + 8,3 kWh/100 km“. Die Reichweite zählt Tank und Akku zusammen. E-Autos bleiben bei kWh/100 km. ([#164](https://github.com/SwissCheese26/engine-sandbox/issues/164), [#165](https://github.com/SwissCheese26/engine-sandbox/issues/165))
 
 ## 2026-11-24 – Reifen werden beim Burnout heiß
 

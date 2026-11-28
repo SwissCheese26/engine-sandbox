@@ -60,6 +60,41 @@ export function consumptionText(kwh100: number, u: Pick<UnitPrefs, "distance">):
   return { value: Number.isFinite(v) ? fmt(v, 1) : "–", unit: mi ? "kWh/100 mi" : "kWh/100 km" };
 }
 
+/** Hybrid consumption context: trip average fuel (l/100 km, NaN while too short) and whether it is a plug-in. */
+export interface HybridCons {
+  tripL100: number;
+  plugIn: boolean;
+}
+
+export interface ConsText {
+  value: string;
+  unit: string;
+  /** Plug-in hybrid: the electric share as a second line (kWh/100 km). */
+  extra?: { value: string; unit: string };
+}
+
+/** Fuel consumption in the chosen unit (l/100 km, km/l or mpg), "–" while unknown. */
+export function fuelConsumptionText(l100: number, u: Pick<UnitPrefs, "fuel">): { value: string; unit: string } {
+  const v = toUnit("fuel", l100, u.fuel);
+  return { value: Number.isFinite(v) ? fmt(v, 1) : "–", unit: u.fuel };
+}
+
+/**
+ * Consumption of an electric drive: kWh/100 km for an EV; for a hybrid fuel first (trip average in l/100 km, like a
+ * real "x l + y kWh /100 km" display), a plug-in adds its battery share as the second line.
+ */
+export function driveConsumption(ev: { tripKwhPer100: number; kwhPer100: number }, hy: HybridCons | null | undefined, u: Pick<UnitPrefs, "distance" | "fuel">): ConsText {
+  const kwh = consumptionText(evConsumption(ev), u);
+  if (!hy) return kwh;
+  const fuel = fuelConsumptionText(hy.tripL100, u);
+  return hy.plugIn ? { ...fuel, extra: kwh } : fuel;
+}
+
+/** One line: "5,2 l/100 km" or, for a plug-in, "5,2 l/100 km + 8,3 kWh/100 km". */
+export function consumptionLine(c: ConsText): string {
+  return `${c.value} ${c.unit}${c.extra ? ` + ${c.extra.value} ${c.extra.unit}` : ""}`;
+}
+
 export function socText(soc: number): string {
   return `${fmt(Math.round(Math.max(0, Math.min(1, soc)) * 100))} %`;
 }
@@ -78,7 +113,7 @@ export function nextDriveMode(m: EvDriveMode): EvDriveMode {
  * no meaning (coolant → battery temperature, oil → motor, oil pressure → pack voltage, boost → pack current,
  * exhaust → state of charge, lambda → regen power, consumption and range from the battery).
  */
-export function evField(id: FieldId, s: EngineState, u: UnitPrefs): { label: string; value: string; unit: string; warn: boolean } | null {
+export function evField(id: FieldId, s: EngineState, u: UnitPrefs, hy?: HybridCons | null): { label: string; value: string; unit: string; warn: boolean } | null {
   const ev = s.ev;
   if (!ev) return null;
   const T = (c: number) => fmt(toUnit("temp", c, u.temp));
@@ -91,8 +126,8 @@ export function evField(id: FieldId, s: EngineState, u: UnitPrefs): { label: str
     case "egt": return { label: "Ladezustand", value: fmt(Math.round(ev.soc * 100)), unit: "%", warn: ev.soc < LOW_SOC };
     case "lambda": return { label: "Rekuperation", value: fmt(toUnit("power", ev.regenKw, u.power)), unit: u.power, warn: false };
     case "fuelNow": {
-      const c = consumptionText(evConsumption(ev), u);
-      return { label: "Ø Verbrauch", value: c.value, unit: c.unit, warn: false };
+      const c = driveConsumption(ev, hy, u);
+      return { label: "Ø Verbrauch", value: c.value, unit: c.extra ? `${c.unit} + ${c.extra.value} ${c.extra.unit}` : c.unit, warn: false };
     }
     case "range": {
       const t = rangeText(ev.rangeKm, u);

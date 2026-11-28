@@ -8,7 +8,14 @@ import { evConsumption } from "./ev-fields.ts";
 import { clamp, fmt, mixHex, niceCeil, tickStep } from "./format.ts";
 import { ICON2 } from "./layouts/icons.ts";
 import { HybridFlow } from "./layouts/hybrid-flow.ts";
-import { UNITS, makeSwitchable, saveUnit, savedUnit, type UnitOpt } from "./units.ts";
+import { UNITS, makeSwitchable, saveUnit, savedUnit, toUnit, type UnitOpt } from "./units.ts";
+
+/** Trip-average consumption (base l/100 km) in the fuel units of the settings. */
+const L100_UNITS: readonly UnitOpt[] = [
+  { unit: "l/100 km", decimals: 1, conv: (v) => v },
+  { unit: "km/l", decimals: 1, conv: (v) => toUnit("fuel", v, "km/l") },
+  { unit: "mpg", decimals: 1, conv: (v) => toUnit("fuel", v, "mpg") },
+];
 import { FALLBACK_LIMITS as L, egtLimitC, lambdaLimit } from "./limits-fallback.ts";
 
 const SWEEP_START = (135 * Math.PI) / 180; // 7:30 o'clock
@@ -456,12 +463,14 @@ export class InstrumentPanel {
 
   /** Hybrid (#157): engine meters and the power flow next to the electric instruments. */
   private hy: { flow: HybridFlow; meters: Meter[]; el: HTMLElement } | null = null;
-  setHybrid(on: boolean) {
+  setHybrid(on: boolean, plugIn = false) {
     if (on && !this.hy) {
       const H = (s: EngineState) => s.hybrid;
       const meters = [
         new Meter({ id: "hy-rpm", label: "Verbrenner", unit: "1/min", decimals: 0, min: 0, max: () => niceCeil((this.cfgNow?.revLimitRpm ?? 7000) * 1.1), limit: () => this.cfgNow?.revLimitRpm ?? Infinity, value: (s) => H(s)?.engineRpm ?? Number.NaN, warns: ["over-rev"] }),
         new Meter({ id: "hy-kw", label: "Verbrennerleistung", unit: "kW", decimals: 0, min: 0, max: () => niceCeil(Math.max(50, this.peakKw * 1.1)), limit: () => Infinity, value: (s) => H(s)?.engineKw ?? Number.NaN, warns: [] }),
+        // consumption of a hybrid is fuel first (l/100 km, km/l, mpg): the trip average; the kWh meter stays for plug-ins only
+        new Meter({ id: "hy-cons", label: "Ø Verbrauch", unit: "l/100 km", decimals: 1, min: 0, max: () => 20, limit: () => Infinity, value: () => this.tripL100, warns: [], units: L100_UNITS }),
         new Meter({ id: "hy-fuel", label: "Kraftstoff", unit: "l/h", decimals: 1, min: 0, max: () => niceCeil(Math.max(10, this.peakKw * 0.3)), limit: () => Infinity, value: (s) => H(s)?.fuelLh ?? Number.NaN, warns: [] }),
       ];
       const stub = {} as EngineConfig;
@@ -475,8 +484,12 @@ export class InstrumentPanel {
       this.hy = { flow, meters, el };
     }
     if (this.hy) this.hy.el.hidden = !on;
+    // the electric consumption meter: kWh only beside the fuel for a plug-in, not at all for other hybrids
+    const evCons = this.ev?.meters.find((m) => m.def.id === "ev-cons");
+    if (evCons) evCons.el.hidden = on && !plugIn;
   }
   private peakKw = 100;
+  private tripL100 = Number.NaN;
 
   configure(cfg: EngineConfig, sum: EngineSummary) {
     this.peakKw = sum.peakPowerKw;
@@ -493,8 +506,9 @@ export class InstrumentPanel {
     for (const g of this.round) g.draw();
   }
 
-  update(s: EngineState, dt: number, batteryV = Number.NaN) {
+  update(s: EngineState, dt: number, batteryV = Number.NaN, tripL100 = Number.NaN) {
     this.batteryV = batteryV;
+    this.tripL100 = tripL100;
     const v24 = batteryV > 20;
     if (v24 !== this.v24 && this.cfgNow) {
       this.v24 = v24;

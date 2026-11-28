@@ -8,6 +8,7 @@ import { EvStatus } from "./ev-panel.ts";
 import { loadEvTuning, saveEvTuning } from "./ev-tuning-store.ts";
 import { tuneEv, type TunedEv } from "../data/ev-tuning.ts";
 import { nextDriveMode, rangeText } from "./layouts/ev-logic.ts";
+import { avgL100 } from "./layouts/logic.ts";
 import { put, summaryPlate } from "./bench-summary.ts";
 import { PS_PER_KW } from "../data/ev-tuning.ts";
 import { prefs } from "./settings.ts";
@@ -238,7 +239,7 @@ export class App {
     this.gearbox.el.dataset.drive = on ? "ev" : "ice";
     this.info.setElectricVmax(ev ? evRpmVmaxKmh(ev as EvConfig, this.gearbox.drivetrain.vehicle.wheelRadiusM) : null);
     for (const v of this.views.values()) if (v instanceof CockpitView) v.setElectric(ev as EvConfig | null, hyNow);
-    this.gauges.setHybrid(!!hyNow);
+    this.gauges.setHybrid(!!hyNow, !!hyNow?.plugIn);
     this.toasts.clear();
   }
 
@@ -790,11 +791,16 @@ export class App {
         // a hybrid's SoC is the usable share of its window (#157)
         const win = this.hyCfg ? this.hyCfg.socMax - this.hyCfg.socMin : 1;
         s.ev.rangeKm = this.evRange.rangeKm(packKwhLeft(s.ev.soc, evPackKwh(this.evCfg as EvConfig) * win));
-        if (this.inputs.dynoMode === "vehicle") rangeKm = s.ev.rangeKm + (s.hybrid ? this.stepFuelRange(dt, s) : 0);
+        if (this.inputs.dynoMode === "vehicle") {
+          rangeKm = s.ev.rangeKm + (s.hybrid ? this.stepFuelRange(dt, s) : 0);
+          // a hybrid's range is fuel plus battery everywhere (the EV readouts read it from the state)
+          if (s.hybrid) s.ev.rangeKm = rangeKm;
+        }
       } else if (this.inputs.dynoMode === "vehicle" && !this.evSim) rangeKm = this.stepFuelRange(dt, s);
+      const tripL100 = avgL100(this.gearbox.trip.computer.data.tripA.km, this.gearbox.trip.computer.data.tripA.fuelL);
       this.gearbox.showRange(rangeKm);
       this.iceSummary(dt, rangeKm);
-      this.evPanel.update(s, this.gearbox.drivetrain.state.speedKmh);
+      this.evPanel.update(s, this.gearbox.drivetrain.state.speedKmh, tripL100);
       // the bench edits the combustion engine: an electric car (#108) does not lock it
       this.bench.setLocked(App.turning(this.evSim ? this.sim.state : s));
       if (this.pendingEngineId && !App.turning(s)) this.loadEngine(this.pendingEngineId);
@@ -809,7 +815,7 @@ export class App {
         });
       } else {
         // hidden canvases of the Prüfzelle are not drawn while another view is shown
-        this.gauges.update(s, dt, this.systems.batteryV);
+        this.gauges.update(s, dt, this.systems.batteryV, tripL100);
         this.schematic.update(s, dt);
       }
       // the recorder is shown and drawn in every view

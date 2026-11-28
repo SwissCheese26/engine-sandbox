@@ -272,7 +272,10 @@
   color: #ff5a4f;
 }
 /* compact in the classic designs: charge, range, drive mode; the E-Tacho shows everything */
-.ck:not([data-design="etacho"]) :is(.ck__ev-cons, .ck__ev-batt) {
+.ck:not([data-design="etacho"]) :is(.ck__ev-cons, .ck__ev-cons2, .ck__ev-batt) {
+  display: none;
+}
+.ck__ev .ck__ev-cons2[hidden] {
   display: none;
 }
 /* power arc / bar in green while regenerating (digital, head-up, motorcycle) */
