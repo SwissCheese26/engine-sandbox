@@ -21,10 +21,11 @@ export interface ChangelogEntry {
 export const CHANGELOG: ChangelogEntry[] = [
   {
     date: "2026-11-28",
-    title: "Jeder Antrieb in jedes Fahrzeug, gleicher Aufbau für Verbrenner und E-Auto",
+    title: "Jeder Antrieb in jedes Fahrzeug, gleicher Aufbau für Verbrenner und E-Auto, Fahrzeugwahl aus dem Hauptmenü greift wieder",
     items: [
       { kind: "neu", text: "Antriebstausch: In der Fahrzeug-Platte wählst du unter „Antrieb“ jeden Motor aus der Bibliothek, deine eigenen Motoren aus dem Engine Builder oder einen Elektroantrieb (ab Werk oder wie im E-Tuner eingestellt), auch im Assistenten unter „Neues erstellen“. So fährt der Citaro mit dem Tesla-Antrieb, das Model S mit dem V8 der Corvette oder ein Motorrad elektrisch. Die Masse wird neu berechnet (Motor, Getriebe und Tank oder Motoren und Akku), die Übersetzung passt sich an die neue Drehzahl und den Reifen an, und das Cockpit schaltet selbst um (Drehzahl oder kW, Tank oder Akku, Zündung oder Ready). Die Wahl bleibt je Fahrzeug gespeichert, „Auf Werkszustand“ bringt den Werksantrieb zurück.", refs: [154, 160] },
-      { kind: "geändert", text: "Verbrenner und E-Auto sind jetzt gleich aufgebaut. In der Bedienleiste sitzt Ready an der Stelle von Zündung und Starter, P N D an der Stelle von ▲ Gang ▼, nichts verrutscht mehr beim Wechsel. P N D folgt der Einstellung „Schaltknöpfe in der Bedienleiste“ (am PC mit „Immer“). Die Rundinstrumente der Prüfzelle stehen in derselben Reihenfolge (Drehzahl, Drehmoment, Leistung), ebenso die Werte darunter. Die Werkbank hat dieselbe Plattenfolge und am Ende für beide dieselbe „Zusammenfassung“ (Leistung, Drehmoment, Vmax, 0–100, Reichweite, Masse, begrenzt durch) mit „Maximum“ und „Auf Werkszustand“.", refs: [154, 160] },
+      { kind: "geändert", text: "Verbrenner und E-Auto sind jetzt gleich aufgebaut. In der Bedienleiste sitzt Ready an der Stelle von Zündung und Starter, P N D an der Stelle von ▲ Gang ▼, nichts verrutscht mehr beim Wechsel. P N D folgt der Einstellung „Schaltknöpfe in der Bedienleiste“ (am PC mit „Immer“) und lässt sich wie die Gänge mit Q und E schalten. Die Rundinstrumente der Prüfzelle stehen in derselben Reihenfolge (Drehzahl, Drehmoment, Leistung), ebenso die Werte darunter. Die Werkbank hat dieselbe Plattenfolge und am Ende für beide dieselbe „Zusammenfassung“ (Leistung, Drehmoment, Vmax, 0–100, Reichweite, Masse, begrenzt durch) mit „Maximum“ und „Auf Werkszustand“.", refs: [154, 160] },
+      { kind: "behoben", text: "Wenn du während der Fahrt ins Hauptmenü gehst und dort ein anderes Fahrzeug wählst, wird es jetzt geladen, samt Motor und Strecke. Vorher blieb das alte Auto stehen.", refs: [156, 161] },
     ],
   },
   {

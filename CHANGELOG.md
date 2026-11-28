@@ -4,7 +4,7 @@ Alle sichtbaren Änderungen an der Prüfzelle, neueste zuerst. Aufbau nach [Keep
 
 _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `bun scripts/changelog.ts` ausführen._
 
-## 2026-11-28 – Jeder Antrieb in jedes Fahrzeug, gleicher Aufbau für Verbrenner und E-Auto
+## 2026-11-28 – Jeder Antrieb in jedes Fahrzeug, gleicher Aufbau für Verbrenner und E-Auto, Fahrzeugwahl aus dem Hauptmenü greift wieder
 
 ### Neu
 
@@ -12,7 +12,11 @@ _Diese Datei wird erzeugt: Einträge stehen in `src/data/changelog.ts`, danach `
 
 ### Geändert
 
-- Verbrenner und E-Auto sind jetzt gleich aufgebaut. In der Bedienleiste sitzt Ready an der Stelle von Zündung und Starter, P N D an der Stelle von ▲ Gang ▼, nichts verrutscht mehr beim Wechsel. P N D folgt der Einstellung „Schaltknöpfe in der Bedienleiste“ (am PC mit „Immer“). Die Rundinstrumente der Prüfzelle stehen in derselben Reihenfolge (Drehzahl, Drehmoment, Leistung), ebenso die Werte darunter. Die Werkbank hat dieselbe Plattenfolge und am Ende für beide dieselbe „Zusammenfassung“ (Leistung, Drehmoment, Vmax, 0–100, Reichweite, Masse, begrenzt durch) mit „Maximum“ und „Auf Werkszustand“. ([#154](https://github.com/SwissCheese26/engine-sandbox/issues/154), [#160](https://github.com/SwissCheese26/engine-sandbox/issues/160))
+- Verbrenner und E-Auto sind jetzt gleich aufgebaut. In der Bedienleiste sitzt Ready an der Stelle von Zündung und Starter, P N D an der Stelle von ▲ Gang ▼, nichts verrutscht mehr beim Wechsel. P N D folgt der Einstellung „Schaltknöpfe in der Bedienleiste“ (am PC mit „Immer“) und lässt sich wie die Gänge mit Q und E schalten. Die Rundinstrumente der Prüfzelle stehen in derselben Reihenfolge (Drehzahl, Drehmoment, Leistung), ebenso die Werte darunter. Die Werkbank hat dieselbe Plattenfolge und am Ende für beide dieselbe „Zusammenfassung“ (Leistung, Drehmoment, Vmax, 0–100, Reichweite, Masse, begrenzt durch) mit „Maximum“ und „Auf Werkszustand“. ([#154](https://github.com/SwissCheese26/engine-sandbox/issues/154), [#160](https://github.com/SwissCheese26/engine-sandbox/issues/160))
+
+### Behoben
+
+- Wenn du während der Fahrt ins Hauptmenü gehst und dort ein anderes Fahrzeug wählst, wird es jetzt geladen, samt Motor und Strecke. Vorher blieb das alte Auto stehen. ([#156](https://github.com/SwissCheese26/engine-sandbox/issues/156), [#161](https://github.com/SwissCheese26/engine-sandbox/issues/161))
 
 ## 2026-11-24 – Reifen werden beim Burnout heiß
 
