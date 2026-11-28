@@ -49,8 +49,13 @@ describe("drive swap: drives", () => {
     expect(s.tankL).toBe(libraryCar("car-chevrolet-corvette-c6").setup.tankL);
     expect(s.vehicle.massKg).toBeGreaterThan(1550);
     expect(s.vehicle.massKg).toBeLessThan(1800);
-    expect(s.gearboxSpec!.finalDrive).toBeGreaterThan(2.5);
-    expect(s.gearboxSpec!.finalDrive).toBeLessThan(8);
+    // the Corvette's gearing on the Model S wheel: 1st gear reaches a plausible speed at the limiter (C6: ≈ 85 km/h)
+    const vette = libraryCar("car-chevrolet-corvette-c6");
+    const cfg = libraryConfig("ref-gm-ls3-62");
+    const firstKmh = (setup: typeof s) => (cfg.revLimitRpm * Math.PI / 30) * setup.vehicle.wheelRadiusM / (setup.gearboxSpec!.ratios[0]! * setup.gearboxSpec!.finalDrive) * 3.6;
+    expect(firstKmh(s)).toBeGreaterThan(70);
+    expect(firstKmh(s)).toBeLessThan(110);
+    expect(Math.abs(firstKmh(s) - firstKmh(vette.setup))).toBeLessThan(5);
     const r = driveCar({ ...ms, engineId: "ref-gm-ls3-62", setup: s }, 90);
     expect(r.running).toBe(true);
     expect(r.t100!).toBeGreaterThan(3.5);

@@ -6,7 +6,8 @@ import { driveMassKg, engineDrive, factoryDrive, withDrive } from "../data/drive
 import { ENGINE_LIBRARY, type LibraryEngine } from "../data/engine-library.ts";
 import { tuneEv } from "../data/ev-tuning.ts";
 import { VEHICLE_LIBRARY, type LibraryCar } from "../data/vehicle-library.ts";
-import { loadEvTuning } from "./ev-tuning-store.ts";
+import { clearEvTuning, loadEvTuning } from "./ev-tuning-store.ts";
+import { clearCustom, type Store as FullStore } from "./vehicle-custom.ts";
 import { loadMyEngines, resolveEngine } from "./my-engines.ts";
 
 export const DRIVE_KEY = "pruefzelle.drive";
@@ -75,6 +76,16 @@ function readAll(st: Store | null): Record<string, string> {
   } catch {
     return {};
   }
+}
+
+/**
+ * "Auf Werkszustand" (#154 review): forgets everything stored for one vehicle: own changes, the drive choice and the
+ * E-Tuner setups (of the factory drive and of a swapped-in one). Empty ids (own vehicles without one) are skipped.
+ */
+export function forgetVehicle(key: string, tuningIds: string[], st: FullStore | null = store() as FullStore | null) {
+  clearCustom(key, st);
+  saveDriveChoice(key, "", st);
+  for (const id of new Set(tuningIds)) if (id) clearEvTuning(id, st);
 }
 
 /** Stored drive of a vehicle ("" = factory). */

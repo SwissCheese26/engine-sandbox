@@ -386,7 +386,8 @@ export interface CarSetup {
  * The body is a CarSetup whose mass is the mass without drive; src/data/drive-swap.ts puts the two together.
  */
 export interface DriveSpec {
-  engine?: { config: EngineConfig; gearbox: GearboxType; gearboxSpec: GearboxSpec; tankL: number };
+  /** refWheelRadiusM: the wheel the gearbox ratios were made for (donor car); default the new body's wheel. */
+  engine?: { config: EngineConfig; gearbox: GearboxType; gearboxSpec: GearboxSpec; tankL: number; refWheelRadiusM?: number };
   ev?: EvConfig;
   extraKg?: number;
 }

@@ -341,6 +341,9 @@ export class GearboxPanel {
     this.onResetVehicle();
   }
 
+  /** Set by the app: Q / E for something other than the gearbox (P N D of an electric car); true = handled. */
+  onShiftKey: (dir: 1 | -1) => boolean = () => false;
+
   /** Q / E shift keys. Returns true when handled. */
   handleKey(e: KeyboardEvent, down: boolean): boolean {
     if (this.el.hidden || e.ctrlKey || e.metaKey || e.altKey) return false;
@@ -350,7 +353,8 @@ export class GearboxPanel {
     if (tag === "SELECT" || tag === "TEXTAREA" || (tag === "INPUT" && (e.target as HTMLInputElement).type === "text")) return false;
     const key = e.key.toLowerCase();
     if (key !== "q" && key !== "e") return false;
-    if (down && !e.repeat) this.drivetrain.shift(key === "e" ? 1 : -1);
+    const dir = key === "e" ? 1 : -1;
+    if (down && !e.repeat && !this.onShiftKey(dir)) this.drivetrain.shift(dir);
     return true;
   }
 

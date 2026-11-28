@@ -241,3 +241,17 @@ describe("own vehicle: any drive (#154)", () => {
     expect(buildSetup("car", { vehicleId: "car-vw-golf7-gti", route: "static" })!.driveId).toBeUndefined();
   });
 });
+
+describe("own vehicle: cross-class engines are re-geared (#154 review)", () => {
+  const vmaxAtLimiter = (s: ReturnType<typeof customSetup>, limit: number) =>
+    ((limit * Math.PI) / 30) * s.vehicle.wheelRadiusM / (s.gearboxSpec!.ratios.at(-1)! * s.gearboxSpec!.finalDrive) * 3.6;
+  test("a truck engine in a car reaches a car's speed at its limiter; same-class engines keep the preset gearing", () => {
+    const car = { ...defaultCustom("car"), engineId: "lib-mercedes-om471", gearbox: "manual" as const };
+    const s = customSetup(car);
+    const om471 = ENGINE_LIBRARY.find((e) => e.config.id === "lib-mercedes-om471")!.config;
+    expect(vmaxAtLimiter(s, om471.revLimitRpm)).toBeGreaterThan(150);
+    expect(s.vehicle.massKg).toBe(car.massKg);
+    const same = customSetup(defaultCustom("car"));
+    expect(same.gearboxSpec!.finalDrive).toBe(VEHICLES.car.finalDrive);
+  });
+});

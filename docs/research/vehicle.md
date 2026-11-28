@@ -202,8 +202,10 @@ Antriebsmasse [S, Richtwerte]:
 - Elektro: Antriebseinheit 0,4 kg/kW (Motor, Wechselrichter, Untersetzung; electric.md §6) + Akku (battery.ts).
 
 Übersetzung nach dem Tausch: Zielgeschwindigkeit v_t = min(leistungsbegrenzte Vmax, Begrenzer der Karosserie,
-Reifenindex). Leistungsbegrenzte Vmax aus P = (½ρ·cW·A·v² + m·g·f_R)·v (§1, ρ = 1,2 kg/m³). Verbrenner: Achsübersetzung
-so, dass die Nenndrehzahl im höchsten Gang bei v_t liegt (klassische Vmax-Auslegung, Getriebe aus dem Spenderfahrzeug,
-sonst das Standardgetriebe der Fahrzeugart). Elektro: alle Untersetzungen mit einem Faktor, sodass die Rotor-
+Reifenindex). Leistungsbegrenzte Vmax aus P = (½ρ·cW·A·v² + m·g·f_R)·v (§1, ρ = 1,2 kg/m³). Verbrenner: Getriebe aus dem
+Spenderfahrzeug (sonst das Standardgetriebe der Fahrzeugart), die Achsübersetzung mit dem Verhältnis der Radradien
+umgerechnet (gleiche Geschwindigkeit je Drehzahl, der 1. Gang behält sein Anfahrverhalten). Nur wenn der
+Drehzahlbegrenzer im höchsten Gang unter v_t läge, wird sie so verlängert, dass der Begrenzer bei v_t liegt. (Die
+Auslegung „Nenndrehzahl im Overdrive bei v_t“ machte die Gänge viel zu kurz: LS3 im Model S, 1. Gang bis ≈ 53 km/h.) Elektro: alle Untersetzungen mit einem Faktor, sodass die Rotor-
 Höchstdrehzahl bei v_t (Elektro: 1,05 · leistungsbegrenzte Vmax) erreicht wird; eine 2-Gang-Untersetzung behält ihre
 Spreizung. Motoren sitzen auf der angetriebenen Achse der Karosserie (Motorrad, Bus: hinten).

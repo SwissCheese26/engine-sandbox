@@ -244,9 +244,34 @@ export function evDonor(engineId: string): LibraryCar | undefined {
 export function customSetup(c: CustomVehicle): CarSetup {
   const ice = iceSetup(c);
   const donor = evDonor(c.engineId);
-  if (!donor) return ice;
+  if (!donor) return regear(c, ice);
   const drive = factoryDrive(donor);
   return setupWithDrive(ice, c.massKg - driveMassKg(drive), drive);
+}
+
+/**
+ * An engine from another class (truck engine in a car, bike engine in a truck) or an own engine (#154 review): the
+ * chosen gearbox gets the top-gear road speed per rpm of the engine's donor car, and is made longer where the limiter
+ * would cap Vmax (drive-swap.ts). Same-class library engines keep the preset gearing (setups and their stored own
+ * changes stay as they were).
+ */
+function regear(c: CustomVehicle, ice: CarSetup): CarSetup {
+  const lib = engineById(c.engineId);
+  const own = isMyEngineId(c.engineId) ? findMyEngine(c.engineId) : undefined;
+  const cat = c.base === "bike" ? "motorcycle" : c.base === "truck" ? "commercial" : "car";
+  if (!own && (!lib || (lib.category ?? "car") === cat)) return ice;
+  const config = structuredClone(own?.config ?? lib!.config);
+  const spec = structuredClone(ice.gearboxSpec!);
+  const donor = VEHICLE_LIBRARY.find((v) => v.engineId === config.id && !v.setup.ev);
+  if (donor) {
+    const d = donor.setup.gearboxSpec ?? GEARBOXES[donor.setup.gearbox];
+    spec.finalDrive = (d.finalDrive * d.ratios[d.ratios.length - 1]!) / spec.ratios[spec.ratios.length - 1]!;
+  }
+  const drive = { engine: { config, gearbox: c.gearbox, gearboxSpec: spec, tankL: c.tankL, refWheelRadiusM: donor?.setup.vehicle.wheelRadiusM } };
+  const out = setupWithDrive(ice, c.massKg - driveMassKg(drive), drive);
+  // the entered mass is the mass as driven
+  out.vehicle.massKg = c.massKg;
+  return out;
 }
 
 function iceSetup(c: CustomVehicle): CarSetup {

@@ -400,6 +400,12 @@ export class App {
     // ▲ gear ▼ next to brake and gas (setting "Schaltknöpfe in der Bedienleiste")
     this.shiftPad = new ShiftPad(() => this.gearbox.drivetrain);
     this.console.pedalsEl.prepend(this.shiftPad.el);
+    // P N D with the shift keys (#154 review): on the PC the selector is hidden under "Automatisch"
+    this.gearbox.onShiftKey = (dir) => {
+      if (!this.shiftPad.step(dir)) return false;
+      this.announce(`Fahrstufe ${this.shiftPad.selector}.`);
+      return true;
+    };
     this.console.setPedalSide(getSettings().pedalSide);
 
     this.header = top;
@@ -441,7 +447,8 @@ export class App {
         return false;
       }
       // stored per vehicle: the E-Tuner record, mass and tyre with the vehicle's own changes
-      saveEvTuning(this.gearbox.vehiclePanel.currentCar?.id ?? this.gearbox.vehiclePanel.carId, t.tuning);
+      const tuned = this.gearbox.vehiclePanel.currentCar;
+      if (tuned) saveEvTuning(tuned.id, t.tuning);
       this.gearbox.vehiclePanel.remember();
       this.syncDrive();
       this.announce(`Umgebaut: ${Math.round(t.systemPs)} PS, ${Math.round(massKg)} kg.`);

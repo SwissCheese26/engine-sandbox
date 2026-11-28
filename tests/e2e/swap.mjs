@@ -75,6 +75,15 @@ export async function swapChecks({ browser, base, outDir, failures, errors, labe
       if (over > 0) fail(`${car} ${v}: horizontaler Überlauf ${over} px`);
     }
     await page.selectOption('select[data-control="layout"]', "pruefzelle");
+    if (drive === "ev") {
+      // P N D with the shift keys (also where the selector is hidden: PC, "Automatisch")
+      await page.mouse.click(2, 2);
+      await page.keyboard.press("q");
+      const n = await page.evaluate(() => window.__pruefzelle.shiftPad.selector);
+      await page.keyboard.press("e");
+      const d2 = await page.evaluate(() => window.__pruefzelle.shiftPad.selector);
+      if (n !== "N" || d2 !== "D") fail(`Q/E schalten P N D nicht (${n}, ${d2})`);
+    }
     await page.locator(".deck").screenshot({ path: join(outDir, `smoke-${label}-deck-${drive}.png`) });
   }
   for (const v of views) {

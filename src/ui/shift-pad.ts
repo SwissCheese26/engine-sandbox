@@ -26,7 +26,7 @@ export class ShiftPad {
       <output class="shiftpad__gear num" aria-live="off">N</output>
       <button type="button" class="shiftpad__btn" data-shift="-1" aria-label="Runterschalten" title="Runterschalten (Q)">▼</button>
       <div class="shiftpad__ev" role="radiogroup" aria-label="Fahrstufe" hidden>${(["P", "N", "D"] as const)
-        .map((p) => `<button type="button" class="shiftpad__sel num" role="radio" aria-checked="${p === "D"}" data-sel="${p}">${p}</button>`)
+        .map((p) => `<button type="button" class="shiftpad__sel num" role="radio" aria-checked="${p === "D"}" data-sel="${p}" title="Fahrstufe ${p} (Q / E)">${p}</button>`)
         .join("")}</div>`;
     this.el = el;
     this.gearOut = el.querySelector("output")!;
@@ -67,6 +67,14 @@ export class ShiftPad {
     this.selector = "D";
     this.syncSel();
     this.last = "";
+  }
+
+  /** Q / E (#154 review: the shift keys of the combustion car): one step towards P or D; false for a combustion car. */
+  step(dir: 1 | -1): boolean {
+    if (!this.electric) return false;
+    const order: EvSelector[] = ["P", "N", "D"];
+    this.select(order[Math.max(0, Math.min(2, order.indexOf(this.selector) + dir))]!);
+    return true;
   }
 
   /** P applies the parking brake; leaving P releases it. */

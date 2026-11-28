@@ -5,10 +5,9 @@
 // and gets its changes back when it is loaded again; "Auf Werkszustand zurücksetzen" forgets them.
 import { DEFAULT_SPEED_LIMIT_KMH, SPEED_INDEX, TYRE_TYPES, VEHICLES, frontAxleShare, isCommercialKind, isMotorcycleKind, speedRatingKmh } from "../core/index.ts";
 import type { CarSetup, Drivetrain, DriveLayout, SpeedIndex, TyreSetup, TyreType, VehicleKind, VehicleParams } from "../core/index.ts";
-import { captureCustom, clearCustom, forgetDriveParts, loadVehicle, saveCustom, setupSig, vehicleKey } from "./vehicle-custom.ts";
-import { carWithDrive, driveOptionsHtml, loadDriveChoice, saveDriveChoice } from "./drive-choice.ts";
+import { captureCustom, forgetDriveParts, loadVehicle, saveCustom, setupSig, vehicleKey } from "./vehicle-custom.ts";
+import { carWithDrive, driveOptionsHtml, forgetVehicle, loadDriveChoice, saveDriveChoice } from "./drive-choice.ts";
 import { VEHICLE_LIBRARY, type LibraryCar } from "../data/vehicle-library.ts";
-import { clearEvTuning } from "./ev-tuning-store.ts";
 import { prefs } from "./settings.ts";
 import { TyreSizePicker, tyreClassOf } from "./tyre-size-picker.ts";
 import { toUnit } from "./units.ts";
@@ -251,16 +250,15 @@ export class VehiclePanel {
   resetFactory() {
     if (this.moving) return;
     const car = VEHICLE_LIBRARY.find((c) => c.id === this.loadedId);
-    // a swapped drive (#154) goes back too: the factory engine onto the bench first
+    // own changes, the drive choice (#154) and every E-Tuner setup of this vehicle (#108) are forgotten
+    const tunings = [this.loadedId, this.driven?.id ?? ""];
+    // a swapped drive goes back too: the factory engine onto the bench first
     if (car && this.driveId) {
       if (!this.onLoadCar(car)) return;
-      saveDriveChoice(this.vehicleKey, "");
-      clearEvTuning(this.driven!.id);
+      forgetVehicle(this.vehicleKey, tunings);
       return this.applyCar(car, "");
     }
-    clearCustom(this.vehicleKey);
-    // the E-Tuner setup of an electric car (#108) belongs to its own changes too
-    clearEvTuning(this.loadedId);
+    forgetVehicle(this.vehicleKey, tunings);
     this.load(this.factory, this.loadedId, this.drivetrain.kind, this.sig);
     this.sync();
     this.onChange();
@@ -343,7 +341,11 @@ export class VehiclePanel {
   applyOwn(setup: CarSetup): boolean {
     if (this.moving || !VehiclePanel.withinLimits(setup)) return false;
     this.driveId = "";
-    this.driven = null;
+    // an own vehicle with an electric drive: tuned in the E-Tuner and stored under its own key (never under "")
+    this.driven = setup.ev ? {
+      id: `${vehicleKey("", setup.kind ?? "car")}@${setupSig(setup)}`, name: "Eigenes Fahrzeug", maker: "", years: "", engineId: "", source: "",
+      setup: structuredClone(setup), factory: { kerbKg: setup.vehicle.massKg, kerbNorm: "EU", t0to100S: null, vmaxKmh: 0, vmaxGoverned: false },
+    } : null;
     // own changes come back only on the same own vehicle (a newly built one starts as built)
     this.load(() => this.drivetrain.applyCar(structuredClone(setup)), "", setup.kind ?? "car", setupSig(setup));
     this.carNote.textContent = "";

@@ -54,10 +54,10 @@ export function bodyMassKg(car: LibraryCar): number {
 /** A combustion drive with the gearbox and tank of the car it came in (else the default gearbox of the body kind). */
 export function engineDrive(config: EngineConfig, bodyKind: CarSetup["kind"] = "car"): DriveSpec {
   const donor = VEHICLE_LIBRARY.find((c) => c.engineId === config.id && !c.setup.ev);
-  if (donor) return { engine: { ...factoryDrive(donor).engine!, config } };
+  if (donor) return { engine: { ...factoryDrive(donor).engine!, config, refWheelRadiusM: donor.setup.vehicle.wheelRadiusM } };
   const p = VEHICLES[bodyKind ?? "car"];
   const gearbox = p.gearboxes[0]!;
-  return { engine: { config, gearbox, gearboxSpec: { ...(p.gearboxSpec ?? GEARBOXES[gearbox]), finalDrive: p.finalDrive }, tankL: DEFAULT_TANK_L[bodyKind ?? "car"] } };
+  return { engine: { config, gearbox, gearboxSpec: { ...(p.gearboxSpec ?? GEARBOXES[gearbox]), finalDrive: p.finalDrive }, tankL: DEFAULT_TANK_L[bodyKind ?? "car"], refWheelRadiusM: p.params.wheelRadiusM } };
 }
 
 /**
@@ -84,9 +84,10 @@ function onAxles(ev: EvConfig, layout: DriveLayout | undefined): EvConfig["motor
 
 /**
  * Puts a drive into the body of a library vehicle (issue #154). Mass = body + drive (commercial vehicles keep their
- * payload); the transmission is geared so the drive reaches its speed limit at the target speed v_t = min(power-limited
- * Vmax, the body's governor, the tyre's speed rating): combustion: peak-power rpm in top gear (classic "Vmax gearing",
- * vehicle.md §13); electric: the rotor speed limit (single-speed, a 2-speed reduction keeps its spread).
+ * payload). Target speed v_t = min(power-limited Vmax, the body's governor, the tyre's speed rating) (vehicle.md §13).
+ * Combustion: the donor's ratios with the final drive scaled to the new wheel radius (same road speed per rpm, so
+ * 1st gear keeps its launch); longer only where the limiter would cap the top gear below v_t. Electric: the rotor speed
+ * limit at v_t (single-speed, a 2-speed reduction keeps its spread).
  */
 export function withDrive(car: LibraryCar, drive: DriveSpec): CarSetup {
   return setupWithDrive(car.setup, bodyMassKg(car), drive);
@@ -119,8 +120,11 @@ export function setupWithDrive(base: CarSetup, bodyKg: number, drive: DriveSpec)
   const spec = structuredClone(e.gearboxSpec);
   const vt = Math.min(powerVmaxKmh(v, massKg, s.peakPowerKw * spec.efficiency), ...caps);
   const top = spec.ratios[spec.ratios.length - 1]!;
-  // final drive: peak-power rpm in top gear at v_t; ω_wheel = v / r
-  spec.finalDrive = Math.min(20, Math.max(1, (s.peakPowerRpm * Math.PI * v.wheelRadiusM) / (30 * (vt / 3.6) * top)));
+  // the donor's gearing on the new wheel: same road speed per rpm (final drive × r_new / r_donor)
+  const fd = spec.finalDrive * (v.wheelRadiusM / (e.refWheelRadiusM ?? v.wheelRadiusM));
+  // only when the limiter would cap the top gear below v_t: longer, so the limiter falls at v_t (ω_wheel = v / r)
+  const fdVmax = (e.config.revLimitRpm * Math.PI * v.wheelRadiusM) / (30 * (vt / 3.6) * top);
+  spec.finalDrive = Math.min(20, Math.max(1, Math.min(fd, fdVmax)));
   out.gearbox = e.gearbox;
   out.gearboxSpec = spec;
   out.tankL = e.tankL;
