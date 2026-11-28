@@ -20,6 +20,7 @@ import { builderChecks } from "./builder.mjs";
 import { carDesignChecks } from "./car-designs.mjs";
 import { evChecks } from "./ev.mjs";
 import { rangeChecks } from "./range.mjs";
+import { resumeSetupChecks } from "./resume-setup.mjs";
 import { smokeFxChecks } from "./smoke-fx.mjs";
 
 const require = createRequire(import.meta.url);
@@ -1097,6 +1098,8 @@ try {
   for (const [label, viewport] of [["desktop", { width: 1440, height: 900 }], ["mobile", { width: 390, height: 844 }], ["small", { width: 360, height: 740 }]]) if (!skipped) await evChecks({ browser, base, outDir, failures, errors, label, viewport });
   // Reichweite für alle: live range of a combustion car in every cockpit design and the Prüfzelle (tests/e2e/range.mjs)
   for (const [label, viewport] of [["desktop", { width: 1440, height: 900 }], ["small", { width: 360, height: 740 }]]) if (!skipped) await rangeChecks({ browser, base, outDir, failures, errors, label, viewport });
+  // #156: drive car A, menu, pick car B, Losfahren (tests/e2e/resume-setup.mjs)
+  if (!skipped) await resumeSetupChecks({ browser, base, failures, errors, label: "desktop", viewport: { width: 1440, height: 900 } });
   // car-style cockpit designs (skins) at the smallest phone width and on desktop (tests/e2e/car-designs.mjs)
   for (const [label, viewport] of [["desktop", { width: 1440, height: 900 }], ["small", { width: 360, height: 740 }]]) if (!skipped) await carDesignChecks({ browser, base, outDir, failures, errors, label, viewport });
   // Rauch/Dampf: burnout smoke in every cockpit design and the Prüfzelle (tests/e2e/smoke-fx.mjs)

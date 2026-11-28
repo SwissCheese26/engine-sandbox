@@ -20,6 +20,13 @@ export interface ChangelogEntry {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    date: "2026-11-28",
+    title: "Fahrzeugwahl aus dem Hauptmenü greift wieder",
+    items: [
+      { kind: "behoben", text: "Wenn du während der Fahrt ins Hauptmenü gehst und dort ein anderes Fahrzeug wählst, wird es jetzt geladen, samt Motor und Strecke. Vorher blieb das alte Auto stehen.", refs: [156, 161] },
+    ],
+  },
+  {
     date: "2026-11-24",
     title: "Reifen werden beim Burnout heiß",
     items: [
