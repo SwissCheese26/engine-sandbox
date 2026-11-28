@@ -39,8 +39,10 @@ describe("vehicle filter by kind", () => {
       const f = vehicleFacts(c);
       expect(f.ps).toBeGreaterThan(40);
       // electric cars (#108): battery instead of a tank
-      if (c.setup.ev) expect(f.packKwh).toBeGreaterThan(50);
+      if (c.setup.ev && !c.setup.hybrid) expect(f.packKwh).toBeGreaterThan(50);
       else expect(f.tankL).toBeGreaterThan(0);
+      // hybrids (#157): tank and battery
+      if (c.setup.hybrid) expect(f.packKwh).toBeGreaterThan(0.5);
     }
   });
 

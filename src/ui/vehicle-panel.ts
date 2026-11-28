@@ -68,7 +68,8 @@ export class VehiclePanel {
   /** The drive was swapped between electric and combustion (the car's own cockpit look no longer fits). */
   get driveTypeChanged(): boolean {
     const car = VEHICLE_LIBRARY.find((c) => c.id === this.loadedId);
-    return !!car && !!this.driven && !!car.setup.ev !== !!this.driven.setup.ev;
+    const kind = (s: CarSetup) => (s.hybrid ? "hy" : s.ev ? "ev" : "ice");
+    return !!car && !!this.driven && kind(car.setup) !== kind(this.driven.setup);
   }
   /** Storage key of the loaded vehicle's own changes. */
   get vehicleKey(): string {
@@ -108,11 +109,11 @@ export class VehiclePanel {
         <label class="gearbox__field"><span>Fertiges Fahrzeug</span>
           <select data-control="car">
             <option value="">– eigenes Fahrzeug –</option>
-            ${([["Autos", "car"], ["Elektro ⚡", "ev"], ["Lkw & Busse", "commercial"], ["Motorräder", "bike"]] as const).map(([label, group]) => `<optgroup label="${label}">${VEHICLE_LIBRARY
+            ${([["Autos", "car"], ["Hybrid", "hybrid"], ["Elektro ⚡", "ev"], ["Lkw & Busse", "commercial"], ["Motorräder", "bike"]] as const).map(([label, group]) => `<optgroup label="${label}">${VEHICLE_LIBRARY
               .filter((c) => {
                 const k = c.setup.kind ?? "car";
                 // electric cars (#108) in their own group
-                return group === (c.setup.ev ? "ev" : isMotorcycleKind(k) ? "bike" : isCommercialKind(k) ? "commercial" : "car");
+                return group === (c.setup.hybrid ? "hybrid" : c.setup.ev ? "ev" : isMotorcycleKind(k) ? "bike" : isCommercialKind(k) ? "commercial" : "car");
               })
               .map((c) => `<option value="${c.id}">${c.setup.ev ? "⚡ " : ""}${c.name}</option>`).join("")}</optgroup>`).join("")}
           </select>
@@ -376,7 +377,7 @@ export class VehiclePanel {
     if (this.driveId) {
       this.fillDrives();
       const name = this.driveSel.selectedOptions[0]?.textContent ?? this.driveId;
-      const sp = driven.setup.ev ? `Untersetzung ${fmt(driven.setup.ev.motors[0]!.ratio, 1)}:1` : `Achsübersetzung ${fmt(driven.setup.gearboxSpec?.finalDrive ?? 0, 2)}`;
+      const sp = driven.setup.ev && !driven.setup.hybrid ? `Untersetzung ${fmt(driven.setup.ev.motors[0]!.ratio, 1)}:1` : `Achsübersetzung ${fmt(driven.setup.gearboxSpec?.finalDrive ?? 0, 2)}`;
       this.carNote.textContent = `${car.name} mit Antrieb ${name}: ${fmt(driven.setup.vehicle.massKg, 0)} kg mit Fahrer (Werk ${fmt(car.setup.vehicle.massKg, 0)} kg), ${sp}.`;
     }
     this.sync();

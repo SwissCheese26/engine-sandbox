@@ -66,7 +66,7 @@ export interface VehicleFacts {
 
 /** What a vehicle card in step 2 shows: rated power of its engine, published weight, drive, gearbox, tank. */
 export function vehicleFacts(car: LibraryCar): VehicleFacts {
-  if (car.setup.ev) {
+  if (car.setup.ev && !car.setup.hybrid) {
     // electric car (#108): system power, single-speed reduction, battery instead of a tank
     const n = car.setup.ev.motors.length;
     return {
@@ -78,6 +78,15 @@ export function vehicleFacts(car: LibraryCar): VehicleFacts {
   const kind = car.setup.kind ?? "car";
   const bike = isMotorcycleKind(kind);
   const gears = car.setup.gearboxSpec?.ratios.length ?? GEARBOXES[car.setup.gearbox].ratios.length;
+  // hybrid (issue #157): system power, the engine-side gearbox (power-split: eCVT) and tank plus battery
+  const hy = car.setup.hybrid;
+  if (hy) {
+    return {
+      ps: Math.round((car.factory.powerKw ?? 0) * PS_PER_KW), kg: car.factory.kerbKg, drive: LAYOUT_SHORT[car.setup.vehicle.driveLayout ?? "fwd"],
+      gearbox: hy.topology === "power-split" ? "Hybrid, stufenlos (eCVT)" : hy.topology === "series" ? "Hybrid, 1 Gang" : `Hybrid, ${gears} Gänge`,
+      tankL: car.setup.tankL ?? DEFAULT_TANK_L[kind], packKwh: car.factory.packKwh ?? 0,
+    };
+  }
   return {
     ps: Math.round((e?.expected.peakPowerKw ?? 0) * PS_PER_KW),
     kg: car.factory.kerbKg,
@@ -234,7 +243,7 @@ export function validateCustom(raw: Partial<Record<keyof CustomVehicle, unknown>
 
 /** Electric drive of an own vehicle (#154): "ev:<library EV id>" → that car. */
 export function evDonor(engineId: string): LibraryCar | undefined {
-  return engineId.startsWith("ev:") ? VEHICLE_LIBRARY.find((c) => c.setup.ev && c.id === engineId.slice(3)) : undefined;
+  return engineId.startsWith("ev:") ? VEHICLE_LIBRARY.find((c) => c.setup.ev && !c.setup.hybrid && c.id === engineId.slice(3)) : undefined;
 }
 
 /**

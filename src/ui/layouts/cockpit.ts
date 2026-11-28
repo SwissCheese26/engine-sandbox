@@ -20,7 +20,8 @@ import { BASE_ICON, ICON2 } from "./icons.ts";
 import { ledColors, shiftLights, avgL100, clusterLamps, fuelScale, SPEEDO_SCALES, clampSpeedoKmh, isSpeedoScale, speedoScaleMax, speedoTicks, tachoMax, tachoZones, type Lamp, type LampSet } from "./logic.ts";
 import { RaceView } from "./race.ts";
 import type { DriveInfo, Frame, LayoutView } from "./view.ts";
-import type { EvConfig } from "../../core/index.ts";
+import type { EvConfig, HybridConfig } from "../../core/index.ts";
+import { HybridFlow } from "./hybrid-flow.ts";
 import { consumptionText, driveModeLabel, evField, evLamps, powerMeterScale, powerMeterValue, rangeText, socText } from "./ev-logic.ts";
 
 type LampKey = keyof LampSet;
@@ -114,6 +115,8 @@ export class CockpitView implements LayoutView {
   private ev: EvConfig | null = null;
   private evScale = { min: -100, max: 500, major: 100, minor: 50 };
   private readyEl!: HTMLElement;
+  /** Hybrid (#157): power flow with tank, SoC and EV lamp in the lamp row, so every design shows it. */
+  private flow = new HybridFlow();
   /** Set by the app: next EV drive mode (Chill → Sport → Plaid). */
   onEvMode: () => void = () => {};
   /** The loaded library car's own cluster (designs.ts carDesign), used when the design is "Automatisch". */
@@ -216,6 +219,7 @@ export class CockpitView implements LayoutView {
     this.out["road"]!.addEventListener("click", () => this.onWantEnvironment());
     this.out["ev-mode"]!.addEventListener("click", () => this.onEvMode());
     this.readyEl = el.querySelector<HTMLElement>("[data-ev-lamp=ready]")!;
+    el.querySelector(".ck__lamps")!.append(this.flow.el);
     // retarder stage (#83): − / + like the stalk of a truck; the stage lives in the core VehicleSystems
     for (const [k, dir] of [["ret-down", -1], ["ret-up", 1]] as const) {
       this.out[k]!.addEventListener("click", () => {
@@ -403,8 +407,10 @@ export class CockpitView implements LayoutView {
    * Electric car on (#108) or off (null): power meter instead of the rev counter, battery and motor temperature instead
    * of coolant and oil, state of charge instead of the tank, consumption in kWh, Ready lamp; in every design.
    */
-  setElectric(ev: EvConfig | null) {
+  setElectric(ev: EvConfig | null, hybrid: Readonly<HybridConfig> | null = null) {
     this.ev = ev;
+    this.flow.setShown(!!ev && !!hybrid);
+    this.el.dataset.hybrid = ev && hybrid ? hybrid.topology : "";
     this.el.dataset.drive = ev ? "ev" : "ice";
     (this.el.querySelector(".ck__ev") as HTMLElement).hidden = !ev;
     if (ev) this.evScale = powerMeterScale(ev);
@@ -517,6 +523,7 @@ export class CockpitView implements LayoutView {
 
   update(f: Frame) {
     const { s, dt } = f;
+    if (s.hybrid && s.ev && this.ev) this.flow.update(s.hybrid, s.ev.soc, f.mode === "vehicle" ? f.drivetrain.tank.levelL : Number.NaN);
     this.systems = f.systems;
     const u = prefs();
     const d = f.drivetrain;
