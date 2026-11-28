@@ -856,11 +856,8 @@ export class App {
    */
   applyPendingSetup(p: PendingSetup | null = takePendingSetup()) {
     if (!p) return;
-    // the car is still rolling (left the sandbox while driving): nothing is switched under it
-    if (this.gearbox.drivetrain.state.speedKmh > 0.5) {
-      this.announce("Das Fahrzeug rollt noch: erst anhalten, dann Fahrzeug und Strecke wählen.");
-      return;
-    }
+    // no rolling guard: pause() froze the loop mid-roll, so the speed is stale, and the setup is already consumed
+    // (takePendingSetup) - dropping it here would silently keep the old car (#156). Loading a vehicle resets the run.
     if (p.kind === "engine" || !p.route) {
       setOwnVehicleActive(false);
       this.setMode("free");
