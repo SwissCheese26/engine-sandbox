@@ -94,6 +94,36 @@ describe("hybrid strategy", () => {
     expect(sp.sim.state.hybrid!.engineOn).toBe(true);
   });
 
+  // "Nur Verbrenner" (hybrid.md §3): the engine drives alone, no boost, no electric driving, no regen
+  for (const car of [prius, bmw]) {
+    test(`${car.name}: Nur Verbrenner – engine on from a light pedal, no boost, no regen, battery untouched`, () => {
+      expect(hybridModes(car.setup.hybrid!)).toContain("ice");
+      const r = hybridRig(car, "ice");
+      const soc0 = r.sim.battery.soc;
+      let s = run(r, 4, 0.4);
+      expect(s.hybrid!.engineOn).toBe(true);
+      expect(s.hybrid!.evDrive).toBe(false);
+      expect(r.dt.state.speedKmh).toBeGreaterThan(3);
+      // full throttle: the battery gives nothing (only the e-CVT passes MG1's power on)
+      let maxBattKw = 0;
+      for (let i = 0; i < 8 * 60; i++) maxBattKw = Math.max(maxBattKw, r.step(1).ev!.powerKw);
+      expect(maxBattKw).toBeLessThan(2);
+      // braking: no regeneration, the friction brake stops the car
+      let maxRegen = 0;
+      for (let i = 0; i < 20 * 60 && r.dt.state.speedKmh > 0.5; i++) maxRegen = Math.max(maxRegen, r.step(0, 0.4).ev!.regenKw);
+      expect(r.dt.state.speedKmh).toBeLessThan(0.5);
+      expect(maxRegen).toBeLessThan(1);
+      expect(Math.abs(r.sim.battery.soc - soc0)).toBeLessThan(0.01);
+      s = run(r, 1, 0, 0.6);
+      expect(s.hybrid!.engineOn).toBe(true);
+    });
+  }
+  test("Nur Verbrenner is not offered for a range extender", () => {
+    const golf = libraryCar("car-vw-golf7-gti");
+    const rex = withDrive(golf, rangeExtenderDrive(factoryDrive(golf))!);
+    expect(hybridModes(rex.hybrid!)).not.toContain("ice");
+  });
+
   test(`minimum on-time ${ENGINE_MIN_ON_S} s against start/stop hunting`, () => {
     const r = hybridRig(prius);
     run(r, 0.5, 0, 1);
@@ -126,7 +156,7 @@ describe("hybrid kits: 48 V mild hybrid and range extender", () => {
 
   test("mild: start-stop at standstill, no electric driving, belt boost under load", () => {
     const car = kit(mildHybridDrive);
-    expect(hybridModes(car.setup.hybrid!)).toEqual(["hybrid", "sport"]);
+    expect(hybridModes(car.setup.hybrid!)).toEqual(["hybrid", "sport", "ice"]);
     const r = hybridRig(car);
     let s = run(r, 1, 0.5);
     expect(s.hybrid!.engineOn).toBe(true);
